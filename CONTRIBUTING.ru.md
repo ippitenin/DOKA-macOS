@@ -1,4 +1,4 @@
-# Как участвовать в разработке DOKA
+# Как участвовать в разработке DOKA для macOS
 
 <p><a href="CONTRIBUTING.md">English version</a></p>
 
@@ -9,8 +9,8 @@
 ## Как начать
 
 ```bash
-git clone https://github.com/ippitenin/DOKA.git
-cd DOKA/DOKA-app
+git clone https://github.com/ippitenin/DOKA-macOS.git
+cd DOKA-macOS/DOKA-app
 swift build                # быстрая проверка компиляции
 scripts/build-shaders.sh   # Metal-шейдеры панели записи (build.sh делает это сам)
 ./run.sh                   # release-сборка, подпись, установка в ~/Applications, запуск

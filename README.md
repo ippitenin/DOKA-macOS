@@ -2,7 +2,7 @@
   <img src="media/doka-icon.png" alt="DOKA" width="160">
 </p>
 
-<h1 align="center">DOKA</h1>
+<h1 align="center">DOKA for macOS</h1>
 
 <p align="center">
   <b>D</b>ock <b>O</b>perations <b>K</b>it for <b>A</b>pple — menu-bar voice dictation
@@ -14,7 +14,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ippitenin/DOKA/actions/workflows/build.yml"><img alt="Build" src="https://github.com/ippitenin/DOKA/actions/workflows/build.yml/badge.svg"></a>
+  <sub>This repository is the macOS app. The iOS version is developed separately in <code>DOKA-iOS</code>.</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml"><img alt="Build" src="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml/badge.svg"></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey">
   <img alt="Swift" src="https://img.shields.io/badge/Swift-5.9%2B-orange">
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue">
@@ -93,8 +97,8 @@ keys live in the macOS Keychain, never in config files.
 No signed release is published yet, so build from source:
 
 ```bash
-git clone https://github.com/ippitenin/DOKA.git
-cd DOKA/DOKA-app
+git clone https://github.com/ippitenin/DOKA-macOS.git
+cd DOKA-macOS/DOKA-app
 ./build.sh
 ```
 
