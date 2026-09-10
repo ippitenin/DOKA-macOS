@@ -1,4 +1,4 @@
-# Contributing to DOKA
+# Contributing to DOKA for macOS
 
 <p><a href="CONTRIBUTING.ru.md">Русская версия</a></p>
 
@@ -8,8 +8,8 @@ of them exist because something broke once. Please read this before opening a pu
 ## Getting set up
 
 ```bash
-git clone https://github.com/ippitenin/DOKA.git
-cd DOKA/DOKA-app
+git clone https://github.com/ippitenin/DOKA-macOS.git
+cd DOKA-macOS/DOKA-app
 swift build                # quick compile check
 scripts/build-shaders.sh   # Metal shaders of the recording panel (build.sh runs it for you)
 ./run.sh                   # release build, sign, install to ~/Applications, launch

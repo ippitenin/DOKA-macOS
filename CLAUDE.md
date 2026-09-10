@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DOKA (Dock Operations Kit for Apple) — меню-бар-приложение macOS для голосовой диктовки: глобальный хоткей → запись с микрофона → транскрипция через OpenAI-совместимый API → автозамены по словарю → вставка текста в активное приложение. Бывшее имя проекта — Whisper (осталась миграция данных).
 
+Репозиторий — `ippitenin/DOKA-macOS` (до переименования `ippitenin/DOKA`, GitHub перенаправляет старые URL): это версия для Mac. iOS-версия — отдельный репозиторий `DOKA-iOS`, общего кода с этим нет. Суффикс `-macOS` относится только к репозиторию: имя продукта остаётся «DOKA», и `DOKA.app`, bundle id, таргет `DOKA`, `Application Support/DOKA`, аккаунты Keychain, `DOKA.dmg` под имя репозитория НЕ переименовывать — пользователи потеряют данные, TCC-разрешения и ключи.
+
 Структура корня:
 - `DOKA-app/` — само приложение (SPM executable, macOS 14+, AppKit + SwiftUI; зависимости — KeyboardShortcuts, WhisperKit из argmax-oss-swift и FluidAudio, две последние — для локальных моделей распознавания).
 - `DOKA_LOGO/` — исходники фирменного логотипа (`Vector_DOKA.svg/.pdf`); из `Vector_DOKA.svg` 1:1 перенесён контур `DokaPetalsShape` (см. дизайн-систему). `media/` — картинки для README.

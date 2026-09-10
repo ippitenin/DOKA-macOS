@@ -2,7 +2,7 @@
   <img src="media/doka-icon.png" alt="DOKA" width="160">
 </p>
 
-<h1 align="center">DOKA</h1>
+<h1 align="center">DOKA для macOS</h1>
 
 <p align="center">
   <b>D</b>ock <b>O</b>perations <b>K</b>it for <b>A</b>pple — меню-бар-приложение macOS
@@ -14,7 +14,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ippitenin/DOKA/actions/workflows/build.yml"><img alt="Сборка" src="https://github.com/ippitenin/DOKA/actions/workflows/build.yml/badge.svg"></a>
+  <sub>Это репозиторий macOS-приложения. Версия для iOS разрабатывается отдельно — в <code>DOKA-iOS</code>.</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml"><img alt="Сборка" src="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml/badge.svg"></a>
   <img alt="Платформа" src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey">
   <img alt="Swift" src="https://img.shields.io/badge/Swift-5.9%2B-orange">
   <img alt="Лицензия" src="https://img.shields.io/badge/license-GPL--3.0-blue">
@@ -93,8 +97,8 @@ OpenAI-совместимый сервис. DOKA живёт в строке ме
 Подписанного релиза пока нет, поэтому собираем из исходников:
 
 ```bash
-git clone https://github.com/ippitenin/DOKA.git
-cd DOKA/DOKA-app
+git clone https://github.com/ippitenin/DOKA-macOS.git
+cd DOKA-macOS/DOKA-app
 ./build.sh
 ```
 
