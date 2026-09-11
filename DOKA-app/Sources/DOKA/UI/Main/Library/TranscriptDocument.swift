@@ -2,19 +2,23 @@ import Combine
 import Foundation
 
 /// Наблюдаемая запись библиотеки — единственный источник показанного
-/// результата (страница «Транскрибация», а в следующих фазах и деталь
-/// библиотеки). Тело грузится лениво; перенарезка и словарь для файлов
-/// мемоизируются: страница перерисовывается часто, а пересборка часовой
-/// расшифровки на каждый рендер ощутима.
+/// результата: деталь библиотеки и результат на странице «Транскрибация»
+/// смотрят в один документ (экземпляры раздаёт `LibraryModel.document(for:)`).
+/// Тело грузится лениво; перенарезка и словарь для файлов мемоизируются:
+/// вью перерисовываются часто, а пересборка часовой расшифровки на каждый
+/// рендер ощутима.
 @MainActor
 final class TranscriptDocument: ObservableObject {
     enum LoadState: Equatable {
         case loading
         case ready
-        case missing     // тела нет (запись удалена или файл не читается)
+        case missing     // записи нет или тело не читается
     }
 
     let recordID: UUID
+    /// Запись в индексе библиотеки (заголовок, статус, сервис) — следует за
+    /// стором; nil — запись удалена.
+    @Published private(set) var record: FileTranscriptRecord?
     @Published private(set) var body: TranscriptBody?
     @Published private(set) var loadState: LoadState = .loading
 
@@ -38,21 +42,30 @@ final class TranscriptDocument: ObservableObject {
         let store = store ?? .shared
         self.recordID = recordID
         self.store = store
+        record = store.record(recordID)
         if let cached = store.cachedBody(recordID) {
             // Свежий результат уже в кэше стора — показываем без мигания.
             body = cached
             loadState = .ready
-        } else {
+        } else if record == nil {
+            loadState = .missing
+        } else if record?.isDone == true {
             Task { await reload() }
         }
+        // Незавершённая запись тела ещё не имеет: ждём перехода в «готово».
+
+        // @Published отдаёт новое значение параметром (willSet) — читаем его,
+        // а не стор.
+        store.$records
+            .map { [recordID] records in records.first { $0.id == recordID } }
+            .removeDuplicates()
+            .sink { [weak self] fresh in self?.recordDidChange(fresh) }
+            .store(in: &cancellables)
         store.bodyChanged
             .filter { $0 == recordID }
             .sink { [weak self] _ in Task { await self?.reload() } }
             .store(in: &cancellables)
     }
-
-    /// Запись в индексе библиотеки (заголовок, статус, сервис).
-    var record: FileTranscriptRecord? { store.record(recordID) }
 
     func reload() async {
         let loaded = await store.loadBody(recordID)
@@ -75,5 +88,19 @@ final class TranscriptDocument: ObservableObject {
         let result = rules.map { TranscriptOutput.applyingDictionary(raw, rules: $0) } ?? raw
         cachedOutput = (key, result)
         return result
+    }
+
+    /// Переход записи в «готово» (конец распознавания, добор после
+    /// перезапуска, повтор на месте) — тело появилось или сменилось.
+    private func recordDidChange(_ fresh: FileTranscriptRecord?) {
+        let wasDone = record?.isDone == true
+        record = fresh
+        guard let fresh else {
+            loadState = .missing
+            return
+        }
+        if fresh.isDone && !wasDone {
+            Task { await reload() }
+        }
     }
 }

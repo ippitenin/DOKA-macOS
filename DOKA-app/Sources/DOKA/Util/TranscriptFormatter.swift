@@ -82,8 +82,8 @@ enum TranscriptFormatter {
 
     // MARK: - Форматирование времени
 
-    /// «м:сс» или «ч:мм:сс» для тайм-кода в тексте.
-    private static func clock(_ seconds: Double) -> String {
+    /// «м:сс» или «ч:мм:сс» для тайм-кода в тексте (и в строках записи библиотеки).
+    static func clock(_ seconds: Double) -> String {
         let total = Int(safeSeconds(seconds))
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0

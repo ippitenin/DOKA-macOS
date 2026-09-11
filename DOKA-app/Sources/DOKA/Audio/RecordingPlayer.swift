@@ -1,8 +1,10 @@
 import AVFoundation
 import Foundation
 
-/// Воспроизведение аудио истории для SwiftUI-ползунка. Один активный плеер на всё
-/// приложение (singleton): разворачивание второй карточки останавливает первую.
+/// Воспроизведение записей для SwiftUI-плееров: аудио истории диктовок и
+/// архив звука записей библиотеки. Один активный плеер на всё приложение
+/// (singleton): одновременно звучит одна запись, id диктовок и файловых
+/// записей не пересекаются, а перенос «Папки данных» останавливает всё сразу.
 @MainActor
 final class RecordingPlayer: NSObject, ObservableObject {
     static let shared = RecordingPlayer()
@@ -13,6 +15,11 @@ final class RecordingPlayer: NSObject, ObservableObject {
     /// Двусторонняя привязка к слайдеру. Пока тащим ползунок — тикер её не перетирает.
     @Published var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
+    /// Скорость воспроизведения (плеер библиотеки). Переживает смену записи
+    /// внутри библиотеки; история скоростью не управляет — `toggle` её сбрасывает.
+    @Published var rate: Float = 1 {
+        didSet { player?.rate = rate }
+    }
     /// Выставляется вью на время drag слайдера.
     var isScrubbing = false
 
@@ -21,14 +28,33 @@ final class RecordingPlayer: NSObject, ObservableObject {
 
     private override init() { super.init() }
 
-    /// Загружает (если ещё не та запись) и play/pause toggle.
+    /// Загружает (если ещё не та запись) и play/pause toggle — плеер истории.
     func toggle(url: URL, recordID: UUID) {
         if currentRecordID == recordID, player != nil {
             isPlaying ? pause() : play()
             return
         }
+        // У плеера истории нет выбора скорости: запись не должна внезапно
+        // заиграть на скорости, выставленной в библиотеке.
+        rate = 1
         load(url: url, recordID: recordID)
         play()
+    }
+
+    /// Воспроизведение с позиции (клик по тайм-коду, плеер библиотеки).
+    func play(url: URL, recordID: UUID, from time: TimeInterval) {
+        guard ensureLoaded(url: url, recordID: recordID) else { return }
+        seek(to: time)
+        play()
+    }
+
+    /// Загрузить запись, если загружена другая (без воспроизведения) — чтобы
+    /// перемотка слайдером и ±5 с работали и до первого нажатия «Play».
+    @discardableResult
+    func ensureLoaded(url: URL, recordID: UUID) -> Bool {
+        if currentRecordID == recordID, player != nil { return true }
+        load(url: url, recordID: recordID)
+        return player != nil
     }
 
     func play() {
@@ -52,6 +78,12 @@ final class RecordingPlayer: NSObject, ObservableObject {
         currentTime = t
     }
 
+    /// Перемотка на `delta` секунд от текущей позиции (±5 с).
+    func skip(by delta: TimeInterval) {
+        guard player != nil else { return }
+        seek(to: currentTime + delta)
+    }
+
     /// Полная остановка и выгрузка — при сворачивании карточки / смене секции / удалении.
     func stop() {
         stopTicker()
@@ -72,7 +104,10 @@ final class RecordingPlayer: NSObject, ObservableObject {
         stop()
         guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
         p.delegate = self
+        // enableRate — ДО prepareToPlay, иначе смена скорости молча не действует.
+        p.enableRate = true
         p.prepareToPlay()
+        p.rate = rate
         player = p
         currentRecordID = recordID
         duration = p.duration

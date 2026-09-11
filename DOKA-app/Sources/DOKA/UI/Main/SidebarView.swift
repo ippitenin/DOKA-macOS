@@ -11,7 +11,7 @@ struct SidebarView: View {
     /// дальше — как Favourites/Locations в Finder.
     private static let groups: [(titleKey: String?, sections: [MainSection])] = [
         (nil, [.home, .dashboard]),
-        ("sidebar.group.dictation", [.transcribe, .history, .dictionary]),
+        ("sidebar.group.dictation", [.transcribe, .library, .history, .dictionary]),
         ("sidebar.group.settings", [.general, .sound, .hotkeys, .service])
     ]
 

@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 
 /// Секция «Транскрибация»: загрузка аудио/видеофайла и распознавание его в
 /// текст с тайм-кодами, субтитрами и (опционально) разделением по спикерам.
-/// Самостоятельная утилита, не связанная с пайплайном диктовки.
+/// Самостоятельная утилита, не связанная с пайплайном диктовки. Результат —
+/// запись библиотеки, показанная тем же компонентом, что и деталь библиотеки.
 struct TranscribeAudioSectionView: View {
     @ObservedObject private var controller = FileTranscriptionController.shared
     @ObservedObject private var settings = SettingsStore.shared
@@ -49,21 +50,10 @@ struct TranscribeAudioSectionView: View {
                 case .transcribing:
                     progressCard
                 case .done:
-                    // Результат живёт в записи библиотеки: документ отдаёт
-                    // нарезку под детализацию и словарь для файлов (выходной
-                    // слой, мемоизирован) — сырой результат не меняется.
-                    if let document = controller.shownDocument,
-                       let shown = document.output(detail: controller.timestampDetail) {
-                        if let llmOutput = shown.llmOutput {
-                            analysisCard(llmOutput)
-                        }
-                        resultCard(shown)
-                    } else if controller.shownDocument?.loadState == .missing {
-                        errorCard(L("transcribe.recordMissing"))
-                    } else {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(maxWidth: .infinity)
+                    // Результат живёт в записи библиотеки: тот же компонент и
+                    // тот же документ, что у детали библиотеки.
+                    if let document = controller.shownDocument {
+                        TranscriptRecordView(document: document, layout: .inline)
                     }
                 case let .error(message):
                     errorCard(message)
@@ -71,7 +61,7 @@ struct TranscribeAudioSectionView: View {
                     EmptyView()
                 }
 
-                RecentTranscriptsView()
+                LibraryRecentStrip()
 
                 supportedFormatsCard
             }
@@ -221,16 +211,8 @@ struct TranscribeAudioSectionView: View {
                     )
                 )
             }
-            CardDivider()
-            SettingsRow(title: L("transcribe.detail"), help: L("transcribe.detail.help")) {
-                SettingsPopup(
-                    titles: TimestampDetail.allCases.map(\.title),
-                    selectionIndex: Binding(
-                        get: { TimestampDetail.allCases.firstIndex(of: controller.timestampDetail) ?? 0 },
-                        set: { controller.timestampDetail = TimestampDetail.allCases[$0] }
-                    )
-                )
-            }
+            // Детализация тайм-кодов — в шапке карточки «Транскрибация» у
+            // готового результата: нарезка локальная, до запуска она не нужна.
             CardDivider()
             // Пользовательская настройка, а не параметр файла: действует на
             // любой показанный результат и переживает перезапуск.
@@ -400,106 +382,7 @@ struct TranscribeAudioSectionView: View {
         }
     }
 
-    // MARK: - Результат
-
-    /// Карточка результата LLM-анализа — над транскрипцией. Тело рендерится
-    /// нативно из Markdown (без символов разметки); «Скопировать» кладёт
-    /// обычный текст, «Сохранить как…» — Markdown или обычный текст.
-    private func analysisCard(_ llmOutput: String) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 16) {
-                    Text(L("transcribe.llm.result.title"))
-                        .font(.headline)
-                    Spacer()
-                    CopyButton(text: LightMarkdown.plainText(llmOutput),
-                               html: LightMarkdown.html(llmOutput))
-                    analysisSaveAsMenu(llmOutput)
-                }
-                .padding(.horizontal, DS.Spacing.cardPadding)
-                .padding(.vertical, 10)
-
-                CardDivider()
-
-                CollapsibleReveal {
-                    MarkdownView(llmOutput)
-                }
-            }
-        }
-    }
-
-    private func resultCard(_ result: TranscriptResult) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 16) {
-                    Text(L("transcribe.result.title"))
-                        .font(.headline)
-                    Spacer()
-                    CopyButton(text: TranscriptFormatter.plainText(result))
-                    saveAsMenu(result)
-                    hideResultButton
-                }
-                .padding(.horizontal, DS.Spacing.cardPadding)
-                .padding(.vertical, 10)
-
-                CardDivider()
-
-                CollapsibleReveal {
-                    segmentsList(result)
-                }
-            }
-        }
-    }
-
-    /// Скрыть карточки результата (вместе с «Анализом»): нужно результату,
-    /// открытому из «Недавних», — у него нет другого способа закрыться.
-    /// Сам результат не теряется, он остаётся в списке.
-    private var hideResultButton: some View {
-        Button { controller.hideResult() } label: {
-            Image(systemName: "xmark.circle")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(L("transcribe.result.hide"))
-    }
-
-    @ViewBuilder
-    private func segmentsList(_ result: TranscriptResult) -> some View {
-        if result.segments.isEmpty {
-            Text(result.fullText)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            let colorIndices = speakerColorIndices(result.segments)
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(result.segments.enumerated()), id: \.offset) { _, seg in
-                    HStack(alignment: .top, spacing: 10) {
-                        Text(timeLabel(seg.start))
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 56, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 2) {
-                            if let speaker = seg.speaker {
-                                Text(SpeakerName.displayName(for: speaker))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(speakerColor(speaker, indices: colorIndices))
-                            }
-                            Text(seg.text)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contextMenu {
-                Button(L("common.copy")) {
-                    ClipboardManager.setString(TranscriptFormatter.plainText(result))
-                }
-            }
-        }
-    }
+    // MARK: - Справка
 
     private var supportedFormatsCard: some View {
         SettingsCard(header: L("transcribe.supported.title"),
@@ -531,139 +414,9 @@ struct TranscribeAudioSectionView: View {
         .glassSurface()
     }
 
-    // MARK: - Сохранить как…
-
-    /// Меню «Сохранить как…» с единым оформлением; пункты форматов задаёт
-    /// вызывающий (у результата и у анализа списки разные).
-    private func saveMenu<Items: View>(@ViewBuilder items: () -> Items) -> some View {
-        Menu {
-            items()
-        } label: {
-            Label(L("transcribe.save"), systemImage: "square.and.arrow.down")
-                .font(.caption)
-                .foregroundStyle(DS.accent)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help(L("transcribe.save"))
-    }
-
-    private func saveAsMenu(_ result: TranscriptResult) -> some View {
-        saveMenu {
-            ForEach(availableFormats(for: result)) { format in
-                Button(format.title) { saveAs(format, result) }
-            }
-        }
-    }
-
-    private func availableFormats(for result: TranscriptResult) -> [SaveFormat] {
-        var formats: [SaveFormat] = [.plain, .timestamps]
-        if result.hasSpeakers { formats += [.speakers, .timestampsSpeakers] }
-        formats += [.srt, .vtt]
-        return formats
-    }
-
-    private func text(for format: SaveFormat, _ result: TranscriptResult) -> String {
-        switch format {
-        case .plain: return TranscriptFormatter.plainText(result)
-        case .timestamps: return TranscriptFormatter.textWithTimestamps(result)
-        case .srt: return TranscriptFormatter.srt(result)
-        case .vtt: return TranscriptFormatter.vtt(result)
-        case .speakers: return TranscriptFormatter.bySpeaker(result)
-        case .timestampsSpeakers: return TranscriptFormatter.textWithTimestampsAndSpeakers(result)
-        }
-    }
-
-    /// Системный диалог сохранения. Приложение не в песочнице — пишем по
-    /// выбранному пути напрямую. Имя по умолчанию — от исходного файла.
-    private func saveAs(_ format: SaveFormat, _ result: TranscriptResult) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(controller.suggestedBaseName).\(format.fileExtension)"
-        panel.canCreateDirectories = true
-        // Расширение SRT/VTT системе неизвестно как UTType — формат задаёт само
-        // имя файла; ограничиваем тип только для txt.
-        if format.fileExtension == "txt" {
-            panel.allowedContentTypes = [.plainText]
-        }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try text(for: format, result).write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            NSLog("DOKA: не удалось сохранить транскрипцию: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - Сохранить анализ как…
-
-    private func analysisSaveAsMenu(_ llmOutput: String) -> some View {
-        saveMenu {
-            ForEach(AnalysisSaveFormat.allCases) { format in
-                Button(format.title) { saveAnalysis(format, llmOutput) }
-            }
-        }
-    }
-
-    /// Сохранение анализа в файл. Markdown — сырой llm_output; обычный текст —
-    /// без символов разметки (тот же источник, что и «Скопировать»). Приложение
-    /// не в песочнице — пишем по выбранному пути напрямую.
-    private func saveAnalysis(_ format: AnalysisSaveFormat, _ llmOutput: String) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(controller.suggestedBaseName)-analysis.\(format.fileExtension)"
-        panel.canCreateDirectories = true
-        if format == .plain {
-            panel.allowedContentTypes = [.plainText]
-        }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let text = format == .markdown ? llmOutput : LightMarkdown.plainText(llmOutput)
-        do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            NSLog("DOKA: не удалось сохранить анализ: \(error.localizedDescription)")
-        }
-    }
-
     private func iconForFile(_ name: String) -> String {
         let ext = (name as NSString).pathExtension.lowercased()
         return FileTranscriptionController.videoExtensions.contains(ext) ? "film" : "waveform"
-    }
-
-    private func timeLabel(_ seconds: Double) -> String {
-        let total = Int((seconds.isFinite && seconds > 0) ? seconds : 0)
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        return h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%d:%02d", m, s)
-    }
-
-    /// Индексы цветов бэйджей: `speaker_N` — по номеру (прежнее поведение),
-    /// остальные (роли, unknown_N) — по порядку первого появления в
-    /// результате. Детерминировано между запусками — hashValue String
-    /// рандомизирован на процесс и цвет роли «плавал» бы.
-    private func speakerColorIndices(_ segments: [TranscriptSegment]) -> [String: Int] {
-        var indices: [String: Int] = [:]
-        var nextOrdinal = 0
-        for segment in segments {
-            guard let speaker = segment.speaker, indices[speaker] == nil else { continue }
-            if let index = SpeakerName.index(of: speaker) {
-                indices[speaker] = index
-            } else {
-                indices[speaker] = nextOrdinal
-                nextOrdinal += 1
-            }
-        }
-        return indices
-    }
-
-    /// Детерминированный цвет бэйджа спикера по предвычисленным индексам.
-    private func speakerColor(_ speaker: String, indices: [String: Int]) -> Color {
-        let palette: [Color] = [
-            DS.accent, DS.Aurora.indigo, DS.coral,
-            Color(red: 0.44, green: 0.63, blue: 0.50),
-            Color(red: 0.36, green: 0.52, blue: 0.84)
-        ]
-        let index = indices[speaker] ?? 0
-        return palette[index % palette.count]
     }
 
     private static let importerTypes: [UTType] = {
@@ -672,171 +425,4 @@ struct TranscribeAudioSectionView: View {
         types.append(.movie)
         return types
     }()
-}
-
-/// Компактная плашка «подпись + текущее значение», клик раскрывает нативное
-/// меню выбора. Ряд таких плашек занимает одну строку вместо трёх строк формы.
-/// Ловушка: SwiftUI `Menu` на macOS ломает кастомный многострочный лейбл
-/// (плашка схлопывалась в текст с шевроном) — поэтому плашка рисуется чистым
-/// SwiftUI, а кликом заведует растянутый поверх невидимый `NSPopUpButton`
-/// (`isTransparent`: не рисуется, но получает события — как `PopUpButton`
-/// в SettingsForm).
-private struct OptionTile: View {
-    let caption: String
-    let value: String
-    let options: [String]
-    let selectedIndex: Int
-    let onSelect: (Int) -> Void
-
-    @State private var isHovering = false
-    /// Плашка недоступна, когда параметр принадлежит только встроенному
-    /// сервису: остаётся на месте приглушённой, чтобы было видно, что функция
-    /// существует, а не исчезла.
-    @Environment(\.isEnabled) private var isEnabled
-
-    /// Ховер не должен «оживать» на недоступной плашке.
-    private var showsHover: Bool { isHovering && isEnabled }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(caption)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .lineLimit(1)
-                Text(value)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(showsHover ? DS.accent : .secondary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Подложка и кромка адаптивные (Color.primary, НЕ .white: белый тинт на
-        // белом фоне светлой темы невидим); ховер подсвечивает плашку кнопкой.
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
-                .fill(Color.primary.opacity(showsHover ? 0.08 : 0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
-                .strokeBorder(showsHover ? DS.accent.opacity(0.6) : Color.primary.opacity(0.12), lineWidth: 1)
-        )
-        .overlay(
-            TilePopUpOverlay(titles: options, selectedIndex: selectedIndex,
-                             isEnabled: isEnabled, onSelect: onSelect)
-        )
-        .opacity(isEnabled ? 1 : 0.5)
-        .onHover { isHovering = $0 }
-        .animation(DS.Anim.hover, value: showsHover)
-    }
-}
-
-/// Невидимый NSPopUpButton на всю плашку: системное меню с галочкой на
-/// выбранном пункте, кликается вся площадь. Копия паттерна `PopUpButton`
-/// из SettingsForm (тот приватный и рисует стандартную кнопку).
-private struct TilePopUpOverlay: NSViewRepresentable {
-    let titles: [String]
-    let selectedIndex: Int
-    let isEnabled: Bool
-    let onSelect: (Int) -> Void
-
-    func makeNSView(context: Context) -> NSPopUpButton {
-        let button = NSPopUpButton(frame: .zero, pullsDown: false)
-        button.isBordered = false
-        button.isTransparent = true     // не рисует фон, но получает клики
-        // Нативную стрелку гасим — свой шеврон рисует плашка (иначе задвоение).
-        (button.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.didChange(_:))
-        return button
-    }
-
-    func updateNSView(_ button: NSPopUpButton, context: Context) {
-        context.coordinator.parent = self
-        // Прозрачная кнопка лежит ПОВЕРХ плашки и ловит клики сама: без явного
-        // isEnabled внешний `.disabled` её не остановит (SwiftUI не пробрасывает
-        // окружение внутрь NSViewRepresentable).
-        button.isEnabled = isEnabled
-        if button.itemTitles != titles {
-            button.removeAllItems()
-            // Не addItems(withTitles:) — он молча выкидывает дубликаты.
-            for title in titles {
-                button.menu?.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
-            }
-        }
-        if button.indexOfSelectedItem != selectedIndex,
-           titles.indices.contains(selectedIndex) {
-            button.selectItem(at: selectedIndex)
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var parent: TilePopUpOverlay
-
-        init(_ parent: TilePopUpOverlay) {
-            self.parent = parent
-        }
-
-        @objc func didChange(_ sender: NSPopUpButton) {
-            parent.onSelect(sender.indexOfSelectedItem)
-        }
-    }
-}
-
-/// Формат сохранения результата в файл.
-private enum SaveFormat: String, Identifiable, CaseIterable {
-    case plain, timestamps, srt, vtt, speakers, timestampsSpeakers
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .plain: return L("transcribe.format.plain")
-        case .timestamps: return L("transcribe.format.timestamps")
-        case .srt: return L("transcribe.format.srt")
-        case .vtt: return L("transcribe.format.vtt")
-        case .speakers: return L("transcribe.format.speakers")
-        case .timestampsSpeakers: return L("transcribe.format.timestampsSpeakers")
-        }
-    }
-
-    /// Расширение файла. SRT/VTT — свои; остальные текстовые форматы — .txt.
-    var fileExtension: String {
-        switch self {
-        case .srt: return "srt"
-        case .vtt: return "vtt"
-        case .plain, .timestamps, .speakers, .timestampsSpeakers: return "txt"
-        }
-    }
-}
-
-/// Формат сохранения LLM-анализа в файл. Markdown — сырой llm_output как есть;
-/// обычный текст — без символов разметки. (PDF сознательно отложен.)
-private enum AnalysisSaveFormat: String, Identifiable, CaseIterable {
-    case markdown, plain
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .markdown: return L("transcribe.analysisFormat.markdown")
-        case .plain: return L("transcribe.analysisFormat.plain")
-        }
-    }
-
-    var fileExtension: String {
-        switch self {
-        case .markdown: return "md"
-        case .plain: return "txt"
-        }
-    }
 }

@@ -186,6 +186,7 @@ final class SettingsStore: ObservableObject {
         static let servicesMigrated = "servicesMigrated"
         static let skipSilentRecordings = "skipSilentRecordings"
         static let applyDictionaryToFiles = "applyDictionaryToFiles"
+        static let libraryRetentionNoticeDismissed = "libraryRetentionNoticeDismissed"
         static let saveTranscriptAudio = "saveTranscriptAudio"
     }
 
@@ -276,6 +277,16 @@ final class SettingsStore: ObservableObject {
     /// умолчанию выключено — изоляция пайплайна файлов сохраняется.
     @Published var applyDictionaryToFiles: Bool {
         didSet { defaults.set(applyDictionaryToFiles, forKey: Key.applyDictionaryToFiles) }
+    }
+    /// Плашку библиотеки «записи теперь хранятся всегда» закрыли.
+    @Published var libraryRetentionNoticeDismissed: Bool {
+        didSet { defaults.set(libraryRetentionNoticeDismissed, forKey: Key.libraryRetentionNoticeDismissed) }
+    }
+
+    /// Выбирал ли пользователь срок хранения библиотеки сам (иначе действует
+    /// дефолт «всегда» — см. `TranscriptRetention.resolve`).
+    var isTranscriptRetentionExplicit: Bool {
+        TranscriptRetention.isExplicit(stored: defaults.string(forKey: Key.transcriptRetention))
     }
 
     /// Язык интерфейса. Применяется при следующем запуске: Foundation
@@ -485,6 +496,7 @@ final class SettingsStore: ObservableObject {
         ])
         skipSilentRecordings = defaults.bool(forKey: Key.skipSilentRecordings)
         applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
+        libraryRetentionNoticeDismissed = defaults.bool(forKey: Key.libraryRetentionNoticeDismissed)
         saveTranscriptAudio = defaults.bool(forKey: Key.saveTranscriptAudio)
         language = defaults.string(forKey: Key.language) ?? "ru"
         soundsEnabled = defaults.bool(forKey: Key.soundsEnabled)
