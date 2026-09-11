@@ -36,6 +36,14 @@ struct DictionarySectionView: View {
                                 Image(systemName: "arrow.right")
                                     .foregroundStyle(.secondary)
                                 TextField(L("dictionary.to"), text: $rule.to)
+                                // По умолчанию правило — на целое слово; кнопка
+                                // включает прежний поиск подстроки («ё» → «е»).
+                                Toggle(isOn: $rule.matchInsideWords) {
+                                    Image(systemName: "character.textbox")
+                                }
+                                .toggleStyle(.button)
+                                .accessibilityLabel(L("dictionary.insideWords"))
+                                .help(L("dictionary.insideWords.help"))
                             }
                             .tag(rule.id)
                             .listRowBackground(Color.clear)

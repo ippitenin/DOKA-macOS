@@ -17,7 +17,7 @@ enum SilenceRemover {
     static let paddingWindows = 12
     /// Выигрыш меньше 10% — обрезка не окупается, шлём оригинал.
     static let minSavingRatio = 0.1
-    /// Результат короче порога `DictationController.minDuration` — оригинал.
+    /// Результат короче порога `DictationGate.minDuration` — оригинал.
     static let minResultDuration = 0.4
 
     /// URL нового WAV без тишины; nil — резать нечего или не вышло

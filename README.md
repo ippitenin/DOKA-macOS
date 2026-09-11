@@ -64,7 +64,7 @@ written in Russian.
   typing (measured by a built-in typing test), plus a daily chart.
 - **Sound processing** — microphone volume boost while recording, silence removal before
   upload, and system sounds on key transitions.
-- **Dictionary** — case-insensitive replacement rules applied to every transcript.
+- **Dictionary** — case-insensitive replacement rules applied to every transcript. Rules match whole words: “doka” → “DOKA” no longer touches “document”; the per-rule “Inside words” switch brings back substring matching (e.g. “ё” → “е”). Optionally applied to file transcripts as well.
 
 ## Privacy
 

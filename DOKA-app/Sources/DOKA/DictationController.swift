@@ -1,6 +1,26 @@
 import AppKit
 import Foundation
 
+/// Записанная диктовка, готовая к распознаванию.
+struct RecordedDictation: Equatable {
+    let url: URL
+    let duration: TimeInterval
+    let speechDuration: TimeInterval
+    let microphone: String?
+}
+
+/// Последняя неудачная попытка распознавания — один слот на приложение,
+/// только в памяти (WAV лежит во временной папке). «Повторить неудачную
+/// диктовку» в меню-баре распознаёт её заново, возможно уже другим сервисом.
+struct FailedDictation: Equatable {
+    let audio: RecordedDictation
+    let failedAt: Date
+    let message: String
+    /// Запись отсеяна гейтом тишины, а не упала при распознавании. Такая
+    /// «возможно, тишина» не вправе вытеснить из слота настоящую неудачу.
+    var gated = false
+}
+
 /// Конечный автомат диктовки: idle → recording → transcribing → idle.
 /// Управляет записью, обращением к сервису распознавания, заменами,
 /// вставкой и историей.
@@ -24,6 +44,9 @@ final class DictationController: ObservableObject {
 
     @Published private(set) var state: State = .idle
     @Published var audioLevel: Float = 0
+    /// Слот повтора: запись, которую не удалось распознать (или которую гейт
+    /// тишины отсеял, а она длиннее секунды). nil — повторять нечего.
+    @Published private(set) var lastFailedDictation: FailedDictation?
 
     /// Слабые ссылки: владеет всеми объектами AppDelegate.
     weak var hotkeys: HotkeyManager?
@@ -41,8 +64,20 @@ final class DictationController: ObservableObject {
     private var transcriptionTask: Task<Void, Never>?
     private var generation = 0
 
-    /// Минимальная длительность записи, ниже которой API не вызывается.
-    private static let minDuration: TimeInterval = 0.4
+    /// Откуда запись: только что надиктована или взята из слота повтора.
+    private enum DictationSource {
+        case live
+        /// `targetPID` — приложение, которое было впереди в момент повтора:
+        /// вставляем, только если оно всё ещё впереди.
+        case retry(targetPID: pid_t?, original: FailedDictation)
+    }
+
+    /// Итог попытки для судьбы WAV и слота повтора.
+    private enum Outcome {
+        case succeeded          // текст в истории (вставка могла и не пройти)
+        case failed(String)     // ошибка ДО записи в историю — есть что повторить
+        case abandoned          // отмена/устаревшая задача — повторять нечего
+    }
 
     init() {
         recorder.onLevel = { [weak self] level in
@@ -80,7 +115,7 @@ final class DictationController: ObservableObject {
     }
 
     /// …отпускание — завершает и отправляет на распознавание. Случайное
-    /// короткое нажатие отсеет существующий порог minDuration.
+    /// короткое нажатие отсеет порог `DictationGate.minDuration`.
     func pushToTalkUp() {
         guard state.isRecording else { return }
         finishRecording()
@@ -123,6 +158,42 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// «Повторить неудачную диктовку» из меню-бара: та же запись уходит на
+    /// распознавание текущим сервисом, в обход гейта тишины (пользователь
+    /// явно просит распознать). Esc во время повтора возвращает запись в слот.
+    func retryLastFailedDictation() {
+        switch state {
+        case .recording, .transcribing:
+            return
+        case .idle, .error:
+            break
+        }
+        guard let failed = lastFailedDictation else { return }
+        guard FileManager.default.fileExists(atPath: failed.audio.url.path) else {
+            lastFailedDictation = nil
+            showError(L("error.retryUnavailable"))
+            return
+        }
+        lastFailedDictation = nil   // слот «взят»; вернётся при неудаче или отмене
+        // Меню статус-бара не активирует DOKA: впереди остаётся приложение,
+        // где был курсор, — туда и вставим, если оно не сменится.
+        let target = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        transition(to: .transcribing)
+        let gen = generation
+        transcriptionTask = Task {
+            await transcribeAndPaste(failed.audio,
+                                     source: .retry(targetPID: target, original: failed),
+                                     generation: gen)
+        }
+    }
+
+    /// Забыть слот повтора вместе с его WAV (выход из приложения).
+    func discardFailedDictation() {
+        guard let failed = lastFailedDictation else { return }
+        lastFailedDictation = nil
+        Self.removeFile(failed.audio.url)
+    }
+
     // MARK: - Цикл записи
 
     private func startRecording() {
@@ -162,34 +233,60 @@ final class DictationController: ObservableObject {
         }
         SoundPlayer.play(.recordStop)
 
-        guard result.duration >= Self.minDuration else {
-            try? FileManager.default.removeItem(at: result.url)
+        // Имя микрофона для метаданных истории — независимо от уже остановленного движка.
+        let audio = RecordedDictation(url: result.url, duration: result.duration,
+                                      speechDuration: result.speechDuration,
+                                      microphone: recorder.currentInputDeviceName)
+
+        switch DictationGate.decide(duration: audio.duration,
+                                    speechDuration: audio.speechDuration,
+                                    speechGateEnabled: settings.skipSilentRecordings) {
+        case .tooShort:
+            Self.removeFile(audio.url)
             transition(to: .idle)
             return
+        case .noSpeech:
+            // Ни API, ни история, ни статистика: не платим за тишину и не ловим
+            // галлюцинации Whisper. Лог — для калибровки порога.
+            NSLog("DOKA: гейт тишины — запись %.2f с, речи %.2f с, на распознавание не отправлена",
+                  audio.duration, audio.speechDuration)
+            if DictationGate.isRetryable(duration: audio.duration) {
+                // Возможно, просто тихий голос: запись можно распознать всё равно.
+                storeFailed(audio, message: L("error.noSpeech"), gated: true)
+            } else {
+                Self.removeFile(audio.url)
+            }
+            showError(L("error.noSpeech"), sound: .cancel)
+            return
+        case .transcribe:
+            break
         }
 
-        // Имя микрофона для метаданных истории — независимо от уже остановленного движка.
-        let microphone = recorder.currentInputDeviceName
         transition(to: .transcribing)
         let gen = generation
         transcriptionTask = Task {
-            await transcribeAndPaste(url: result.url, duration: result.duration,
-                                     speechDuration: result.speechDuration,
-                                     microphone: microphone, generation: gen)
+            await transcribeAndPaste(audio, source: .live, generation: gen)
         }
     }
 
-    private func transcribeAndPaste(url: URL, duration: TimeInterval,
-                                    speechDuration: TimeInterval,
-                                    microphone: String?, generation gen: Int) async {
-        defer { try? FileManager.default.removeItem(at: url) }
+    private func transcribeAndPaste(_ audio: RecordedDictation, source: DictationSource,
+                                    generation gen: Int) async {
+        let url = audio.url
+        // Судьба WAV и слота решается одним местом по итогу попытки. Сам
+        // `settle` автомат не трогает: `failed` выставляется только при
+        // `generation == gen`, так что устаревшая задача слот не перезапишет.
+        var outcome = Outcome.abandoned
+        defer { settle(audio, source: source, outcome: outcome) }
 
         // Маршрут распознавания: локальный движок или сетевой клиент.
         let route: ServiceRoute
         do {
             route = try settings.resolveRoute()
         } catch {
-            if generation == gen { showError(error.localizedDescription) }
+            if generation == gen {
+                outcome = .failed(error.localizedDescription)
+                showError(error.localizedDescription)
+            }
             return
         }
         let language = settings.language
@@ -238,7 +335,7 @@ final class DictationController: ObservableObject {
             let transcriptionTime = Date().timeIntervalSince(started)
             guard generation == gen else { return }   // отменено пользователем
             let text = ReplacementEngine.apply(raw, rules: settings.replacements)
-            // Кодируем аудио в m4a ДО выхода (defer уберёт исходный WAV). id фиксируем заранее,
+            // Кодируем аудио в m4a ДО выхода (settle уберёт исходный WAV). id фиксируем заранее,
             // чтобы имя файла и запись истории гарантированно совпадали. Если сохранение аудио
             // выключено — кодирование пропускаем целиком, и вставка не ждёт его (быстрее).
             let recordID = UUID()
@@ -251,11 +348,21 @@ final class DictationController: ObservableObject {
                 if let audioName { AudioStore.shared.removeFile(named: audioName) }
                 return
             }
-            history.add(id: recordID, text: text, duration: duration, language: language,
-                        speechDuration: speechDuration, model: modelTag, provider: providerRaw,
-                        microphone: microphone, transcriptionTime: transcriptionTime,
+            history.add(id: recordID, text: text, duration: audio.duration, language: language,
+                        speechDuration: audio.speechDuration, model: modelTag, provider: providerRaw,
+                        microphone: audio.microphone, transcriptionTime: transcriptionTime,
                         audioFileName: audioName)
-            stats.record(text: text, duration: duration, speechDuration: speechDuration)
+            stats.record(text: text, duration: audio.duration, speechDuration: audio.speechDuration)
+            // Текст уже в истории: дальше повторять нечего, даже если вставка не пройдёт.
+            outcome = .succeeded
+
+            // Повтор идёт секунды — за это время пользователь мог уйти в другое
+            // приложение. Вставлять туда нельзя: только буфер и сообщение.
+            if case .retry(let targetPID, _) = source, !Self.isFrontmost(targetPID) {
+                ClipboardManager.setString(text)
+                showError(L("dictation.retry.copied"), sound: .recordStop)
+                return
+            }
             do {
                 try await Paster.paste(text, restoreClipboard: settings.restoreClipboard)
                 guard generation == gen else { return }
@@ -269,7 +376,80 @@ final class DictationController: ObservableObject {
             return
         } catch {
             guard generation == gen else { return }
+            outcome = .failed(error.localizedDescription)
             showError(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Слот повтора
+
+    /// Судьба записи по итогу попытки. Автомат не трогает — только файлы и слот.
+    private func settle(_ audio: RecordedDictation, source: DictationSource, outcome: Outcome) {
+        switch outcome {
+        case .succeeded:
+            Self.removeFile(audio.url)
+            // Пользователь продиктовал заново — старый повтор вставил бы
+            // неактуальный текст.
+            if case .live = source { discardFailedDictation() }
+        case .failed(let message):
+            storeFailed(audio, message: message)
+        case .abandoned:
+            switch source {
+            case .live:
+                // Отмена Esc — намерение выбросить запись.
+                Self.removeFile(audio.url)
+            case .retry(_, let original):
+                // Отменили повтор, а не саму запись: вернуть её в слот. Если
+                // слот уже занят более свежей неудачей — файл больше не нужен.
+                if lastFailedDictation == nil {
+                    lastFailedDictation = original
+                } else if lastFailedDictation?.audio.url != audio.url {
+                    Self.removeFile(audio.url)
+                }
+            }
+        }
+    }
+
+    /// Положить запись в слот; прежняя запись слота (если это другой файл) удаляется.
+    /// Исключение: отсеянная гейтом «возможно, тишина» не вытесняет настоящую
+    /// неудачу — иначе случайное нажатие хоткея после сбоя сети стёрло бы
+    /// реальную диктовку. Такая тишина просто выбрасывается.
+    private func storeFailed(_ audio: RecordedDictation, message: String, gated: Bool = false) {
+        if gated, let old = lastFailedDictation, !old.gated, old.audio.url != audio.url {
+            Self.removeFile(audio.url)
+            return
+        }
+        if let old = lastFailedDictation, old.audio.url != audio.url {
+            Self.removeFile(old.audio.url)
+        }
+        lastFailedDictation = FailedDictation(audio: audio, failedAt: Date(), message: message,
+                                              gated: gated)
+    }
+
+    private static func isFrontmost(_ pid: pid_t?) -> Bool {
+        guard let pid, pid != ProcessInfo.processInfo.processIdentifier else { return false }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+    }
+
+    private static func removeFile(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Сироты временных файлов прошлых запусков: слот повтора живёт в памяти и
+    /// теряется при выходе или крэше, крэш посреди распознавания оставляет
+    /// WAV/обрезки/тела запросов. На старте файловой работы в полёте нет, а
+    /// фильтр по дате изменения не даёт тронуть то, что создаётся сейчас.
+    nonisolated static func sweepOrphanedTempFiles(before launch: Date) {
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.contentModificationDateKey]
+        guard let items = try? fm.contentsOfDirectory(at: fm.temporaryDirectory,
+                                                      includingPropertiesForKeys: keys) else { return }
+        for url in items where url.lastPathComponent.hasPrefix("doka-")
+            && ["wav", "tmp"].contains(url.pathExtension) {
+            let modified = (try? url.resourceValues(forKeys: Set(keys)))?.contentModificationDate
+            if (modified ?? .distantPast) < launch {
+                try? fm.removeItem(at: url)
+            }
         }
     }
 
@@ -297,8 +477,11 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func showError(_ message: String) {
-        SoundPlayer.play(.error)
+    /// Сообщение на панели (канал `.error` — он же для информативных сообщений,
+    /// как у `error.secureInput`). Звук — по смыслу: тишине и «скопировано»
+    /// не нужен тревожный Basso.
+    private func showError(_ message: String, sound: SoundPlayer.Event = .error) {
+        SoundPlayer.play(sound)
         transition(to: .error(message: message))
         errorDismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2.5))

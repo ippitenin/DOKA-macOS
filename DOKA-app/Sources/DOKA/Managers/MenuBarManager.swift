@@ -8,8 +8,9 @@ import SwiftUI
 final class MenuBarManager {
     private let statusItem: NSStatusItem
     private let controller: DictationController
-    private var cancellable: AnyCancellable?
+    private var cancellables = Set<AnyCancellable>()
     private let toggleItem = NSMenuItem()
+    private let retryItem = NSMenuItem()
 
     init(controller: DictationController) {
         self.controller = controller
@@ -33,6 +34,14 @@ final class MenuBarManager {
         pasteItem.setShortcut(for: .pasteLast)
         menu.addItem(pasteItem)
 
+        // Повтор неудачной диктовки: виден, только пока в слоте есть запись.
+        // isHidden, а не isEnabled — autoenablesItems перетёр бы isEnabled
+        // у пункта с target.
+        retryItem.target = self
+        retryItem.action = #selector(retryFailed)
+        retryItem.isHidden = true
+        menu.addItem(retryItem)
+
         menu.addItem(.separator())
 
         // Сочетания задаются в «Клавишах» (setShortcut сам обновляет подпись
@@ -55,9 +64,14 @@ final class MenuBarManager {
 
         statusItem.menu = menu
 
-        cancellable = controller.$state.sink { [weak self] state in
-            self?.update(for: state)
-        }
+        controller.$state
+            .sink { [weak self] state in self?.update(for: state) }
+            .store(in: &cancellables)
+        // @Published отдаёт новое значение в sink ещё до присвоения (willSet) —
+        // поэтому берём значения из параметров, а не из контроллера.
+        Publishers.CombineLatest(controller.$state, controller.$lastFailedDictation)
+            .sink { [weak self] state, failed in self?.updateRetry(state: state, failed: failed) }
+            .store(in: &cancellables)
         update(for: controller.state)
     }
 
@@ -88,6 +102,16 @@ final class MenuBarManager {
         statusItem.button?.image = image
     }
 
+    /// Пункт повтора: скрыт без записи в слоте и во время записи/распознавания.
+    private func updateRetry(state: DictationController.State, failed: FailedDictation?) {
+        let busy = state.isRecording || state == .transcribing
+        retryItem.isHidden = failed == nil || busy
+        if let failed {
+            retryItem.title = L("menu.retryFailed", clockMMSS(failed.audio.duration))
+            retryItem.toolTip = failed.message
+        }
+    }
+
     private static func symbolImage(_ name: String) -> NSImage? {
         let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
         image?.isTemplate = true
@@ -111,6 +135,10 @@ final class MenuBarManager {
 
     @objc private func pasteLast() {
         controller.pasteLastTranscription()
+    }
+
+    @objc private func retryFailed() {
+        controller.retryLastFailedDictation()
     }
 
     @objc private func openMain() {
