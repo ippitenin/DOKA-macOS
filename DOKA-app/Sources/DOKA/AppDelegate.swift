@@ -8,6 +8,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: RecorderPanelController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Сироты временных WAV прошлых запусков (слот повтора диктовки живёт
+        // в памяти) — фоном, запуск не ждёт файловую систему.
+        let launch = Date()
+        Task.detached(priority: .utility) {
+            DictationController.sweepOrphanedTempFiles(before: launch)
+        }
         installEditMenu()
         dictationController = DictationController()
         panelController = RecorderPanelController(controller: dictationController)
@@ -50,6 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Слот повтора диктовки живёт только в памяти — его WAV не должен
+    /// пережить процесс (при крэше/kill подчистит sweep на следующем старте).
+    func applicationWillTerminate(_ notification: Notification) {
+        dictationController?.discardFailedDictation()
     }
 
     /// Повторный запуск (open/двойной клик в Finder) открывает главное окно.

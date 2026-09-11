@@ -31,7 +31,9 @@ struct TranscribeAudioSectionView: View {
                     if let llmOutput = result.llmOutput {
                         analysisCard(llmOutput)
                     }
-                    resultCard(result)
+                    // Словарь для файлов — выходной слой: в фазе всегда сырой
+                    // результат, замены только в том, что видно и забирается.
+                    resultCard(TranscriptOutput.prepare(result))
                 case let .error(message):
                     errorCard(message)
                 default:
@@ -197,6 +199,13 @@ struct TranscribeAudioSectionView: View {
                         set: { controller.timestampDetail = TimestampDetail.allCases[$0] }
                     )
                 )
+            }
+            CardDivider()
+            // Пользовательская настройка, а не параметр файла: действует на
+            // любой показанный результат и переживает перезапуск.
+            SettingsRow(title: L("transcribe.applyDictionary"),
+                        help: L("transcribe.applyDictionary.help")) {
+                SettingsSwitch(isOn: $settings.applyDictionaryToFiles)
             }
             // LLM-анализ — специфика Nexara: у кастомных OpenAI-совместимых
             // API prompt значит другое (контекстная подсказка Whisper), а

@@ -5,6 +5,7 @@
 "menu.startDictation" = "Start dictation";
 "menu.stopDictation" = "Stop and transcribe";
 "menu.pasteLast" = "Paste last transcription";
+"menu.retryFailed" = "Retry failed dictation (%@)";
 "menu.open" = "Open DOKA…";
 "menu.history" = "History…";
 "menu.quit" = "Quit DOKA";
@@ -47,6 +48,9 @@
 "error.recordingStartFailed" = "Could not start recording";
 "error.keychainSaveFailed" = "Could not save the key to the Keychain";
 "error.localModelMissing" = "The model isn’t downloaded — get it in the Service section";
+"error.noSpeech" = "No speech detected — check your microphone";
+"error.retryUnavailable" = "The recording to retry is no longer available";
+"dictation.retry.copied" = "Text transcribed and copied to the clipboard";
 "error.localLoadFailed" = "Failed to load the model: %@";
 "transcribe.local.modelMissing" = "The local model isn’t downloaded. Get it in the Service section or choose a network service.";
 "transcribe.local.noAudioTrack" = "The file has no audio track";
@@ -128,6 +132,8 @@
 "sound.autoBoost.hint" = "Input volume is set to maximum while recording and restored afterwards. Works with the system default microphone.";
 "sound.silenceRemoval" = "Remove silence from recordings";
 "sound.silenceRemoval.hint" = "Silence is cut out before processing: better accuracy, fewer hallucinations, faster long recordings.";
+"sound.skipSilent" = "Don’t send recordings without speech";
+"sound.skipSilent.hint" = "A recording with no detected speech isn’t sent for transcription: no charges and no “hallucinations” on silence. If your voice is quiet and dictations get dropped by mistake, turn this off. A dropped recording longer than a second can still be transcribed from the DOKA menu bar menu.";
 "sound.effectsCard" = "Sound Effects";
 "sound.cues" = "Recording start and stop sounds";
 "sound.volume" = "Volume";
@@ -207,7 +213,9 @@
 "hotkeys.window.footer" = "These shortcuts are global and shown next to the menu bar items.";
 
 /* Dictionary section */
-"dictionary.subtitle" = "Replacements are applied to the transcribed text before pasting.";
+"dictionary.subtitle" = "Replacements are applied to the transcribed text before pasting. A rule matches whole words.";
+"dictionary.insideWords" = "Inside words";
+"dictionary.insideWords.help" = "Match the pattern inside words too — for example, “ё” → “е”. By default a rule matches whole words only: “doc” won’t touch “document”.";
 "dictionary.empty" = "No rules yet. Add a replacement with the “+” button — for example, “doka” → “DOKA”.";
 "dictionary.from" = "Text to replace";
 "dictionary.to" = "Replacement";
@@ -359,6 +367,8 @@
 "transcribe.detail.medium" = "Medium (~30 s)";
 "transcribe.detail.fine" = "Fine (~10 s)";
 "transcribe.detail.help" = "How finely the text is chopped into timestamped fragments. Splitting happens locally at sentence boundaries — you can change the level on a finished result, with no extra request. “As returned by server” disables splitting: with diarization, segments may run for minutes.";
+"transcribe.applyDictionary" = "Apply dictionary";
+"transcribe.applyDictionary.help" = "Replacements from the Dictionary section are applied to the displayed, copied and saved transcript. The original result stays intact — turn this off and everything is back as it was.";
 "transcribe.run" = "Transcribe";
 "transcribe.inProgress" = "Transcribing the file…";
 "transcribe.cancel" = "Cancel";

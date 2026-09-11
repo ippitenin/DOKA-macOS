@@ -166,6 +166,8 @@ final class SettingsStore: ObservableObject {
         static let mouseShortcutButton = "mouseShortcutButton"
         static let customServices = "customServices"
         static let servicesMigrated = "servicesMigrated"
+        static let skipSilentRecordings = "skipSilentRecordings"
+        static let applyDictionaryToFiles = "applyDictionaryToFiles"
     }
 
     @Published var language: String {
@@ -242,6 +244,19 @@ final class SettingsStore: ObservableObject {
     /// Срок хранения записей «Недавних транскрибаций».
     @Published var transcriptRetention: TranscriptRetention {
         didSet { defaults.set(transcriptRetention.rawValue, forKey: Key.transcriptRetention) }
+    }
+
+    /// Не отправлять на распознавание запись диктовки, в которой не услышана
+    /// речь (`DictationGate`): не платим за тишину и не ловим галлюцинации.
+    /// Выключается для тихих голосов и дальних микрофонов.
+    @Published var skipSilentRecordings: Bool {
+        didSet { defaults.set(skipSilentRecordings, forKey: Key.skipSilentRecordings) }
+    }
+    /// Применять «Словарь» к расшифровкам файлов — на выходном слое
+    /// (`TranscriptOutput`): показ, копирование, «Сохранить как…». По
+    /// умолчанию выключено — изоляция пайплайна файлов сохраняется.
+    @Published var applyDictionaryToFiles: Bool {
+        didSet { defaults.set(applyDictionaryToFiles, forKey: Key.applyDictionaryToFiles) }
     }
 
     /// Язык интерфейса. Применяется при следующем запуске: Foundation
@@ -406,8 +421,12 @@ final class SettingsStore: ObservableObject {
             Key.soundVolume: 1.0,
             Key.showDockIcon: false,
             Key.openWindowAtLaunch: true,
-            Key.mouseShortcutButton: -1
+            Key.mouseShortcutButton: -1,
+            Key.skipSilentRecordings: true,
+            Key.applyDictionaryToFiles: false
         ])
+        skipSilentRecordings = defaults.bool(forKey: Key.skipSilentRecordings)
+        applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
         language = defaults.string(forKey: Key.language) ?? "ru"
         soundsEnabled = defaults.bool(forKey: Key.soundsEnabled)
         soundVolume = defaults.double(forKey: Key.soundVolume)
