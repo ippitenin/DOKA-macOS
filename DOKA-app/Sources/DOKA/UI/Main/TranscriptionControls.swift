@@ -255,31 +255,14 @@ enum TextFileSaver {
 
 // MARK: - Спикеры
 
-/// Цвета бэйджей спикеров.
+/// Цвета бэйджей спикеров. Какой спикер какого цвета — решает чистый
+/// `SpeakerName.colorIndices` (через `TranscriptResult.speakerColorIndices`).
 enum SpeakerPalette {
     static let colors: [Color] = [
         DS.accent, DS.Aurora.indigo, DS.coral,
         Color(red: 0.44, green: 0.63, blue: 0.50),
         Color(red: 0.36, green: 0.52, blue: 0.84)
     ]
-
-    /// Индексы цветов: `speaker_N` — по номеру, остальные (роли, unknown_N) —
-    /// по порядку первого появления. Детерминировано между запусками —
-    /// hashValue String рандомизирован на процесс и цвет роли «плавал» бы.
-    static func indices(_ segments: [TranscriptSegment]) -> [String: Int] {
-        var indices: [String: Int] = [:]
-        var nextOrdinal = 0
-        for segment in segments {
-            guard let speaker = segment.speaker, indices[speaker] == nil else { continue }
-            if let index = SpeakerName.index(of: speaker) {
-                indices[speaker] = index
-            } else {
-                indices[speaker] = nextOrdinal
-                nextOrdinal += 1
-            }
-        }
-        return indices
-    }
 
     static func color(at index: Int) -> Color {
         colors[index % colors.count]

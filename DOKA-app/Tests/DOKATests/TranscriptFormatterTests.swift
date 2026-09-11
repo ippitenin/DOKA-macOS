@@ -126,6 +126,41 @@ final class TranscriptFormatterTests: XCTestCase {
         XCTAssertEqual(TranscriptFormatter.bySpeaker(r), "без диаризации")
     }
 
+    // MARK: - Имена спикеров из правок
+
+    private func renamed(_ segments: [TranscriptSegment], _ names: [String: String]) -> TranscriptResult {
+        var edits = TranscriptEdits()
+        for (id, name) in names { edits.rename(id, to: name) }
+        return result(segments).withEdits(edits, detail: .server)
+    }
+
+    func testSubtitlesAndTimestampsUseCustomName() {
+        let r = renamed([segment("реплика", 0, 2, speaker: "speaker_0")], ["speaker_0": "Анна"])
+        XCTAssertTrue(TranscriptFormatter.srt(r).contains("Анна: реплика"))
+        XCTAssertTrue(TranscriptFormatter.vtt(r).contains("Анна: реплика"))
+        XCTAssertEqual(TranscriptFormatter.textWithTimestampsAndSpeakers(r), "[0:00] Анна: реплика")
+        XCTAssertEqual(TranscriptFormatter.bySpeaker(r), "Анна: реплика")
+    }
+
+    /// Двое с одним именем подряд — одна строка «по спикерам».
+    func testBySpeakerGroupsBySameName() {
+        let r = renamed([
+            segment("раз", 0, 1, speaker: "speaker_0"),
+            segment("два", 1, 2, speaker: "speaker_1"),
+            segment("три", 2, 3, speaker: "speaker_2")
+        ], ["speaker_0": "Анна", "speaker_1": "Анна"])
+        let lines = TranscriptFormatter.bySpeaker(r).split(separator: "\n")
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertEqual(lines[0], "Анна: раз два")
+    }
+
+    func testLLMTranscriptUsesNamesAndTimestamps() {
+        let r = renamed([segment("начнём", 0, 2, speaker: "speaker_0")], ["speaker_0": "Анна"])
+        XCTAssertEqual(TranscriptFormatter.llmTranscript(r), "[0:00] Анна: начнём")
+        let plain = result([segment("без спикеров", 83, 90)])
+        XCTAssertEqual(TranscriptFormatter.llmTranscript(plain), "[1:23] без спикеров")
+    }
+
     // MARK: - Пустой результат
 
     func testEmptySegmentsDegradeToPlainText() {

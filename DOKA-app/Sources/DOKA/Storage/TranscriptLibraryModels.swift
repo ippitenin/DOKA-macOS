@@ -43,12 +43,13 @@ struct StoredTranscript: Codable, Equatable {
                          rawSegments: rawSegments, words: words, llmOutput: nil)
     }
 
-    /// Результат с нарезкой под запрошенную детализацию — тем же путём
-    /// `withDetail`, что и живой ответ сервера.
-    func toResult(detail: TimestampDetail, llmOutput: String? = nil) -> TranscriptResult {
+    /// Результат с нарезкой под запрошенную детализацию и правками
+    /// пользователя — тем же путём `withDetail`, что и живой ответ сервера.
+    func toResult(detail: TimestampDetail, llmOutput: String? = nil,
+                  edits: TranscriptEdits? = nil) -> TranscriptResult {
         TranscriptResult(fullText: fullText, language: language, duration: duration,
                          segments: rawSegments, rawSegments: rawSegments, words: words,
-                         llmOutput: llmOutput).withDetail(detail)
+                         llmOutput: llmOutput, edits: edits ?? TranscriptEdits()).withDetail(detail)
     }
 }
 
@@ -106,8 +107,11 @@ struct RecordSummary: Codable, Equatable {
     static let previewLength = 160
 
     static func make(from body: TranscriptBody) -> RecordSummary {
-        let text = body.plainText
-        let speakers = Set(body.transcript.rawSegments.compactMap { segment -> String? in
+        // Спикеры — разрешённые, после слияний и переназначений: строка
+        // списка должна совпадать с полосой спикеров записи.
+        let result = body.makeResult(detail: .server)
+        let text = TranscriptFormatter.plainText(result)
+        let speakers = Set(result.segments.compactMap { segment -> String? in
             guard let speaker = segment.speaker, !speaker.isEmpty else { return nil }
             return speaker
         })
@@ -235,30 +239,39 @@ struct TranscriptBody: Codable, Equatable {
     var schema: Int
     var transcript: StoredTranscript
     var analyses: [StoredAnalysis]
+    /// Правки пользователя поверх `transcript` (имена спикеров, слияния и т.д.);
+    /// nil — не правили. Сам `transcript` при этом не меняется.
+    var edits: TranscriptEdits?
 
-    init(transcript: StoredTranscript, analyses: [StoredAnalysis] = []) {
+    init(transcript: StoredTranscript, analyses: [StoredAnalysis] = [],
+         edits: TranscriptEdits? = nil) {
         schema = Self.currentSchema
         self.transcript = transcript
         self.analyses = analyses
+        self.edits = edits
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schema, transcript, analyses
+        case schema, transcript, analyses, edits
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schema = try c.decodeIfPresent(Int.self, forKey: .schema) ?? Self.currentSchema
         transcript = try c.decode(StoredTranscript.self, forKey: .transcript)
-        // Битый анализ не должен стоить расшифровки.
+        // Битый анализ или битые правки не должны стоить расшифровки.
         analyses = (try? c.decodeIfPresent([StoredAnalysis].self, forKey: .analyses)) ?? []
+        edits = (try? c.decodeIfPresent(TranscriptEdits.self, forKey: .edits)) ?? nil
     }
 
-    /// Результат для показа. `llmOutput` берётся из анализов (первый анализ
-    /// Nexara), а не из машинного результата: удалённый анализ не всплывёт.
+    /// Результат для показа — ЕДИНСТВЕННАЯ точка, где к расшифровке
+    /// применяются правки: через неё идут показ, копирование, экспорт, текст
+    /// для поиска и вход анализа. `llmOutput` берётся из анализов (первый
+    /// анализ Nexara), а не из машинного результата: удалённый анализ не всплывёт.
     func makeResult(detail: TimestampDetail) -> TranscriptResult {
         transcript.toResult(detail: detail,
-                            llmOutput: analyses.first(where: \.isNexara)?.markdown)
+                            llmOutput: analyses.first(where: \.isNexara)?.markdown,
+                            edits: edits)
     }
 
     /// Плоский текст для поиска и сводки — от исходных сегментов, не зависит

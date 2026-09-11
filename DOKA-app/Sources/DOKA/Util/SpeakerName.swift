@@ -30,4 +30,25 @@ enum SpeakerName {
         }
         return raw
     }
+
+    /// Индексы цветов бэйджей: `speaker_N` — по номеру, остальные id (роли,
+    /// `unknown_N`, новые спикеры) — по порядку в `orderedIDs`, пропуская
+    /// номера, занятые `speaker_N`: иначе роль и «Новый спикер» делили бы цвет.
+    /// Детерминировано между запусками — hashValue String рандомизирован на
+    /// процесс, и цвет роли «плавал» бы.
+    static func colorIndices(orderedIDs: [String]) -> [String: Int] {
+        let reserved = Set(orderedIDs.compactMap(index(of:)))
+        var indices: [String: Int] = [:]
+        var nextOrdinal = 0
+        for id in orderedIDs where indices[id] == nil {
+            if let index = index(of: id) {
+                indices[id] = index
+            } else {
+                while reserved.contains(nextOrdinal) { nextOrdinal += 1 }
+                indices[id] = nextOrdinal
+                nextOrdinal += 1
+            }
+        }
+        return indices
+    }
 }

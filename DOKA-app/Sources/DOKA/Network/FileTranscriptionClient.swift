@@ -37,22 +37,18 @@ struct TranscriptResult: Equatable {
     /// Результат LLM-анализа (запрос с `prompt`); nil — анализ не запрашивался
     /// или сервер его не вернул.
     let llmOutput: String?
+    /// Пользовательские правки, применённые к `segments` (см. `TranscriptEdits`).
+    /// `var` с дефолтом — все прежние вызовы memberwise-init остаются как есть.
+    var edits = TranscriptEdits()
 
     /// Есть ли разметка по спикерам (доступен формат «со спикерами»).
     var hasSpeakers: Bool { segments.contains { ($0.speaker?.isEmpty == false) } }
 
     /// Локальная перенарезка под другой уровень детализации: всегда от
-    /// `rawSegments` (идемпотентна), без повторного запроса к API.
+    /// `rawSegments` (идемпотентна), без повторного запроса к API. Правки
+    /// результата переносятся — они привязаны к исходникам, а не к нарезке.
     func withDetail(_ detail: TimestampDetail) -> TranscriptResult {
-        let displayed: [TranscriptSegment]
-        if let config = detail.config {
-            displayed = TranscriptSegmentSplitter.split(segments: rawSegments, words: words, config: config)
-        } else {
-            displayed = rawSegments
-        }
-        return TranscriptResult(fullText: fullText, language: language, duration: duration,
-                                segments: displayed, rawSegments: rawSegments, words: words,
-                                llmOutput: llmOutput)
+        withEdits(edits, detail: detail)
     }
 }
 

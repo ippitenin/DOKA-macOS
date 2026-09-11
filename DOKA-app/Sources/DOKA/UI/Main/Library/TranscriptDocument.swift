@@ -69,10 +69,58 @@ final class TranscriptDocument: ObservableObject {
 
     func reload() async {
         let loaded = await store.loadBody(recordID)
-        body = loaded
+        // Своё же сохранение правки возвращается сюда через `bodyChanged` —
+        // то же тело, пересобирать вывод незачем.
+        if loaded != body { apply(loaded) }
+        loadState = loaded == nil ? .missing : .ready
+    }
+
+    // MARK: - Правки
+
+    /// Правки записи; пустые, если не правили.
+    var edits: TranscriptEdits { body?.edits ?? TranscriptEdits() }
+
+    /// Можно ли править: тело загружено и библиотека не заморожена переносом
+    /// «Папки данных» (запись на диск до перезапуска молча не дошла бы).
+    var canEdit: Bool { body != nil && !store.isFrozen }
+
+    func renameSpeaker(_ id: String, to name: String) {
+        mutateEdits { $0.rename(id, to: name) }
+    }
+
+    func mergeSpeaker(_ id: String, into target: String) {
+        mutateEdits { $0.merge(id, into: target) }
+    }
+
+    func unmergeSpeaker(_ id: String) {
+        mutateEdits { $0.unmerge(id) }
+    }
+
+    /// «Сбросить правки»: всё возвращается к результату распознавания,
+    /// счётчик правок продолжает расти.
+    func resetAllEdits() {
+        mutateEdits { $0 = TranscriptEdits() }
+    }
+
+    /// Единая точка правок: изменение → счётчик → вывод → сохранение.
+    /// Сохраняется по завершённому действию (Return, выбор в меню), а не на
+    /// каждое нажатие клавиши. `saveBody` обновляет и текст для поиска, и сводку.
+    private func mutateEdits(_ change: (inout TranscriptEdits) -> Void) {
+        guard var body, canEdit, store.record(recordID) != nil else { return }
+        let before = body.edits ?? TranscriptEdits()
+        var edits = before
+        change(&edits)
+        guard !edits.hasSameContent(as: before) else { return }
+        edits.revision = before.revision + 1
+        body.edits = edits
+        apply(body)
+        store.saveBody(recordID, body)
+    }
+
+    private func apply(_ newBody: TranscriptBody?) {
+        body = newBody
         revision += 1
         cachedOutput = nil
-        loadState = loaded == nil ? .missing : .ready
     }
 
     /// То, что пользователь видит и забирает: нарезка под детализацию плюс

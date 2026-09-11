@@ -44,6 +44,17 @@ struct SegmentAnchor: Hashable {
     let index: Int
 }
 
+/// Что нужно строке реплики для правок: документ (правки идут через него) и
+/// ростер спикеров. Документ сравнивается по ссылке — строки `Equatable`.
+struct SegmentEditContext: Equatable {
+    let document: TranscriptDocument
+    let roster: [SpeakerInfo]
+
+    static func == (lhs: SegmentEditContext, rhs: SegmentEditContext) -> Bool {
+        lhs.document === rhs.document && lhs.roster == rhs.roster
+    }
+}
+
 /// Сегменты расшифровки: тайм-код (с архивом звука — кнопка перемотки),
 /// спикер, текст; звучащий сегмент подсвечен. В детали библиотеки лента
 /// ленивая и следует за воспроизведением, в карточке страницы — обычная.
@@ -57,6 +68,8 @@ struct TranscriptSegmentsView: View {
     /// Прокрутка за воспроизведением; nil — не прокручивать (карточка страницы).
     let scrollProxy: ScrollViewProxy?
     @ObservedObject var follower: SegmentFollower
+    /// nil — правка недоступна (тело не загружено, библиотека заморожена).
+    let editContext: SegmentEditContext?
     let onSeek: (Double) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -87,7 +100,7 @@ struct TranscriptSegmentsView: View {
 
     @ViewBuilder
     private var rowsContainer: some View {
-        let colors = SpeakerPalette.indices(result.segments)
+        let colors = result.speakerColorIndices
         let active = follower.activeIndex
         if lazy {
             LazyVStack(alignment: .leading, spacing: 4) {
@@ -105,7 +118,9 @@ struct TranscriptSegmentsView: View {
             SegmentRow(segment: segment,
                        isActive: index == active,
                        colorIndex: segment.speaker.flatMap { colors[$0] },
+                       speakerLabel: segment.speaker.map(result.speakerLabel),
                        canSeek: canSeek,
+                       edit: editContext,
                        onSeek: { onSeek(segment.start) })
                 .equatable()
                 .id(SegmentAnchor(index: index))
@@ -133,12 +148,16 @@ private struct SegmentRow: View, Equatable {
     let segment: TranscriptSegment
     let isActive: Bool
     let colorIndex: Int?
+    /// Имя спикера с учётом правок (nil — у сегмента нет спикера).
+    let speakerLabel: String?
     let canSeek: Bool
+    let edit: SegmentEditContext?
     let onSeek: () -> Void
 
     static func == (lhs: SegmentRow, rhs: SegmentRow) -> Bool {
         lhs.segment == rhs.segment && lhs.isActive == rhs.isActive
-            && lhs.colorIndex == rhs.colorIndex && lhs.canSeek == rhs.canSeek
+            && lhs.colorIndex == rhs.colorIndex && lhs.speakerLabel == rhs.speakerLabel
+            && lhs.canSeek == rhs.canSeek && lhs.edit == rhs.edit
     }
 
     var body: some View {
@@ -147,9 +166,11 @@ private struct SegmentRow: View, Equatable {
                 .frame(width: 56, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 if let speaker = segment.speaker, !speaker.isEmpty {
-                    Text(SpeakerName.displayName(for: speaker))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(SpeakerPalette.color(at: colorIndex ?? 0))
+                    SpeakerBadge(label: speakerLabel ?? SpeakerName.displayName(for: speaker),
+                                 colorIndex: colorIndex ?? 0,
+                                 info: edit?.roster.first { $0.id == speaker },
+                                 roster: edit?.roster ?? [],
+                                 document: edit?.document)
                 }
                 Text(segment.text)
                     .textSelection(.enabled)
