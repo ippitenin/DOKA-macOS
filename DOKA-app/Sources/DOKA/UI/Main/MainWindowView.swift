@@ -47,6 +47,8 @@ struct MainWindowView: View {
                     HistorySectionView()
                 case .transcribe:
                     TranscribeAudioSectionView()
+                case .library:
+                    LibrarySectionView()
                 }
             }
             // Разные identity у секций — иначе SwiftUI не проигрывает transition.

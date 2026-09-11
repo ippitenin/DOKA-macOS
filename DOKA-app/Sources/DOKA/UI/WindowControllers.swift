@@ -46,6 +46,33 @@ final class WindowManager {
     func showHistory() { showMain(section: .history) }
     func showOnboarding() { showMain(section: .home) }
 
+    /// Библиотека: с открытой записью либо на списке. Единая точка «открыть
+    /// запись» — для полосы «Недавние», кнопки «Открыть в библиотеке» и
+    /// (в следующих фазах) уведомлений; см. `LibraryNavigator`.
+    func showLibrary(recordID: UUID?) {
+        if let recordID {
+            LibraryModel.shared.open(recordID)
+        } else {
+            LibraryModel.shared.close()
+        }
+        showMain(section: .library)
+    }
+
+    /// Запрос открыть «Общие → Расширенные»: под-страница — drill-in на
+    /// `@State` секции «Общие», поэтому запрос забирает сама секция при
+    /// появлении (`consumeAdvancedRequest`).
+    private var advancedRequested = false
+
+    func showAdvancedSettings() {
+        advancedRequested = true
+        showMain(section: .general)
+    }
+
+    func consumeAdvancedRequest() -> Bool {
+        defer { advancedRequested = false }
+        return advancedRequested
+    }
+
     private func makeMainWindow() -> NSWindow {
         let hosting = NSHostingController(
             rootView: MainWindowView(state: mainState)

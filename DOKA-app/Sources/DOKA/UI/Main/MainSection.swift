@@ -11,6 +11,7 @@ enum MainSection: String, CaseIterable, Identifiable {
     case service
     case history
     case transcribe  // транскрибация загруженного аудио/видеофайла
+    case library     // библиотека транскрибаций файлов: поиск, запись, плеер
 
     var id: String { rawValue }
 
@@ -25,6 +26,7 @@ enum MainSection: String, CaseIterable, Identifiable {
         case .service: return L("section.service")
         case .history: return L("section.history")
         case .transcribe: return L("section.transcribeAudio")
+        case .library: return L("section.library")
         }
     }
 
@@ -39,6 +41,7 @@ enum MainSection: String, CaseIterable, Identifiable {
         case .service: return "key.fill"
         case .history: return "clock.fill"
         case .transcribe: return "waveform"
+        case .library: return "books.vertical.fill"
         }
     }
 
@@ -55,6 +58,7 @@ enum MainSection: String, CaseIterable, Identifiable {
         case .service: return Color(red: 0.44, green: 0.63, blue: 0.50)
         case .history: return Color(red: 0.40, green: 0.61, blue: 0.66)
         case .transcribe: return Color(red: 0.62, green: 0.45, blue: 0.66)
+        case .library: return Color(red: 0.76, green: 0.47, blue: 0.40)
         }
     }
 }

@@ -84,6 +84,13 @@ final class TranscriptHistoryStore: ObservableObject {
         files.existingAudioURL(id)
     }
 
+    /// В библиотеке есть записи, перенесённые из журнала v1 («Недавних» со
+    /// сроком 12 ч), — для однократной плашки «записи теперь хранятся всегда».
+    /// Признак — отсутствие `params`: новые записи создаются только с ними.
+    /// Флаг индекса `migratedFromV1` не годится: он ставится и тогда, когда
+    /// журнала не было вовсе (новая установка).
+    var hasRecordsFromV1: Bool { records.contains { $0.params == nil } }
+
     /// Идёт ли фоновая работа с файлами библиотеки (архивация, добор):
     /// перенос «Папки данных» в это время блокируется.
     var hasBackgroundWork: Bool {
@@ -292,6 +299,16 @@ final class TranscriptHistoryStore: ObservableObject {
         guard await files.cloneAudio(from: parent, to: id) else { return false }
         update(id) { $0.audioFileName = TranscriptLibraryFiles.audioFileName }
         return true
+    }
+
+    /// Стереть звук одной записи (меню записи): расшифровка и анализы остаются.
+    func removeAudio(_ id: UUID) {
+        guard !isFrozen, record(id) != nil else { return }
+        // Идущая архивация иначе закоммитила бы файл уже после стирания.
+        audioTasks.removeValue(forKey: id)?.cancel()
+        RecordingPlayer.shared.stopIfCurrent(id)
+        files.removeAudio([id])
+        update(id) { $0.audioFileName = nil }
     }
 
     /// «Стереть всё аудио транскрибаций»: тексты и анализы остаются.

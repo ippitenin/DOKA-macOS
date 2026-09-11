@@ -53,8 +53,12 @@ written in Russian.
   service, which has no diarization of its own) DOKA separates speakers on your Mac: a
   22 MB model downloaded once, no internet and no billing. Roughly 12× faster than
   real time on Apple silicon.
-- **Recent transcriptions** — a local journal of finished and running jobs. Finished ones
-  reopen with every export and a switchable timestamp detail level.
+- **Transcription library** — every transcribed file is kept together with its audio:
+  search by title and text, groups by date, renaming, batch export (one Markdown or .txt
+  file, or separate TXT/SRT/VTT files per record). A record opens with a player: click a
+  timestamp to jump there, the segment being played is highlighted and followed; space,
+  ←/→ and playback speed. Running jobs show their progress; records are kept forever
+  unless you choose a retention period.
 - **AI analysis** — meeting minutes, a summary, action items or your own prompt. The result
   renders as formatted text with headings, lists and tables; copying puts both plain and
   rich text on the clipboard, so tables paste as tables into Telegram, Notes or Word.
@@ -76,7 +80,8 @@ The three recognition modes differ in what leaves your Mac:
 | Built-in service (Nexara) | Audio is uploaded to `api.nexara.ru` for recognition |
 | Custom OpenAI-compatible service | Audio is uploaded to the endpoint you configure |
 
-Everything else stays local. Transcript history, statistics and the transcription journal
+Everything else stays local. Transcript history, statistics and the transcription library
+(with compressed audio of transcribed files — can be turned off in General → Advanced)
 live in `~/Library/Application Support/DOKA`. Storing dictation audio is **off by default**;
 when enabled, recordings are kept locally as m4a and pruned on a schedule you choose. API
 keys live in the macOS Keychain, never in config files.

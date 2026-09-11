@@ -16,10 +16,17 @@ struct GeneralSectionView: View {
 
     var body: some View {
         // Смена экрана мгновенная, без слайда — как в SuperWhisper.
-        if showAdvanced {
-            AdvancedSettingsView { showAdvanced = false }
-        } else {
-            generalForm
+        Group {
+            if showAdvanced {
+                AdvancedSettingsView { showAdvanced = false }
+            } else {
+                generalForm
+            }
+        }
+        // Переход «сразу в Расширенные» извне (плашка библиотеки о сроке
+        // хранения): секция пересоздаётся при каждом показе, запрос забираем тут.
+        .onAppear {
+            if WindowManager.shared.consumeAdvancedRequest() { showAdvanced = true }
         }
     }
 

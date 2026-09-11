@@ -39,7 +39,6 @@ final class FileTranscriptionController: ObservableObject {
 
     private let store = TranscriptHistoryStore.shared
     private var cancellables = Set<AnyCancellable>()
-    private var documentCancellable: AnyCancellable?
 
     private init() {
         // Показанную запись удалили (срок хранения, удаление из списка) —
@@ -75,9 +74,9 @@ final class FileTranscriptionController: ObservableObject {
     @Published private(set) var phase: Phase = .idle {
         didSet { syncShownDocument() }
     }
-    /// Документ показанной записи (при `phase == .done`); его изменения
-    /// пробрасываются в `objectWillChange` контроллера — страница, наблюдающая
-    /// контроллер, перерисовывается, когда тело догрузилось или изменилось.
+    /// Документ показанной записи (при `phase == .done`) — тот же экземпляр,
+    /// что у детали библиотеки (`LibraryModel.document(for:)`); запись на
+    /// странице наблюдает его сама.
     @Published private(set) var shownDocument: TranscriptDocument?
     /// Под-статус длинной операции («Разделение по спикерам… 40 %»):
     /// локальная диаризация идёт минутами, неподвижный спиннер выглядел бы
@@ -100,9 +99,6 @@ final class FileTranscriptionController: ObservableObject {
     @Published var numSpeakers: Int? = nil
     /// Тип записи для диаризации (только Nexara).
     @Published var diarizationSetting: DiarizationSetting = .general
-    /// Детализация тайм-кодов. Нарезка локальная: показанная запись
-    /// перенарезается документом сразу, без повторного запроса.
-    @Published var timestampDetail: TimestampDetail = .medium
     /// Разметка ролей (только Nexara, только с диаризацией).
     @Published var rolesMode: RolesMode = .off
     /// Свой список ролей: имена через запятую («Клиент, Агент»).
@@ -210,30 +206,6 @@ final class FileTranscriptionController: ObservableObject {
         }
     }
 
-    /// Имя без расширения для дефолтного имени файла в диалоге «Сохранить как…»:
-    /// заголовок показанной записи (его можно переименовать), иначе имя файла.
-    var suggestedBaseName: String {
-        if let id = shownRecordID, let record = store.record(id) {
-            return Self.sanitizedFileName(record.displayTitle)
-        }
-        if let base = pickedURL?.deletingPathExtension().lastPathComponent, !base.isEmpty {
-            return base
-        }
-        return "transcript"
-    }
-
-    /// Заголовок → безопасное имя файла: разделители путей и управляющие
-    /// символы заменяются, длина ограничена.
-    static func sanitizedFileName(_ title: String) -> String {
-        let forbidden = CharacterSet(charactersIn: "/:\\").union(.controlCharacters)
-        let cleaned = title.unicodeScalars
-            .map { forbidden.contains($0) ? "-" : String($0) }
-            .joined()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let limited = String(cleaned.prefix(80))
-        return limited.isEmpty ? "transcript" : limited
-    }
-
     /// Принять выбранный/перетащенный файл: проверить формат и размер.
     func accept(url: URL) {
         let ext = url.pathExtension.lowercased()
@@ -290,7 +262,9 @@ final class FileTranscriptionController: ObservableObject {
             Self.requestDiarizerModel()
             return false
         }
-        let options = params.makeOptions(detail: timestampDetail)
+        // Нарезка ответа на хранение не влияет: в тело уходят rawSegments и
+        // words, показ перенарезает документ под выбранную детализацию.
+        let options = params.makeOptions(detail: .server)
         let localDiarization = params.usesLocalDiarization
         let speakerHint = params.numSpeakers
         let providerTag = SettingsStore.shared.providerTag(for: params.providerID)
@@ -489,16 +463,6 @@ final class FileTranscriptionController: ObservableObject {
         returnToPickedOrIdle()
     }
 
-    /// Открыть готовую запись библиотеки в карточках страницы. Во время
-    /// распознавания запрещено — молча убило бы задачу.
-    func open(_ recordID: UUID) {
-        guard !isTranscribing, let record = store.record(recordID), record.isDone else { return }
-        task?.cancel()
-        task = nil
-        pickedURL = nil
-        phase = .done(recordID: recordID)
-    }
-
     /// Скрыть показанный результат: вернуться к выбранному файлу либо к
     /// пустой странице. Сама запись не теряется — она остаётся в библиотеке.
     func hideResult() {
@@ -526,17 +490,11 @@ final class FileTranscriptionController: ObservableObject {
     /// одном месте — любой уход из `.done` отвязывает документ.
     private func syncShownDocument() {
         guard case let .done(id) = phase else {
-            if shownDocument != nil {
-                documentCancellable = nil
-                shownDocument = nil
-            }
+            if shownDocument != nil { shownDocument = nil }
             return
         }
         guard shownDocument?.recordID != id else { return }
-        let document = TranscriptDocument(recordID: id)
-        documentCancellable = document.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-        shownDocument = document
+        shownDocument = LibraryModel.shared.document(for: id)
     }
 
     private func fileSize(of url: URL) -> Int64 {

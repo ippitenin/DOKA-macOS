@@ -40,6 +40,31 @@ final class TranscriptLibraryStorageTests: XCTestCase {
         return id
     }
 
+    // MARK: - Записи из v1 (плашка о сроке хранения)
+
+    /// Плашку «теперь хранятся всегда» видят только те, у кого были записи v1:
+    /// на новой установке флаг миграции индекса тоже ставится, но плашки нет.
+    func testRecordsFromV1AreDetectedOnlyAfterLegacyJournal() throws {
+        let params = FileTranscriptionParams(providerID: "builtin", language: "auto", diarize: false,
+                                             numSpeakers: nil, diarizationSetting: "general",
+                                             rolesMode: "off", rolesText: "",
+                                             llmPreset: "off", llmCustomPrompt: "")
+        let fresh = makeStore()
+        XCTAssertFalse(fresh.hasRecordsFromV1)
+        fresh.addPending(.init(fileName: "new.mp3", provider: "builtin", params: params))
+        XCTAssertFalse(fresh.hasRecordsFromV1)
+        fresh.flush()
+
+        let legacyDir = dir.appendingPathComponent("legacy", isDirectory: true)
+        try FileManager.default.createDirectory(at: legacyDir, withIntermediateDirectories: true)
+        let legacy = FileTranscriptRecord(id: UUID(), fileName: "old.mp3", date: Date(), status: .done,
+                                          result: StoredTranscript(sample()), provider: "builtin")
+        try JSONEncoder().encode([legacy]).write(to: legacyDir.appendingPathComponent("transcripts.json"))
+        let migrated = TranscriptHistoryStore(dataFolder: legacyDir)
+        migrated.flush()
+        XCTAssertTrue(migrated.hasRecordsFromV1)
+    }
+
     // MARK: - Миграция v1
 
     func testLegacyJournalMigratesToBodiesAndBackup() throws {
