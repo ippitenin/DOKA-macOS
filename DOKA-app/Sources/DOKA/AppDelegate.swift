@@ -32,11 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             HistoryStore.shared.pruneAudio(olderThan: days)
         }
 
-        // «Недавние транскрибации»: чистка по сроку и добор незавершённых
+        // Библиотека транскрибаций: загрузка (синхронно, с миграцией журнала
+        // v1) при первом обращении, чистка по сроку и добор незавершённых
         // async-задач Nexara (задача переживает перезапуск приложения).
-        if let hours = settings.transcriptRetention.hours {
-            TranscriptHistoryStore.shared.prune(olderThanHours: hours)
-        }
+        TranscriptHistoryStore.shared.prune(retention: settings.transcriptRetention)
         TranscriptHistoryStore.shared.resumePendingJobs()
 
         let permissions = PermissionsManager.shared
@@ -62,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// пережить процесс (при крэше/kill подчистит sweep на следующем старте).
     func applicationWillTerminate(_ notification: Notification) {
         dictationController?.discardFailedDictation()
+        // Записи библиотеки идут фоновой очередью, а exit() её не ждёт:
+        // без flush готовая запись после перезапуска оказалась бы «прерванной».
+        TranscriptHistoryStore.shared.flush()
     }
 
     /// Повторный запуск (open/двойной клик в Finder) открывает главное окно.

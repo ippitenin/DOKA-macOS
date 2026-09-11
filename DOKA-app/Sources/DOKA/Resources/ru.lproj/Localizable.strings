@@ -116,7 +116,19 @@
 "advanced.migrate.error.nested" = "Папки вложены друг в друга — выберите другое расположение";
 "advanced.migrate.error.notEmpty" = "Выбранная папка не пуста — выберите пустую или создайте новую";
 "advanced.migrate.error.copyFailed" = "Ошибка копирования: %@";
-"advanced.transcripts" = "Недавние транскрибации";
+"advanced.transcripts" = "Библиотека транскрибаций";
+"advanced.transcripts.saveAudio" = "Сохранять аудио файлов";
+"advanced.transcripts.saveAudio.help" = "Звук распознанного файла сохраняется сжатым (m4a, около 11 МБ на час; у видео — только звук): его можно прослушать и распознать заново другим сервисом, не выбирая файл снова. Действует на новые записи.";
+"advanced.transcripts.usage" = "Занято: %@ (аудио — %@)";
+"advanced.transcripts.usage.calculating" = "Считаю место на диске…";
+"advanced.transcripts.clearAudio" = "Стереть всё аудио транскрибаций";
+"advanced.transcripts.clearAudio.title" = "Стереть аудио всех транскрибаций?";
+"advanced.transcripts.clearAudio.message" = "Расшифровки и анализы останутся, но прослушать записи и распознать их заново из библиотеки будет нельзя.";
+"advanced.transcripts.clearAudio.confirm" = "Стереть";
+"advanced.transcripts.shorten.title" = "Сократить срок хранения?";
+"advanced.transcripts.shorten.message" = "Записи библиотеки старше выбранного срока будут удалены сразу — вместе с аудио и анализами. Вернуть их будет нельзя.";
+"advanced.transcripts.shorten.confirm" = "Удалить старые записи";
+"advanced.migrate.error.busy" = "Дождитесь окончания транскрибации и сохранения аудио, затем повторите перенос.";
 "advanced.transcripts.retention" = "Хранить записи:";
 "advanced.transcripts.retention.help" = "Как долго записи остаются в списке «Недавние транскрибации» на странице «Транскрибация». Незавершённая задача Nexara хранится на сервере 12 часов — в этот срок DOKA доберёт результат даже после перезапуска.";
 "advanced.transcripts.footer" = "Журнал лежит в папке данных: перенос папки (карточка выше) переносит и его.";
@@ -170,6 +182,10 @@
 "transcriptRetention.hours24" = "24 часа";
 "transcriptRetention.hours48" = "48 часов";
 "transcriptRetention.hours72" = "72 часа";
+"transcriptRetention.days7" = "7 дней";
+"transcriptRetention.days30" = "30 дней";
+"transcribe.recordMissing" = "Запись не найдена — возможно, её удалили";
+"transcribe.error.restartRequired" = "Перезапустите DOKA — перенос «Папки данных» завершится после перезапуска";
 "transcriptRetention.forever" = "Всегда";
 
 /* Секция «Главная» */

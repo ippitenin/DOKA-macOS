@@ -116,7 +116,19 @@
 "advanced.migrate.error.nested" = "The folders are nested inside each other — choose another location";
 "advanced.migrate.error.notEmpty" = "The selected folder is not empty — pick an empty one or create a new one";
 "advanced.migrate.error.copyFailed" = "Copy failed: %@";
-"advanced.transcripts" = "Recent transcriptions";
+"advanced.transcripts" = "Transcription library";
+"advanced.transcripts.saveAudio" = "Keep file audio";
+"advanced.transcripts.saveAudio.help" = "The audio of a transcribed file is stored compressed (m4a, about 11 MB per hour; for video — audio only): you can play it back and transcribe it again with another service without picking the file. Applies to new records.";
+"advanced.transcripts.usage" = "Used: %@ (audio — %@)";
+"advanced.transcripts.usage.calculating" = "Calculating disk usage…";
+"advanced.transcripts.clearAudio" = "Erase all transcription audio";
+"advanced.transcripts.clearAudio.title" = "Erase audio of all transcriptions?";
+"advanced.transcripts.clearAudio.message" = "Transcripts and analyses stay, but you won’t be able to play records back or transcribe them again from the library.";
+"advanced.transcripts.clearAudio.confirm" = "Erase";
+"advanced.transcripts.shorten.title" = "Shorten the retention period?";
+"advanced.transcripts.shorten.message" = "Library records older than the selected period will be deleted right away — together with their audio and analyses. This can’t be undone.";
+"advanced.transcripts.shorten.confirm" = "Delete old records";
+"advanced.migrate.error.busy" = "Wait until transcription and audio saving finish, then try the move again.";
 "advanced.transcripts.retention" = "Keep records:";
 "advanced.transcripts.retention.help" = "How long records stay in the Recent transcriptions list on the Transcription page. An unfinished Nexara job is kept on the server for 12 hours — within that window DOKA picks up the result even after a relaunch.";
 "advanced.transcripts.footer" = "The log lives in the data folder: moving the folder (card above) moves it too.";
@@ -170,6 +182,10 @@
 "transcriptRetention.hours24" = "24 hours";
 "transcriptRetention.hours48" = "48 hours";
 "transcriptRetention.hours72" = "72 hours";
+"transcriptRetention.days7" = "7 days";
+"transcriptRetention.days30" = "30 days";
+"transcribe.recordMissing" = "Record not found — it may have been deleted";
+"transcribe.error.restartRequired" = "Restart DOKA — moving the data folder completes after a restart";
 "transcriptRetention.forever" = "Forever";
 
 /* Home section */

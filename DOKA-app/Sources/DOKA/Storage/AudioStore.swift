@@ -25,6 +25,21 @@ final class AudioStore: @unchecked Sendable {
     /// контроллере до кодирования, поэтому имя файла и `audioFileName` записи всегда совпадают.
     static func fileName(for id: UUID) -> String { "\(id.uuidString).m4a" }
 
+    /// Битрейт AAC для речи: 16 кГц моно — 24 кбит/с достаточно (≈ 11 МБ на час записи).
+    static let speechBitRate = 24_000
+
+    /// Настройки AAC/m4a для речи — общие у аудио истории диктовки и у архива
+    /// исходного звука файловой транскрибации (`SourceAudioArchiver`), чтобы оба
+    /// архива кодировались одинаково.
+    static func aacSettings(sampleRate: Double, channels: AVAudioChannelCount) -> [String: Any] {
+        [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: channels,
+            AVEncoderBitRateKey: speechBitRate
+        ]
+    }
+
     /// URL существующего файла аудио по имени, либо nil, если файла нет на диске.
     func url(forFileName name: String) -> URL? {
         let u = dir.appendingPathComponent(name)
@@ -39,12 +54,8 @@ final class AudioStore: @unchecked Sendable {
         let outURL = dir.appendingPathComponent(name)
         do {
             let input = try AVAudioFile(forReading: wavURL)
-            let settings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: input.fileFormat.sampleRate,
-                AVNumberOfChannelsKey: input.fileFormat.channelCount,
-                AVEncoderBitRateKey: 24_000          // речь 16 кГц моно — 24 кбит/с достаточно
-            ]
+            let settings = Self.aacSettings(sampleRate: input.fileFormat.sampleRate,
+                                            channels: input.fileFormat.channelCount)
             let output = try AVAudioFile(forWriting: outURL, settings: settings)
             let format = input.processingFormat
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_384) else {
