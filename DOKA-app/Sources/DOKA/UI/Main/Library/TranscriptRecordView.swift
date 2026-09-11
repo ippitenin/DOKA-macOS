@@ -24,10 +24,17 @@ struct TranscriptRecordView: View {
     @State private var alert: RecordAlert?
     @State private var isRenaming = false
     @State private var draftTitle = ""
+    /// Запись для шита «Распознать заново».
+    @State private var retranscribing: FileTranscriptRecord?
+    @State private var isPickingRetryFile = false
+    /// Идёт проверка исходника перед «Повторить» (вне главного потока).
+    @State private var isPlanningRetry = false
+    /// Почему «Повторить» не запустился — у кнопки, а не фазой страницы.
+    @State private var retryNote: String?
     @FocusState private var focus: FocusTarget?
 
     private enum FocusTarget: Hashable { case root, rename }
-    private enum RecordAlert { case deleteRecord, deleteAudio }
+    private enum RecordAlert { case deleteRecord, deleteAudio, retryBilled(RetryRun) }
 
     init(document: TranscriptDocument, layout: Layout, onBack: (() -> Void)? = nil) {
         _document = ObservedObject(wrappedValue: document)
@@ -72,12 +79,20 @@ struct TranscriptRecordView: View {
                     Button(L("library.deleteAudio.confirm"), role: .destructive) {
                         TranscriptHistoryStore.shared.removeAudio(recordID)
                     }
+                case .retryBilled(let run):
+                    Button(L("library.retranscribe.run")) { runRetry(run) }
                 }
                 Button(L("common.cancel"), role: .cancel) {}
             } message: { alert in
                 switch alert {
                 case .deleteRecord: Text(L("library.delete.message"))
                 case .deleteAudio: Text(L("library.deleteAudio.message"))
+                case .retryBilled(let run):
+                    // Повтор идёт по сохранённым параметрам — с анализом Nexara,
+                    // если он был заказан: оплачивается и он.
+                    Text(run.params.effectiveLLMPrompt == nil
+                            ? L("library.retry.billed.message")
+                            : L("library.retry.billed.messageAnalysis"))
                 }
             }
     }
@@ -131,6 +146,22 @@ struct TranscriptRecordView: View {
         // Вью только что вставлена в окно — фокус со следующего цикла, иначе
         // клавиши не работают до первого клика по записи.
         .onAppear { DispatchQueue.main.async { focus = .root } }
+        // Шит и выбор файла — только у детали: ошибочные записи inline не
+        // показываются, а второй `.fileImporter` внутри страницы
+        // «Транскрибация» (у неё свой) SwiftUI обслуживает ненадёжно.
+        .sheet(item: $retranscribing) { record in
+            RetranscribeSheet(record: record) { newID in
+                retranscribing = nil
+                LibraryNavigator.open(newID)
+            }
+        }
+        .fileImporter(isPresented: $isPickingRetryFile,
+                      allowedContentTypes: FileTranscriptionController.importerTypes,
+                      allowsMultipleSelection: false) { result in
+            if case let .success(urls) = result, let url = urls.first {
+                retryWithPickedFile(url)
+            }
+        }
     }
 
     /// «Назад» к списку: незаконченное переименование сначала сохраняется —
@@ -182,6 +213,9 @@ struct TranscriptRecordView: View {
                 transcriptSaveMenu(result, record: record)
             }
             Spacer()
+            if record.status != .inProgress {
+                retranscribeButton(record)
+            }
             moreMenu(record)
         }
     }
@@ -253,9 +287,9 @@ struct TranscriptRecordView: View {
         case .inProgress:
             RecordProgressCard(record: record)
         case .error(let message):
-            noticeCard(icon: "exclamationmark.triangle.fill", tint: DS.RecorderTone.error, text: message)
+            failedCard(record, icon: "exclamationmark.triangle.fill", tint: DS.RecorderTone.error, text: message)
         case .cancelled:
-            noticeCard(icon: "stop.circle", tint: .secondary, text: L("library.cancelled.message"))
+            failedCard(record, icon: "stop.circle", tint: .secondary, text: L("library.cancelled.message"))
         case .done:
             doneBody(proxy: proxy)
         }
@@ -490,11 +524,138 @@ struct TranscriptRecordView: View {
         return .handled
     }
 
+    // MARK: - «Повторить» и «Распознать заново»
+
+    /// Ошибка или отмена: сообщение и «Повторить» с подписью, что именно
+    /// произойдёт.
+    private func failedCard(_ record: FileTranscriptRecord, icon: String, tint: Color,
+                            text: String) -> some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: icon)
+                        .foregroundStyle(tint)
+                    Text(text)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                RecordRetryRow(record: record, note: retryNote, isPlanning: isPlanningRetry,
+                               onRetry: { retry(record) },
+                               onRetranscribe: { retranscribing = record })
+            }
+            .padding(DS.Spacing.cardPadding)
+        }
+    }
+
+    /// «Повторить» на месте. Бесплатный повторный опрос — сразу; остальное
+    /// решает `RetryPlanner` после проверки исходника ВНЕ главного потока:
+    /// доступ к файлу на «Рабочем столе» может упереться в запрос TCC, а
+    /// отказ — штатный фолбэк на архив звука.
+    private func retry(_ record: FileTranscriptRecord) {
+        retryNote = nil
+        let store = TranscriptHistoryStore.shared
+        // После переноса «Папки данных» до перезапуска библиотека ничего не
+        // пишет — без этого бесплатный повтор молча ничего бы не делал.
+        guard !store.isFrozen else {
+            retryNote = L("transcribe.error.restartRequired")
+            return
+        }
+        if store.canRepoll(record) {
+            store.repoll(record.id)
+            return
+        }
+        let params = RecordRetry.params(for: record)
+        let serviceExists = RecordRetry.serviceExists(params.providerID)
+        let sourcePath = record.sourcePath
+        let archive = store.audioURL(for: record.id)
+        isPlanningRetry = true
+        Task {
+            let readable = await Task.detached {
+                sourcePath.map { FileManager.default.isReadableFile(atPath: $0) } ?? false
+            }.value
+            isPlanningRetry = false
+            guard let current = store.record(record.id) else { return }
+            let context = RetryPlanner.Context(providerID: params.providerID,
+                                               serviceExists: serviceExists,
+                                               originalReadable: readable,
+                                               hasStoredAudio: archive != nil,
+                                               now: Date())
+            guard let plan = RetryPlanner.plan(for: current, context: context) else { return }
+            switch plan {
+            case .repoll:
+                store.repoll(current.id)
+            case .serviceUnavailable:
+                retranscribing = current
+            case .rerunOriginal(let billed):
+                guard let sourcePath else { return }
+                propose(RetryRun(url: URL(fileURLWithPath: sourcePath), newSourcePath: nil,
+                                 params: params), billed: billed)
+            case .rerunStoredAudio(let billed):
+                guard let archive else { return }
+                propose(RetryRun(url: archive, newSourcePath: nil, params: params), billed: billed)
+            case .needsFile:
+                retryNote = L("library.retry.needsFile")
+                isPickingRetryFile = true
+            }
+        }
+    }
+
+    /// Исходника и архива нет — пользователь выбрал файл сам: он же станет
+    /// новым исходником записи.
+    private func retryWithPickedFile(_ url: URL) {
+        guard let record = document.record else { return }
+        if let message = FileTranscriptionController.validationError(for: url) {
+            retryNote = message
+            return
+        }
+        retryNote = nil
+        let params = RecordRetry.params(for: record)
+        propose(RetryRun(url: url, newSourcePath: url.path, params: params),
+                billed: RetryPlanner.isBilled(providerID: params.providerID))
+    }
+
+    /// Платный повтор — только после подтверждения.
+    private func propose(_ run: RetryRun, billed: Bool) {
+        if billed {
+            alert = .retryBilled(run)
+        } else {
+            runRetry(run)
+        }
+    }
+
+    private func runRetry(_ run: RetryRun) {
+        guard let record = document.record else { return }
+        let outcome = FileTranscriptionController.shared.start(
+            source: run.url, displayName: record.fileName, params: run.params,
+            target: .reuse(record.id, sourcePath: run.newSourcePath))
+        switch outcome {
+        case .started: retryNote = nil
+        case .busy: retryNote = L("library.retry.busy")
+        case .rejected(let message): retryNote = message
+        }
+    }
+
+    /// «Распознать заново» — шит с выбором сервиса и параметров; результат
+    /// уходит в новую запись. Без исходника и архива распознавать нечего.
+    private func retranscribeButton(_ record: FileTranscriptRecord) -> some View {
+        let hasSource = record.hasArchivedAudio || record.sourcePath != nil
+        return Button {
+            retranscribing = record
+        } label: {
+            Label(L("library.retranscribe"), systemImage: "arrow.triangle.2.circlepath")
+        }
+        .dsGlassButton()
+        .disabled(!hasSource)
+        .help(hasSource ? L("library.retranscribe.help") : L("library.retranscribe.noSource"))
+    }
+
     // MARK: - Алерт
 
     private var alertTitle: String {
         switch alert {
         case .deleteAudio: return L("library.deleteAudio.title")
+        case .retryBilled: return L("library.retry.billed.title")
         case .deleteRecord, .none: return L("library.delete.title")
         }
     }
@@ -523,10 +684,107 @@ private struct RecordProgressCard: View {
                 if controller.runningRecordID == record.id {
                     Button(L("transcribe.cancel")) { controller.cancelTranscription() }
                         .dsGlassButton()
+                } else if record.jobID != nil {
+                    // Добор после перезапуска или повторный опрос — задача стора.
+                    Button(L("transcribe.cancel")) {
+                        TranscriptHistoryStore.shared.cancelRecovery(record.id)
+                    }
+                    .dsGlassButton()
                 }
             }
             .padding(DS.Spacing.cardPadding)
         }
+    }
+}
+
+/// Повтор на месте, который осталось подтвердить (тарификация) и запустить.
+private struct RetryRun {
+    let url: URL
+    /// Новый путь исходника (файл выбран заново); nil — прежний.
+    let newSourcePath: String?
+    let params: FileTranscriptionParams
+}
+
+/// Общие правила «Повторить» для записи и её кнопки.
+@MainActor
+private enum RecordRetry {
+    /// Параметры повтора: сохранённые в записи; у записей из журнала v1 (без
+    /// `params`) — текущие параметры страницы, а сервис — текущий. Без
+    /// анализа ИИ: пресет, оставленный на странице, к старой записи отношения
+    /// не имеет, а повтор не должен оплачивать анализ, которого у неё не было.
+    static func params(for record: FileTranscriptRecord) -> FileTranscriptionParams {
+        record.params ?? FileTranscriptionController.shared.pageParams.withoutLLM()
+    }
+
+    /// Жив ли сервис: удалённым может быть только пользовательский пресет.
+    static func serviceExists(_ providerID: String) -> Bool {
+        guard providerID.hasPrefix("custom:") else { return true }
+        return SettingsStore.shared.customService(for: providerID) != nil
+    }
+}
+
+/// Кнопка «Повторить» с подписью, что именно произойдёт (забрать с сервера
+/// бесплатно / распознать заново платно / на этом Mac). Наблюдает контроллер
+/// сама: занятость меняется, а вся запись от этого перерисовываться не должна.
+/// Диск и Keychain здесь не трогаются — только метаданные записи.
+private struct RecordRetryRow: View {
+    let record: FileTranscriptRecord
+    let note: String?
+    let isPlanning: Bool
+    let onRetry: () -> Void
+    let onRetranscribe: () -> Void
+
+    @ObservedObject private var controller = FileTranscriptionController.shared
+    @ObservedObject private var settings = SettingsStore.shared
+
+    var body: some View {
+        let params = RecordRetry.params(for: record)
+        let repoll = TranscriptHistoryStore.shared.canRepoll(record)
+        let serviceMissing = !repoll && !RecordRetry.serviceExists(params.providerID)
+        // Повторный опрос идёт мимо контроллера — ему занятость не мешает.
+        let busy = controller.isTranscribing && !repoll
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                if serviceMissing {
+                    // Без исходника и архива шит упёрся бы в «нечего распознавать».
+                    Button(L("library.retranscribe"), action: onRetranscribe)
+                        .dsGlassButton()
+                        .disabled(!hasSource)
+                } else {
+                    Button(L("library.retry"), action: onRetry)
+                        .dsGlassButton()
+                        .disabled(busy || isPlanning)
+                }
+                if isPlanning {
+                    ProgressView().controlSize(.small)
+                }
+                Text(hint(params: params, repoll: repoll, serviceMissing: serviceMissing, busy: busy))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            if let note {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(DS.RecorderTone.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var hasSource: Bool { record.hasArchivedAudio || record.sourcePath != nil }
+
+    private func hint(params: FileTranscriptionParams, repoll: Bool,
+                      serviceMissing: Bool, busy: Bool) -> String {
+        if busy { return L("library.retry.busy") }
+        if repoll { return L("library.retry.repollHint") }
+        if serviceMissing {
+            return hasSource ? L("library.retry.serviceMissing") : L("library.retranscribe.noSource")
+        }
+        return RetryPlanner.isBilled(providerID: params.providerID)
+            ? L("library.retry.billedHint")
+            : L("library.retry.localHint")
     }
 }
 

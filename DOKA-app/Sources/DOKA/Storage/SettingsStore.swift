@@ -188,6 +188,7 @@ final class SettingsStore: ObservableObject {
         static let applyDictionaryToFiles = "applyDictionaryToFiles"
         static let libraryRetentionNoticeDismissed = "libraryRetentionNoticeDismissed"
         static let saveTranscriptAudio = "saveTranscriptAudio"
+        static let notifyFileTranscription = "notifyFileTranscription"
     }
 
     @Published var language: String {
@@ -403,6 +404,11 @@ final class SettingsStore: ObservableObject {
     @Published var saveTranscriptAudio: Bool {
         didSet { defaults.set(saveTranscriptAudio, forKey: Key.saveTranscriptAudio) }
     }
+    /// Системное уведомление о готовности (или ошибке) файловой транскрибации,
+    /// когда результат не на глазах (`FileTranscriptionNotifier`).
+    @Published var notifyFileTranscription: Bool {
+        didSet { defaults.set(notifyFileTranscription, forKey: Key.notifyFileTranscription) }
+    }
 
     /// API-ключ активного сервиса. У локального сервиса ключа нет — Keychain
     /// намеренно не трогаем (синхронное чтение в пути запуска может заморозить
@@ -492,8 +498,10 @@ final class SettingsStore: ObservableObject {
             Key.mouseShortcutButton: -1,
             Key.skipSilentRecordings: true,
             Key.applyDictionaryToFiles: false,
-            Key.saveTranscriptAudio: true
+            Key.saveTranscriptAudio: true,
+            Key.notifyFileTranscription: true
         ])
+        notifyFileTranscription = defaults.bool(forKey: Key.notifyFileTranscription)
         skipSilentRecordings = defaults.bool(forKey: Key.skipSilentRecordings)
         applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
         libraryRetentionNoticeDismissed = defaults.bool(forKey: Key.libraryRetentionNoticeDismissed)
