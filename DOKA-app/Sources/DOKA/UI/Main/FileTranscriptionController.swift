@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Режим разметки ролей на странице «Транскрибация» (UI поверх `RolesSpec`).
 enum RolesMode: String, CaseIterable, Identifiable {
@@ -65,10 +66,32 @@ final class FileTranscriptionController: ObservableObject {
 
     /// Куда писать результат запуска.
     enum Target: Equatable {
-        /// Новая запись (для «Распознать заново» — с исходной записью и заголовком).
-        case new(parentID: UUID?, title: String?)
-        /// «Повторить» на месте: та же запись снова в работе.
-        case reuse(UUID)
+        /// Новая запись. `parentID` — «Распознать заново»: из какой записи (её
+        /// архив звука наследуется копией); `sourcePath` — путь исходного файла
+        /// для будущего «Повторить» (у повтора из архива — путь исходника родителя).
+        case new(parentID: UUID?, title: String?, sourcePath: String?)
+        /// «Повторить» на месте: та же запись снова в работе. `sourcePath` —
+        /// новый путь исходника, если файл выбрали заново; nil — прежний.
+        case reuse(UUID, sourcePath: String?)
+
+        /// Запуск из библиотеки («Повторить», «Распознать заново»), а не
+        /// файлом, выбранным на странице.
+        var isFromLibrary: Bool {
+            switch self {
+            case .reuse: return true
+            case .new(let parentID, _, _): return parentID != nil
+            }
+        }
+    }
+
+    /// Итог запуска. Причину отказа показывает вызывающий: страница — фазой,
+    /// запись библиотеки — у своей кнопки (фазу страницы повтор из библиотеки
+    /// не трогает).
+    enum StartOutcome: Equatable {
+        case started(UUID)
+        /// Уже распознаётся другой файл — один за раз.
+        case busy
+        case rejected(String)
     }
 
     @Published private(set) var phase: Phase = .idle {
@@ -149,7 +172,9 @@ final class FileTranscriptionController: ObservableObject {
         Self.requestDiarizerModel()
     }
 
-    private static func requestDiarizerModel() {
+    /// Поставить модель диаризатора в очередь скачивания, если её нет (и для
+    /// шита «Распознать заново» — у него свои параметры).
+    static func requestDiarizerModel() {
         if case .notDownloaded = LocalModelStore.shared.state(for: .diarizer) {
             LocalModelStore.shared.download(.diarizer)
         }
@@ -159,6 +184,15 @@ final class FileTranscriptionController: ObservableObject {
     private var task: Task<Void, Never>?
     /// Запись библиотеки, которая распознаётся прямо сейчас.
     private(set) var runningRecordID: UUID?
+    /// Что распознаётся сейчас — для дропзоны: у запуска из библиотеки это
+    /// не выбранный на странице файл.
+    private var runningSource: (name: String, url: URL)?
+    /// Фаза страницы до запуска из библиотеки. Контроллер один (файл за раз),
+    /// поэтому на время повтора страница показывает его прогресс, но итог
+    /// такого запуска виден в самой записи — по окончании страница
+    /// возвращается к своему файлу или показанному результату, а не к чужой
+    /// записи или её ошибке.
+    private var pagePhaseBeforeRun: Phase?
 
     /// Показанная запись библиотеки.
     var shownRecordID: UUID? {
@@ -171,6 +205,13 @@ final class FileTranscriptionController: ObservableObject {
     static let audioExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "opus", "aiff", "asf"]
     static let videoExtensions = ["mp4", "mov", "avi", "mkv"]
     static var allExtensions: [String] { audioExtensions + videoExtensions }
+    /// Типы для `.fileImporter` — страница и «Повторить» с выбором файла.
+    static let importerTypes: [UTType] = {
+        var types = allExtensions.compactMap { UTType(filenameExtension: $0) }
+        types.append(.audio)
+        types.append(.movie)
+        return types
+    }()
     /// Лимит Nexara — 3 ГБ (тело запроса уходит потоково, память не зависит
     /// от размера файла — см. FileTranscriptionClient.writeMultipartBody).
     static let maxBytes: Int64 = 3_000_000_000
@@ -188,11 +229,12 @@ final class FileTranscriptionController: ObservableObject {
     }
 
     /// Имя файла для зоны загрузки — и когда он выбран, и пока идёт
-    /// распознавание (в .transcribing имени в phase нет, берём из pickedURL).
+    /// распознавание (в .transcribing имени в phase нет: берём то, что
+    /// распознаётся, — при повторе из библиотеки это не выбранный файл).
     var activeFileName: String? {
         switch phase {
         case let .picked(name, _): return name
-        case .transcribing: return pickedURL?.lastPathComponent
+        case .transcribing: return runningSource?.name ?? pickedURL?.lastPathComponent
         default: return nil
         }
     }
@@ -201,66 +243,76 @@ final class FileTranscriptionController: ObservableObject {
     var activeFileSize: Int64? {
         switch phase {
         case let .picked(_, size): return size
-        case .transcribing: return pickedURL.map { fileSize(of: $0) }
+        case .transcribing: return (runningSource?.url ?? pickedURL).map { Self.fileSize(of: $0) }
         default: return nil
         }
     }
 
     /// Принять выбранный/перетащенный файл: проверить формат и размер.
     func accept(url: URL) {
-        let ext = url.pathExtension.lowercased()
-        guard Self.allExtensions.contains(ext) else {
-            phase = .error(L("transcribe.error.unsupportedFormat", ext.isEmpty ? "—" : ext))
-            return
-        }
-        let size = fileSize(of: url)
-        guard size <= Self.maxBytes else {
-            phase = .error(L("transcribe.error.fileTooLarge"))
+        // Во время распознавания (в том числе повтора из библиотеки) новый
+        // файл не принимается: иначе задача молча отменилась бы, а её запись
+        // осталась бы «в процессе».
+        guard !isTranscribing else { return }
+        if let message = Self.validationError(for: url) {
+            phase = .error(message)
             return
         }
         task?.cancel()
         task = nil
         pickedURL = url
-        phase = .picked(name: url.lastPathComponent, sizeBytes: size)
+        phase = .picked(name: url.lastPathComponent, sizeBytes: Self.fileSize(of: url))
+    }
+
+    /// Формат и размер файла; nil — файл годится (страница и выбор файла
+    /// для «Повторить»).
+    static func validationError(for url: URL) -> String? {
+        let ext = url.pathExtension.lowercased()
+        guard allExtensions.contains(ext) else {
+            return L("transcribe.error.unsupportedFormat", ext.isEmpty ? "—" : ext)
+        }
+        guard fileSize(of: url) <= maxBytes else { return L("transcribe.error.fileTooLarge") }
+        return nil
     }
 
     /// Запустить транскрипцию выбранного файла с параметрами страницы.
     func transcribe() {
         guard let url = pickedURL else { return }
-        start(source: url, displayName: url.lastPathComponent, params: pageParams,
-              target: .new(parentID: nil, title: nil))
+        let outcome = start(source: url, displayName: url.lastPathComponent, params: pageParams,
+                            target: .new(parentID: nil, title: nil, sourcePath: url.path))
+        if case .rejected(let message) = outcome {
+            phase = .error(message)
+        }
     }
 
     /// Единая точка запуска: страница, «Повторить» и «Распознать заново».
     /// Параметры — снимок (не глобальный `providerID`), поэтому повтор идёт
     /// сохранённым сервисом, не переключая выбор пользователя. Один файл за
-    /// раз: при идущем распознавании запуск отклоняется.
+    /// раз: при идущем распознавании запуск отклоняется. Отказ фазу НЕ
+    /// меняет — повтор из библиотеки не должен затирать страницу.
     @discardableResult
     func start(source url: URL, displayName: String,
-               params: FileTranscriptionParams, target: Target) -> Bool {
-        guard !isTranscribing else { return false }
+               params: FileTranscriptionParams, target: Target) -> StartOutcome {
+        guard !isTranscribing else { return .busy }
         // После переноса «Папки данных» до перезапуска новая запись потерялась бы.
-        guard !store.isFrozen else {
-            phase = .error(L("transcribe.error.restartRequired"))
-            return false
+        guard !store.isFrozen else { return .rejected(L("transcribe.error.restartRequired")) }
+        if case .reuse(let id, _) = target, store.record(id) == nil {
+            return .rejected(L("transcribe.recordMissing"))
         }
         let route: ServiceRoute
         do {
             route = try SettingsStore.shared.resolveRoute(providerID: params.providerID)
         } catch {
-            phase = .error(error.localizedDescription)
-            return false
+            return .rejected(error.localizedDescription)
         }
         // Локальный сервис: без ключа и конфига, но модель должна быть скачана.
         if case .local(let model) = route, !LocalModelStore.shared.isDownloaded(model) {
-            phase = .error(L("transcribe.local.modelMissing"))
-            return false
+            return .rejected(L("transcribe.local.modelMissing"))
         }
-        guard params.rolesValidationMessage == nil else { return false }
+        if let message = params.rolesValidationMessage { return .rejected(message) }
         if params.usesLocalDiarization && !LocalModelStore.shared.isDownloaded(.diarizer) {
-            phase = .error(L("transcribe.diarize.modelMissing"))
             Self.requestDiarizerModel()
-            return false
+            return .rejected(L("transcribe.diarize.modelMissing"))
         }
         // Нарезка ответа на хранение не влияет: в тело уходят rawSegments и
         // words, показ перенарезает документ под выбранную детализацию.
@@ -271,20 +323,29 @@ final class FileTranscriptionController: ObservableObject {
 
         let recordID: UUID
         switch target {
-        case let .new(parentID, title):
+        case let .new(parentID, title, sourcePath):
             recordID = store.addPending(.init(fileName: displayName, provider: providerTag,
                                               title: title, params: params,
-                                              sourcePath: url.path, parentID: parentID))
-        case .reuse(let id):
-            store.restartPending(id, provider: providerTag, params: params)
+                                              sourcePath: sourcePath, parentID: parentID))
+        case let .reuse(id, sourcePath):
+            store.restartPending(id, provider: providerTag, params: params, sourcePath: sourcePath)
             recordID = id
         }
         // Архив исходного звука — параллельно распознаванию, задачей стора:
         // отмена распознавания его не убивает (иначе «Повторить» не из чего).
+        // «Распознать заново» наследует архив исходной записи копией.
         if SettingsStore.shared.saveTranscriptAudio, store.audioURL(for: recordID) == nil {
-            store.archiveAudio(recordID, from: url)
+            if case .new(let parentID?, _, _) = target, store.audioURL(for: parentID) != nil {
+                store.inheritAudio(recordID, from: parentID)
+            } else {
+                store.archiveAudio(recordID, from: url)
+            }
         }
+        // Разрешение на уведомления — лениво, в момент осмысленного действия.
+        Task { await FileTranscriptionNotifier.shared.requestAuthorizationIfNeeded() }
 
+        pagePhaseBeforeRun = target.isFromLibrary ? phase : nil
+        runningSource = (displayName, url)
         phase = .transcribing
         progressNote = nil
         runningRecordID = recordID
@@ -379,21 +440,52 @@ final class FileTranscriptionController: ObservableObject {
                 self?.progressNote = nil
                 store.markError(recordID, error: error)
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                self?.runningRecordID = nil
-                self?.phase = .error(message)
+                self?.failRun(message)
             }
         }
-        return true
+        return .started(recordID)
     }
 
     /// Итог успешного запуска: показать запись, если она ещё жива (её могли
-    /// удалить, пока шло распознавание), иначе вернуться к файлу.
+    /// удалить, пока шло распознавание), иначе вернуться к файлу. Запуск из
+    /// библиотеки возвращает страницу к её прежнему состоянию.
     private func finishRun(showing recordID: UUID?) {
         runningRecordID = nil
-        if let recordID {
+        runningSource = nil
+        if let before = pagePhaseBeforeRun {
+            restorePagePhase(before)
+        } else if let recordID {
             phase = .done(recordID: recordID)
         } else {
             returnToPickedOrIdle()
+        }
+    }
+
+    /// Ошибка запуска: у страницы — карточка ошибки; у запуска из библиотеки
+    /// ошибка видна в самой записи, страницу чужой ошибкой не затираем.
+    private func failRun(_ message: String) {
+        runningRecordID = nil
+        runningSource = nil
+        if let before = pagePhaseBeforeRun {
+            restorePagePhase(before)
+        } else {
+            phase = .error(message)
+        }
+    }
+
+    /// Вернуть страницу к фазе до запуска из библиотеки — если то, что она
+    /// показывала, ещё существует.
+    private func restorePagePhase(_ before: Phase) {
+        pagePhaseBeforeRun = nil
+        switch before {
+        case .done(let id) where store.record(id) == nil:
+            returnToPickedOrIdle()
+        case .picked where pickedURL == nil:
+            returnToPickedOrIdle()
+        case .transcribing:
+            returnToPickedOrIdle()
+        default:
+            phase = before
         }
     }
 
@@ -460,7 +552,12 @@ final class FileTranscriptionController: ObservableObject {
             store.markCancelled(id)
             runningRecordID = nil
         }
-        returnToPickedOrIdle()
+        runningSource = nil
+        if let before = pagePhaseBeforeRun {
+            restorePagePhase(before)
+        } else {
+            returnToPickedOrIdle()
+        }
     }
 
     /// Скрыть показанный результат: вернуться к выбранному файлу либо к
@@ -480,7 +577,7 @@ final class FileTranscriptionController: ObservableObject {
 
     private func returnToPickedOrIdle() {
         if let url = pickedURL {
-            phase = .picked(name: url.lastPathComponent, sizeBytes: fileSize(of: url))
+            phase = .picked(name: url.lastPathComponent, sizeBytes: Self.fileSize(of: url))
         } else {
             phase = .idle
         }
@@ -497,7 +594,7 @@ final class FileTranscriptionController: ObservableObject {
         shownDocument = LibraryModel.shared.document(for: id)
     }
 
-    private func fileSize(of url: URL) -> Int64 {
+    private static func fileSize(of url: URL) -> Int64 {
         if let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
            let size = values.fileSize {
             return Int64(size)

@@ -41,6 +41,18 @@ final class WindowManager {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Видит ли пользователь секцию прямо сейчас: приложение активно, главное
+    /// окно key (или key — его шит: алерт, «Распознать заново», выбор файла),
+    /// видимо, не свёрнуто и не заслонено. Уведомления так не дублируют
+    /// результат, который и так на глазах; ушёл в другое приложение — баннер придёт.
+    func isShowing(_ section: MainSection) -> Bool {
+        guard let window = mainWindow, NSApp.isActive, window.isVisible,
+              !window.isMiniaturized, window.occlusionState.contains(.visible) else { return false }
+        let key = NSApp.keyWindow
+        guard key === window || key?.sheetParent === window else { return false }
+        return mainState.section == section
+    }
+
     // Точки входа из старого кода (меню-бар, AppDelegate, DictationController).
     func showSettings() { showMain(section: .general) }
     func showHistory() { showMain(section: .history) }

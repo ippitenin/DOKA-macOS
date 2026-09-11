@@ -14,8 +14,9 @@ final class TranscriptHistoryStore: ObservableObject {
     static let shared = TranscriptHistoryStore(dataFolder: AppDataFolder.currentURL)
 
     /// Срок жизни результата async-задачи на сервере Nexara: после него
-    /// добирать нечего (результат удалён безвозвратно).
-    static let serverResultLifetime: TimeInterval = 12 * 3_600
+    /// добирать нечего (результат удалён безвозвратно). nonisolated — его
+    /// читает чистый `RetryPlanner`.
+    nonisolated static let serverResultLifetime: TimeInterval = 12 * 3_600
 
     @Published private(set) var records: [FileTranscriptRecord] = []
     /// Запись завершилась (готово или ошибка, которую пользователь ждал) —
@@ -131,8 +132,12 @@ final class TranscriptHistoryStore: ObservableObject {
     }
 
     /// «Повторить» на месте: та же запись снова в работе. Сервис и параметры
-    /// — сохранённые (или новые, если вызывающий их передал).
-    func restartPending(_ id: UUID, provider: String, params: FileTranscriptionParams?) {
+    /// — сохранённые (или новые, если вызывающий их передал). `sourcePath` —
+    /// новый путь исходника, если пользователь выбрал файл заново; nil —
+    /// прежний (повтор из оригинала или из архива звука). `date` не меняется:
+    /// запись остаётся в своей группе списка.
+    func restartPending(_ id: UUID, provider: String, params: FileTranscriptionParams?,
+                        sourcePath: String? = nil) {
         update(id) {
             $0.status = .inProgress
             $0.jobID = nil
@@ -140,6 +145,7 @@ final class TranscriptHistoryStore: ObservableObject {
             $0.failure = nil
             $0.provider = provider
             if let params { $0.params = params }
+            if let sourcePath { $0.sourcePath = sourcePath }
         }
     }
 
@@ -271,12 +277,15 @@ final class TranscriptHistoryStore: ObservableObject {
         // Заморожено: синхронное создание папки ниже прошло бы мимо очереди
         // и воскресило бы удалённую переносом старую папку данных.
         guard !isFrozen, record(id) != nil else { return }
+        // Архивация этой записи уже идёт («Повторить» сразу после быстрой
+        // ошибки) — пусть доделывает: два кодировщика в один `.part` стёрли бы
+        // друг другу файл (архиватор удаляет его при отмене).
+        guard audioTasks[id] == nil else { return }
         // Папку создаём сразу: meta пишется очередью асинхронно, а архиватор
         // начнёт писать .part немедленно.
         try? FileManager.default.createDirectory(at: files.folder(for: id),
                                                  withIntermediateDirectories: true)
         let part = files.audioPartURL(id)
-        audioTasks[id]?.cancel()
         audioTasks[id] = Task { [weak self] in
             do {
                 _ = try await SourceAudioArchiver.archive(source: source, to: part)
@@ -290,15 +299,29 @@ final class TranscriptHistoryStore: ObservableObject {
                 }
                 try? FileManager.default.removeItem(at: part)
             }
+            // Отменённую задачу из реестра убрал отменивший (удаление,
+            // стирание аудио, заморозка) — её место может занимать уже новая.
+            guard !Task.isCancelled else { return }
             self?.audioTasks[id] = nil
         }
     }
 
-    /// Архив для «Распознать заново»: копия звука исходной записи.
-    func cloneAudio(from parent: UUID, to id: UUID) async -> Bool {
-        guard await files.cloneAudio(from: parent, to: id) else { return false }
-        update(id) { $0.audioFileName = TranscriptLibraryFiles.audioFileName }
-        return true
+    /// Архив для «Распознать заново»: копия звука исходной записи (на APFS —
+    /// мгновенный clonefile), а не повторное кодирование: перекодирование
+    /// AAC → AAC только теряло бы качество. Задача стора, как `archiveAudio`:
+    /// её видит `hasBackgroundWork`, удаление записи её отменяет.
+    func inheritAudio(_ id: UUID, from parent: UUID) {
+        guard !isFrozen, record(id) != nil, audioTasks[id] == nil else { return }
+        audioTasks[id] = Task { [weak self] in
+            guard let self else { return }
+            let cloned = await self.files.cloneAudio(from: parent, to: id)
+            // Отменённую задачу из реестра убрал отменивший (см. archiveAudio).
+            guard !Task.isCancelled else { return }
+            if cloned {
+                self.update(id) { $0.audioFileName = TranscriptLibraryFiles.audioFileName }
+            }
+            self.audioTasks[id] = nil
+        }
     }
 
     /// Стереть звук одной записи (меню записи): расшифровка и анализы остаются.
@@ -371,21 +394,17 @@ final class TranscriptHistoryStore: ObservableObject {
         startPolling(recoverable)
     }
 
-    /// Можно ли забрать результат с сервера без повторной отправки файла:
-    /// builtin-задача с jobID, результат ещё хранится, задача не упала на сервере.
+    /// Можно ли забрать результат с сервера без повторной отправки файла —
+    /// правило одно, у планировщика «Повторить».
     func canRepoll(_ record: FileTranscriptRecord) -> Bool {
-        guard record.jobID != nil, record.failure != .jobFailed else { return false }
-        switch record.status {
-        case .error, .cancelled: break
-        case .inProgress, .done: return false
-        }
-        return Date() < Self.pollDeadline(for: record)
+        RetryPlanner.canRepoll(record, now: Date())
     }
 
     /// «Повторить» без повторной оплаты: отмена у Nexara лишь прекращала
     /// опрос — сервер задачу дообработал, результат забираем.
     func repoll(_ id: UUID) {
-        guard let record = record(id), canRepoll(record), let jobID = record.jobID else { return }
+        guard !isFrozen, let record = record(id), canRepoll(record),
+              let jobID = record.jobID else { return }
         update(id) {
             $0.status = .inProgress
             $0.failure = nil
@@ -393,8 +412,16 @@ final class TranscriptHistoryStore: ObservableObject {
         startPolling([(id, jobID, Self.pollDeadline(for: record))])
     }
 
+    /// Остановить добор/повторный опрос записи (кнопка «Отмена» у записи,
+    /// которую добирают не через контроллер). Как и отмена в контроллере,
+    /// запись остаётся «Отменена» с jobID — забрать результат можно позже.
+    func cancelRecovery(_ id: UUID) {
+        recoveryTasks.removeValue(forKey: id)?.cancel()
+        markCancelled(id)
+    }
+
     private static func pollDeadline(for record: FileTranscriptRecord) -> Date {
-        (record.submittedAt ?? record.date).addingTimeInterval(serverResultLifetime)
+        RetryPlanner.repollDeadline(for: record)
     }
 
     /// Опрос задач Nexara. Credentials — всегда builtin, а не текущего
@@ -409,7 +436,10 @@ final class TranscriptHistoryStore: ObservableObject {
             // показать диалог подтверждения (например, после пересборки с
             // новой подписью), и синхронное чтение заморозило бы приложение.
             let apiKey = await Task.detached { KeychainHelper.getAPIKey(for: .builtin) }.value
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !self.isFrozen else { return }
+            // Пока читался ключ (диалог доступа к Keychain может висеть долго),
+            // записи могли отменить или удалить — их не опрашиваем и не трогаем.
+            let items = items.filter { self.isAwaitingResult($0.id) }
             guard let apiKey else {
                 for item in items {
                     self.markError(item.id, message: L("error.noAPIKey"), failure: .auth, notify: false)
@@ -424,25 +454,37 @@ final class TranscriptHistoryStore: ObservableObject {
                 self.recoveryTasks[item.id] = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(delay))
                     guard !Task.isCancelled else { return }
+                    let outcome: Result<TranscriptResult, Error>
                     do {
                         // Детализация не важна: в тело уходят только
                         // rawSegments/words, нарезка выполняется при открытии.
-                        let result = try await FileTranscriptionClient().waitForResult(
+                        outcome = .success(try await FileTranscriptionClient().waitForResult(
                             jobID: item.jobID, apiKey: apiKey, config: config,
-                            detail: .server, deadline: item.deadline)
-                        guard !Task.isCancelled else { return }
-                        self?.markDone(item.id, result: result)
+                            detail: .server, deadline: item.deadline))
                     } catch {
-                        guard !Task.isCancelled else { return }
-                        self?.markError(item.id, error: error)
+                        outcome = .failure(error)
                     }
-                    self?.recoveryTasks[item.id] = nil
+                    // Отменённую задачу из реестра убрал отменивший (удаление,
+                    // «Отмена», повторный опрос, заморозка) — её место может
+                    // занимать уже новая.
+                    guard let self, !Task.isCancelled else { return }
+                    self.recoveryTasks[item.id] = nil
+                    // Запись, отменённую раньше регистрации задачи, не «воскрешаем».
+                    guard self.isAwaitingResult(item.id) else { return }
+                    switch outcome {
+                    case .success(let result): self.markDone(item.id, result: result)
+                    case .failure(let error): self.markError(item.id, error: error)
+                    }
                 }
             }
         }
     }
 
     // MARK: - Служебное
+
+    private func isAwaitingResult(_ id: UUID) -> Bool {
+        record(id)?.status == .inProgress
+    }
 
     /// Точечное изменение записи; no-op, если записи уже нет (пользователь
     /// удалил её, пока задача завершалась).

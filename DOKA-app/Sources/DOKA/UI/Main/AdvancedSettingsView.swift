@@ -18,6 +18,9 @@ struct AdvancedSettingsView: View {
     /// Алерт карточки библиотеки — один на обе ветки (стирание аудио и
     /// сокращение срока): два .alert на одной вью конфликтуют.
     @State private var libraryAlert: LibraryAlert?
+    /// Уведомления DOKA запрещены в Системных настройках — тумблер тогда
+    /// ничего не даст, показываем путь к настройкам.
+    @State private var notificationsDenied = false
 
     private enum MigrationAlert {
         case done(path: String)
@@ -146,6 +149,26 @@ struct AdvancedSettingsView: View {
                 SettingsSwitch(isOn: $settings.saveTranscriptAudio)
             }
             CardDivider()
+            SettingsRow(title: L("advanced.transcripts.notify"),
+                        help: L("advanced.transcripts.notify.help")) {
+                SettingsSwitch(isOn: $settings.notifyFileTranscription)
+            }
+            if notificationsDenied && settings.notifyFileTranscription {
+                HStack(spacing: 10) {
+                    Text(L("advanced.transcripts.notify.denied"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button(L("advanced.transcripts.notify.openSettings")) {
+                        FileTranscriptionNotifier.shared.openSystemSettings()
+                    }
+                    .dsGlassButton()
+                }
+                .padding(.horizontal, DS.Spacing.cardPadding)
+                .padding(.bottom, 9)
+            }
+            CardDivider()
             VStack(alignment: .leading, spacing: 10) {
                 Text((folderPath as NSString).appendingPathComponent(TranscriptLibraryFiles.folderName))
                     .font(.callout.monospaced())
@@ -169,7 +192,21 @@ struct AdvancedSettingsView: View {
             .padding(.horizontal, DS.Spacing.cardPadding)
             .padding(.vertical, 10)
         }
-        .task { await refreshUsage() }
+        .task {
+            await refreshNotificationStatus()
+            await refreshUsage()
+        }
+        // Включили тумблер — спросить разрешение (если ещё не спрашивали).
+        .onChange(of: settings.notifyFileTranscription) { _, isOn in
+            Task {
+                if isOn { await FileTranscriptionNotifier.shared.requestAuthorizationIfNeeded() }
+                await refreshNotificationStatus()
+            }
+        }
+        // Вернулись из Системных настроек — разрешение могли выдать.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshNotificationStatus() }
+        }
         // Алерт на карточке, а не на корне: на корне уже migration-алерт.
         .alert(libraryAlertTitle, isPresented: libraryAlertPresented, presenting: libraryAlert) { alert in
             switch alert {
@@ -213,6 +250,10 @@ struct AdvancedSettingsView: View {
 
     private func refreshUsage() async {
         libraryUsage = await TranscriptHistoryStore.shared.librarySize()
+    }
+
+    private func refreshNotificationStatus() async {
+        notificationsDenied = await FileTranscriptionNotifier.shared.authorizationStatus() == .denied
     }
 
     // MARK: - Алерты (у каждой вью — один .alert)

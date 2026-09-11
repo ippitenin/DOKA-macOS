@@ -7,6 +7,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarManager: MenuBarManager!
     private var panelController: RecorderPanelController!
 
+    /// Делегат уведомлений — ДО завершения запуска: иначе ответ на клик по
+    /// уведомлению при незапущенном приложении может не дойти; события добора
+    /// (resumePendingJobs в didFinishLaunching) тоже должны застать подписку.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        FileTranscriptionNotifier.shared.install()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Сироты временных WAV прошлых запусков (слот повтора диктовки живёт
         // в памяти) — фоном, запуск не ждёт файловую систему.

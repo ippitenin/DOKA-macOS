@@ -191,6 +191,84 @@ final class TranscriptLibraryStorageTests: XCTestCase {
         token.cancel()
     }
 
+    /// Async-задача, чей результат истёк на сервере, гасится на старте без
+    /// сети и без уведомления.
+    func testExpiredAsyncJobOnLaunchDoesNotNotify() {
+        let store = makeStore()
+        var record = FileTranscriptRecord(id: UUID(), fileName: "a.mp3",
+                                          date: Date(timeIntervalSinceNow: -13 * 3_600),
+                                          status: .inProgress, provider: "builtin")
+        record.jobID = "job-1"
+        record.submittedAt = record.date
+        store.files.writeMeta(record)
+        store.files.writeIndex([record], migratedFromV1: true)
+        store.flush()
+
+        let reloaded = makeStore()
+        var notified = 0
+        let token = reloaded.finished.sink { _ in notified += 1 }
+        reloaded.resumePendingJobs()
+        XCTAssertEqual(reloaded.record(record.id)?.failure, .expired)
+        XCTAssertEqual(notified, 0)
+        token.cancel()
+    }
+
+    /// Контракт уведомлений: готово и ожидаемая ошибка — событие, отмена — нет.
+    func testFinishedFiresForDoneAndErrorButNotCancel() {
+        let store = makeStore()
+        var events: [FileTranscriptRecord.Status] = []
+        let token = store.finished.sink { events.append($0.status) }
+
+        let done = store.addPending(.init(fileName: "a.mp3", provider: "builtin"))
+        store.markDone(done, result: sample())
+        let failed = store.addPending(.init(fileName: "b.mp3", provider: "builtin"))
+        store.markError(failed, message: "сеть", failure: .network)
+        let cancelled = store.addPending(.init(fileName: "c.mp3", provider: "builtin"))
+        store.markCancelled(cancelled)
+
+        XCTAssertEqual(events, [.done, .error("сеть")])
+        token.cancel()
+    }
+
+    /// «Отмена» у записи, которую добирает стор: запись «Отменена», jobID на
+    /// месте — результат можно забрать позже.
+    func testCancelRecoveryKeepsJobForRepoll() {
+        let store = makeStore()
+        let id = store.addPending(.init(fileName: "a.mp3", provider: "builtin"))
+        store.setJobID(id, jobID: "job-1")
+        store.cancelRecovery(id)
+        XCTAssertEqual(store.record(id)?.status, .cancelled)
+        XCTAssertTrue(store.canRepoll(store.record(id)!))
+    }
+
+    /// «Распознать заново» наследует архив звука копией — без перекодирования.
+    func testInheritAudioCopiesParentArchive() async throws {
+        let store = makeStore()
+        let parent = makeDoneRecord(in: store)
+        try Data("m4a".utf8).write(to: store.files.audioURL(parent))
+        let child = store.addPending(.init(fileName: "lecture.mp3", provider: "builtin", parentID: parent))
+        store.inheritAudio(child, from: parent)
+        for _ in 0..<200 where store.record(child)?.audioFileName == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(store.record(child)?.audioFileName, TranscriptLibraryFiles.audioFileName)
+        XCTAssertEqual(try Data(contentsOf: store.files.audioURL(child)), Data("m4a".utf8))
+        XCTAssertFalse(store.hasBackgroundWork)
+    }
+
+    /// Удалённая за время копирования запись не воскресает папкой с одним аудио.
+    func testCloneAudioSkipsDeletedRecord() async throws {
+        let store = makeStore()
+        let parent = makeDoneRecord(in: store)
+        try Data("m4a".utf8).write(to: store.files.audioURL(parent))
+        let child = store.addPending(.init(fileName: "lecture.mp3", provider: "builtin"))
+        store.delete(child)
+        let cloned = await store.files.cloneAudio(from: parent, to: child)
+        XCTAssertFalse(cloned)
+        store.flush()
+        XCTAssertFalse(exists(store.files.folder(for: child)))
+    }
+
     func testCancelledAsyncJobCanBeRepolled() {
         let store = makeStore()
         let id = store.addPending(.init(fileName: "a.mp3", provider: "builtin"))

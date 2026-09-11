@@ -167,7 +167,10 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 let fm = FileManager.default
-                guard !frozen, fm.fileExists(atPath: audioURL(source).path) else {
+                // meta цели — как в commitAudio: удалённая за это время запись
+                // (папка уже в корзине) не воскреснет папкой с одним аудио.
+                guard !frozen, fm.fileExists(atPath: audioURL(source).path),
+                      fm.fileExists(atPath: metaURL(target).path) else {
                     continuation.resume(returning: false)
                     return
                 }

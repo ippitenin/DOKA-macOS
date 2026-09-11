@@ -71,7 +71,7 @@ struct TranscribeAudioSectionView: View {
         }
         .fileImporter(
             isPresented: $isImporterPresented,
-            allowedContentTypes: Self.importerTypes,
+            allowedContentTypes: FileTranscriptionController.importerTypes,
             allowsMultipleSelection: false
         ) { result in
             if case let .success(urls) = result, let url = urls.first {
@@ -418,11 +418,4 @@ struct TranscribeAudioSectionView: View {
         let ext = (name as NSString).pathExtension.lowercased()
         return FileTranscriptionController.videoExtensions.contains(ext) ? "film" : "waveform"
     }
-
-    private static let importerTypes: [UTType] = {
-        var types = FileTranscriptionController.allExtensions.compactMap { UTType(filenameExtension: $0) }
-        types.append(.audio)
-        types.append(.movie)
-        return types
-    }()
 }
