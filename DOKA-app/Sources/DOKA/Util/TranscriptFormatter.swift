@@ -5,9 +5,10 @@ import Foundation
 /// для «чистый текст / с тайм-кодами / SRT / VTT / по спикерам». Отдельных
 /// запросов к API для субтитров не делаем: всё строим из сегментов.
 enum TranscriptFormatter {
-    /// Чистый текст без разметки.
+    /// Чистый текст без разметки. С правками текста — их полный текст: иначе
+    /// «Скопировать», .txt и поиск отдали бы расшифровку без правок.
     static func plainText(_ r: TranscriptResult) -> String {
-        let trimmed = r.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = (r.editedFullText ?? r.fullText).trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
         return r.segments.map(\.text).joined(separator: " ")
     }

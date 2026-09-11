@@ -31,6 +31,9 @@ struct TranscriptRecordView: View {
     @State private var isPlanningRetry = false
     /// Почему «Повторить» не запустился — у кнопки, а не фазой страницы.
     @State private var retryNote: String?
+    /// Строка, у которой открыт редактор реплики: клавиши плеера и Esc
+    /// «назад» в это время молчат.
+    @State private var editingSegment: Int?
     @FocusState private var focus: FocusTarget?
 
     private enum FocusTarget: Hashable { case root, rename }
@@ -144,7 +147,7 @@ struct TranscriptRecordView: View {
         .onKeyPress(.leftArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: -5) } }
         .onKeyPress(.rightArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: 5) } }
         .onKeyPress(.escape) {
-            guard !isRenaming, onBack != nil else { return .ignored }
+            guard !isRenaming, editingSegment == nil, onBack != nil else { return .ignored }
             goBack()
             return .handled
         }
@@ -177,7 +180,7 @@ struct TranscriptRecordView: View {
     }
 
     private func playbackKey(_ action: (URL) -> Void) -> KeyPress.Result {
-        guard !isRenaming, let url = audioURL else { return .ignored }
+        guard !isRenaming, editingSegment == nil, let url = audioURL else { return .ignored }
         action(url)
         return .handled
     }
@@ -421,6 +424,17 @@ struct TranscriptRecordView: View {
                                editContext: document.canEdit
                                    ? SegmentEditContext(document: document, roster: roster)
                                    : nil,
+                               // Редактор правит текст ДО словаря: словарь — линза поверх.
+                               sourceTexts: settings.applyDictionaryToFiles
+                                   ? document.source(detail: model.detail)?.segments.map(\.text)
+                                   : nil,
+                               onEditingChanged: { index, editing in
+                                   if editing {
+                                       editingSegment = index
+                                   } else if editingSegment == index {
+                                       editingSegment = nil
+                                   }
+                               },
                                onSeek: { seek(to: $0) })
     }
 

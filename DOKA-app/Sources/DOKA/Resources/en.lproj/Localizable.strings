@@ -380,6 +380,11 @@
 "transcribe.segment.revertSpeaker" = "Restore original speaker";
 "transcribe.segment.speakerChanged" = "Original speaker: %@";
 "transcribe.segment.copy" = "Copy segment";
+"transcribe.segment.edit" = "Edit text";
+"transcribe.segment.editHint" = "Return to save, Esc to cancel";
+"transcribe.segment.revertText" = "Restore original text";
+"transcribe.segment.edited" = "Edited";
+"transcribe.segment.original" = "Original: %@";
 "transcribe.edits.save" = "Save";
 "transcribe.edits.resetAll" = "Reset edits";
 "transcribe.edits.resetAll.title" = "Reset all edits?";

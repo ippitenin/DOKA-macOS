@@ -26,12 +26,19 @@ final class TranscriptDocument: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     /// Счётчик версий тела — ключ кэша вывода.
     private var revision = 0
-    /// Мемо вывода. Не @Published: пишется во время вычисления body вью.
+    /// Мемо вывода и результата до словаря. Не @Published: пишутся во время
+    /// вычисления body вью.
     private var cachedOutput: (key: OutputKey, result: TranscriptResult)?
+    private var cachedSource: (key: SourceKey, result: TranscriptResult)?
 
     private struct OutputKey: Equatable {
         let detail: TimestampDetail
         let dictionary: [ReplacementRule]?
+        let revision: Int
+    }
+
+    private struct SourceKey: Equatable {
+        let detail: TimestampDetail
         let revision: Int
     }
 
@@ -96,10 +103,19 @@ final class TranscriptDocument: ObservableObject {
         mutateEdits { $0.unmerge(id) }
     }
 
+    /// Новый текст реплики (до словаря). Пустой не сохраняется.
+    func setSegmentText(_ text: String, at target: EditTarget) {
+        mutateEdits(validating: target) { $0.setText(text, at: target) }
+    }
+
+    func revertSegmentText(at target: EditTarget) {
+        mutateEdits { $0.revertText(at: target) }
+    }
+
     /// «Назначить реплику»: `speaker == nil` — новый спикер со свободным id.
     func reassignSegment(at target: EditTarget, to speaker: String?) {
         guard let rawSegments = body?.transcript.rawSegments else { return }
-        mutateEdits { edits in
+        mutateEdits(validating: target) { edits in
             let id = speaker ?? SpeakerName.nextID(existing: edits.knownSpeakerIDs(rawSegments: rawSegments))
             edits.setSpeaker(id, at: target)
         }
@@ -118,9 +134,13 @@ final class TranscriptDocument: ObservableObject {
     /// Единая точка правок: изменение → счётчик → вывод → сохранение.
     /// Сохраняется по завершённому действию (Return, выбор в меню), а не на
     /// каждое нажатие клавиши. `saveBody` обновляет и текст для поиска, и сводку.
-    private func mutateEdits(_ change: (inout TranscriptEdits) -> Void) {
+    /// Адрес `validating` проверяется на свежесть: устаревший (реплику успели
+    /// поправить иначе) отвергается, а не портит правки.
+    private func mutateEdits(validating target: EditTarget? = nil,
+                             _ change: (inout TranscriptEdits) -> Void) {
         guard var body, canEdit, store.record(recordID) != nil else { return }
         let before = body.edits ?? TranscriptEdits()
+        if let target, !before.isValid(target) { return }
         var edits = before
         change(&edits)
         guard !edits.hasSameContent(as: before) else { return }
@@ -134,20 +154,31 @@ final class TranscriptDocument: ObservableObject {
         body = newBody
         revision += 1
         cachedOutput = nil
+        cachedSource = nil
     }
 
     /// То, что пользователь видит и забирает: нарезка под детализацию плюс
     /// словарь для файлов, если он включён (выходной слой, см.
     /// `TranscriptOutput`). Сырой результат при этом не меняется.
     func output(detail: TimestampDetail) -> TranscriptResult? {
-        guard let body else { return nil }
         let settings = SettingsStore.shared
         let rules = settings.applyDictionaryToFiles ? settings.replacements : nil
         let key = OutputKey(detail: detail, dictionary: rules, revision: revision)
         if let cachedOutput, cachedOutput.key == key { return cachedOutput.result }
-        let raw = body.makeResult(detail: detail)
-        let result = rules.map { TranscriptOutput.applyingDictionary(raw, rules: $0) } ?? raw
+        guard let source = source(detail: detail) else { return nil }
+        let result = rules.map { TranscriptOutput.applyingDictionary(source, rules: $0) } ?? source
         cachedOutput = (key, result)
+        return result
+    }
+
+    /// Результат с правками, но ДО словаря — текст для редактора реплики:
+    /// пользователь правит исходник, а словарь остаётся линзой поверх.
+    func source(detail: TimestampDetail) -> TranscriptResult? {
+        guard let body else { return nil }
+        let key = SourceKey(detail: detail, revision: revision)
+        if let cachedSource, cachedSource.key == key { return cachedSource.result }
+        let result = body.makeResult(detail: detail)
+        cachedSource = (key, result)
         return result
     }
 

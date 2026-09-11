@@ -28,7 +28,8 @@ enum TranscriptOutput {
             words: result.words,
             llmOutput: result.llmOutput,
             edits: result.edits,
-            segmentTargets: result.segmentTargets
+            segmentTargets: result.segmentTargets,
+            editedFullText: result.editedFullText.map(apply)
         )
     }
 

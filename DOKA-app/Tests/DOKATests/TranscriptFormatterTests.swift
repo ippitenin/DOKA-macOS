@@ -22,6 +22,13 @@ final class TranscriptFormatterTests: XCTestCase {
         XCTAssertEqual(TranscriptFormatter.plainText(r), "полный текст")
     }
 
+    /// С правками текста «Скопировать» и .txt отдают правленый текст.
+    func testPlainTextPrefersEditedText() {
+        var r = result([segment("исходный", 0, 1)], fullText: "исходный")
+        r.editedFullText = " правленый "
+        XCTAssertEqual(TranscriptFormatter.plainText(r), "правленый")
+    }
+
     func testPlainTextFallsBackToSegments() {
         let r = result([segment("первый", 0, 1), segment("второй", 1, 2)])
         XCTAssertEqual(TranscriptFormatter.plainText(r), "первый второй")

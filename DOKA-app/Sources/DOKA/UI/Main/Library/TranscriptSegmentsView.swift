@@ -58,6 +58,8 @@ struct SegmentEditContext: Equatable {
 /// Сегменты расшифровки: тайм-код (с архивом звука — кнопка перемотки),
 /// спикер, текст; звучащий сегмент подсвечен. В детали библиотеки лента
 /// ленивая и следует за воспроизведением, в карточке страницы — обычная.
+/// С правкой: двойной клик по тексту — инлайн-редактор, меню «⋯» и
+/// контекстное меню реплики, бэйдж спикера — поповер спикера.
 struct TranscriptSegmentsView: View {
     let result: TranscriptResult
     let recordID: UUID
@@ -70,6 +72,11 @@ struct TranscriptSegmentsView: View {
     @ObservedObject var follower: SegmentFollower
     /// nil — правка недоступна (тело не загружено, библиотека заморожена).
     let editContext: SegmentEditContext?
+    /// Тексты сегментов ДО словаря (параллельно `result.segments`) — с ними
+    /// открывается редактор; nil — совпадают с показанными.
+    let sourceTexts: [String]?
+    /// Редактор реплики открыт или закрыт: (индекс строки, открыт ли).
+    let onEditingChanged: (Int, Bool) -> Void
     let onSeek: (Double) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -116,9 +123,11 @@ struct TranscriptSegmentsView: View {
     private func rows(colors: [String: Int], active: Int?) -> some View {
         // Адреса есть только у результата, собранного через правки.
         let targets = result.canEditSegments ? result.segmentTargets : nil
+        let sources = sourceTexts?.count == result.segments.count ? sourceTexts : nil
         return ForEach(Array(result.segments.enumerated()), id: \.offset) { index, segment in
             let target = targets?[index]
             SegmentRow(segment: segment,
+                       editableText: sources?[index] ?? segment.text,
                        isActive: index == active,
                        colorIndex: segment.speaker.flatMap { colors[$0] },
                        speakerLabel: segment.speaker.map(result.speakerLabel),
@@ -128,6 +137,7 @@ struct TranscriptSegmentsView: View {
                        canSeek: canSeek,
                        edit: target == nil ? nil : editContext,
                        target: target,
+                       onEditingChanged: { onEditingChanged(index, $0) },
                        onSeek: { onSeek(segment.start) })
                 .equatable()
                 .id(SegmentAnchor(index: index))
@@ -150,9 +160,12 @@ struct TranscriptSegmentsView: View {
 }
 
 /// Строка сегмента. Equatable: при смене активного сегмента перерисовываются
-/// две строки, а не весь список (замыкание в сравнении не участвует).
+/// две строки, а не весь список (замыкания в сравнении не участвуют).
+/// Состояние редактора — своё, у строки: ввод не перерисовывает список.
 private struct SegmentRow: View, Equatable {
     let segment: TranscriptSegment
+    /// Текст до словаря — с ним открывается редактор.
+    let editableText: String
     let isActive: Bool
     let colorIndex: Int?
     /// Имя спикера с учётом правок (nil — у сегмента нет спикера).
@@ -163,16 +176,27 @@ private struct SegmentRow: View, Equatable {
     /// nil — правка недоступна.
     let edit: SegmentEditContext?
     let target: EditTarget?
+    let onEditingChanged: (Bool) -> Void
     let onSeek: () -> Void
 
     @State private var isHovering = false
+    @State private var isEditing = false
+    @State private var draft = ""
+    /// Адрес и текст на момент открытия редактора: сохраняется по ним, даже
+    /// если строку за это время перенарезали (адрес от нарезки не зависит).
+    @State private var editingTarget: EditTarget?
+    @State private var editingOriginal = ""
+    @FocusState private var editorFocused: Bool
 
     static func == (lhs: SegmentRow, rhs: SegmentRow) -> Bool {
-        lhs.segment == rhs.segment && lhs.isActive == rhs.isActive
+        lhs.segment == rhs.segment && lhs.editableText == rhs.editableText
+            && lhs.isActive == rhs.isActive
             && lhs.colorIndex == rhs.colorIndex && lhs.speakerLabel == rhs.speakerLabel
             && lhs.originalSpeakerLabel == rhs.originalSpeakerLabel
             && lhs.canSeek == rhs.canSeek && lhs.edit == rhs.edit && lhs.target == rhs.target
     }
+
+    private var canEdit: Bool { edit != nil && target != nil }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -187,11 +211,14 @@ private struct SegmentRow: View, Equatable {
                                  document: edit?.document,
                                  help: originalSpeakerLabel.map { L("transcribe.segment.speakerChanged", $0) })
                 }
-                Text(segment.text)
-                    .textSelection(.enabled)
+                if isEditing {
+                    editor
+                } else {
+                    text
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if let edit, let target {
+            if let edit, let target, !isEditing {
                 // Место под меню держится всегда — строка не прыгает под курсором.
                 actionsMenu(edit, target)
                     .opacity(isHovering ? 1 : 0)
@@ -213,11 +240,123 @@ private struct SegmentRow: View, Equatable {
         }
         .onHover { isHovering = $0 }
         .contextMenu {
-            if let edit, let target {
+            if let edit, let target, !isEditing {
                 actionItems(edit, target)
             }
         }
+        // Строку перенарезали (смена детализации) или она ушла из ленивой
+        // ленты — открытая правка сохраняется, как при потере фокуса.
+        .onChange(of: target) { _, _ in
+            if isEditing { finishEditing(commit: true) }
+        }
+        .onDisappear {
+            if isEditing { finishEditing(commit: true) }
+        }
     }
+
+    // MARK: - Текст и редактор
+
+    @ViewBuilder
+    private var text: some View {
+        if canEdit {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(segment.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let target, target.isTextEdited {
+                    Image(systemName: "pencil")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .help(L("transcribe.segment.original", target.originalText))
+                        .accessibilityLabel(L("transcribe.segment.edited"))
+                }
+            }
+            // Двойной клик — правка. `.textSelection` здесь нельзя: он съедает
+            // двойной клик (выделение слова). Копировать — «Скопировать
+            // реплику» или внутри редактора.
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { startEditing() }
+        } else {
+            Text(segment.text)
+                .textSelection(.enabled)
+        }
+    }
+
+    /// Инлайн-редактор: Return — сохранить (Option+Return — перевод строки,
+    /// при сохранении он станет пробелом), Esc — отмена, клик мимо — сохранить.
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...12)
+                .focused($editorFocused)
+                .onSubmit(submit)
+                .onExitCommand { finishEditing(commit: false) }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(DS.accent.opacity(0.6), lineWidth: 1)
+                )
+            HStack(spacing: 8) {
+                // Кнопки не забирают фокус у поля (при полном доступе с
+                // клавиатуры): потеря фокуса сохраняет, и «Отмена» стала бы «Сохранить».
+                Button(L("transcribe.edits.save"), action: submit)
+                    .dsProminentButton()
+                    .controlSize(.small)
+                    .focusable(false)
+                    .disabled(!canSaveDraft)
+                Button(L("common.cancel")) { finishEditing(commit: false) }
+                    .dsGlassButton()
+                    .controlSize(.small)
+                    .focusable(false)
+                Text(L("transcribe.segment.editHint"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        // Поле только что вставлено в иерархию — фокус со следующего цикла.
+        .onAppear { DispatchQueue.main.async { editorFocused = true } }
+        .onChange(of: editorFocused) { _, focused in
+            if !focused { finishEditing(commit: true) }
+        }
+    }
+
+    /// Пустой текст запрещён: реплика исчезла бы, и вернуть её было бы нечем.
+    private var canSaveDraft: Bool {
+        let normalized = TranscriptEdits.normalizeText(draft)
+        return !normalized.isEmpty && normalized != TranscriptEdits.normalizeText(editingOriginal)
+    }
+
+    private func startEditing() {
+        guard canEdit, !isEditing, let target else { return }
+        draft = editableText
+        editingOriginal = editableText
+        editingTarget = target
+        isEditing = true
+        onEditingChanged(true)
+    }
+
+    /// Return: пустое не сохраняется и редактор не закрывает.
+    private func submit() {
+        guard !TranscriptEdits.normalizeText(draft).isEmpty else { return }
+        finishEditing(commit: true)
+    }
+
+    /// Единый выход из редактора; повторный вызов (фокус уходит вслед за
+    /// Esc или сохранением) ничего не делает.
+    private func finishEditing(commit: Bool) {
+        guard isEditing else { return }
+        isEditing = false
+        onEditingChanged(false)
+        guard commit, canSaveDraft, let target = editingTarget, let document = edit?.document else { return }
+        document.setSegmentText(draft, at: target)
+    }
+
+    // MARK: - Действия
 
     /// Меню «⋯» реплики — SF Symbol-лейбл, как у «Сохранить как…»: кастомный
     /// лейбл SwiftUI `Menu` на macOS ломает.
@@ -238,6 +377,7 @@ private struct SegmentRow: View, Equatable {
     /// Пункты действий — общие у меню «⋯» и контекстного меню строки.
     @ViewBuilder
     private func actionItems(_ edit: SegmentEditContext, _ target: EditTarget) -> some View {
+        Button(L("transcribe.segment.edit")) { startEditing() }
         if !edit.roster.isEmpty {
             Menu(L("transcribe.segment.assign")) {
                 ForEach(edit.roster.filter { $0.id != segment.speaker }) { info in
@@ -251,8 +391,13 @@ private struct SegmentRow: View, Equatable {
                     edit.document.revertSegmentSpeaker(at: target)
                 }
             }
-            Divider()
         }
+        if target.isTextEdited {
+            Button(L("transcribe.segment.revertText")) {
+                edit.document.revertSegmentText(at: target)
+            }
+        }
+        Divider()
         Button(L("transcribe.segment.copy")) { ClipboardManager.setString(segment.text) }
     }
 

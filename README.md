@@ -59,6 +59,11 @@ written in Russian.
   timestamp to jump there, the segment being played is highlighted and followed; space,
   ←/→ and playback speed. Running jobs show their progress; records are kept forever
   unless you choose a retention period.
+- **Speakers and text editing** — rename speakers ("Speaker 1" → "Anna"), merge two
+  speakers into one and split them back, reassign a line (or part of a long one) to
+  another speaker, fix the text of a line with a double click. Edits survive any timestamp
+  detail level, reach copying and every export format, and can be undone line by line or
+  all at once; the original recognition result is never overwritten.
 - **AI analysis** — meeting minutes, a summary, action items or your own prompt. The result
   renders as formatted text with headings, lists and tables; copying puts both plain and
   rich text on the clipboard, so tables paste as tables into Telegram, Notes or Word.

@@ -18,6 +18,8 @@ struct TranscriptEdits: Codable, Equatable {
     /// id → id, в который он влит. Цепочки транзитивны; циклов нет по
     /// построению — `merge` пишет только канонические id.
     var speakerMerges: [String: String] = [:]
+    /// Правки текста: НЕпересекающиеся, по возрастанию якоря.
+    var textEdits: [TextEdit] = []
     /// Переназначенные реплики: НЕпересекающиеся, по возрастанию якоря.
     /// Спикер — сырой id цели: после «Отделить» переназначение на влитого
     /// снова показывает его самого.
@@ -29,17 +31,21 @@ struct TranscriptEdits: Codable, Equatable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case speakerNames, speakerMerges, speakerOverrides, revision
+        case speakerNames, speakerMerges, textEdits, speakerOverrides, revision
     }
 
     /// Каждое поле декодируется независимо, массивы — поэлементно: битая
     /// правка не должна стоить остальных (и тем более расшифровки — см.
-    /// `TranscriptBody`). Пересекающиеся якоря отбрасываются: по построению
-    /// их не бывает, а с ними и материализация, и валидация адресов слепнут.
+    /// `TranscriptBody`). Пересекающиеся якоря и пустые тексты отбрасываются:
+    /// по построению их не бывает, а с ними и материализация, и валидация
+    /// адресов слепнут.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         speakerNames = (try? c.decodeIfPresent([String: String].self, forKey: .speakerNames)) ?? [:]
         speakerMerges = (try? c.decodeIfPresent([String: String].self, forKey: .speakerMerges)) ?? [:]
+        let texts = (try? c.decodeIfPresent([Lossy<TextEdit>].self, forKey: .textEdits))?
+            .compactMap(\.value) ?? []
+        textEdits = Self.nonOverlapping(texts.filter { !Self.tokens($0.text).isEmpty }, anchor: \.anchor)
         let overrides = (try? c.decodeIfPresent([Lossy<SpeakerOverride>].self, forKey: .speakerOverrides))?
             .compactMap(\.value) ?? []
         speakerOverrides = Self.nonOverlapping(overrides, anchor: \.anchor)
@@ -48,13 +54,13 @@ struct TranscriptEdits: Codable, Equatable {
 
     /// Правок нет (счётчик не в счёт: после сброса он остаётся).
     var isEmpty: Bool {
-        speakerNames.isEmpty && speakerMerges.isEmpty && speakerOverrides.isEmpty
+        speakerNames.isEmpty && speakerMerges.isEmpty && !hasContentEdits
     }
 
     /// Правки содержимого реплик (не имён) — их не перенести на другую
     /// расшифровку того же файла.
     var hasContentEdits: Bool {
-        !speakerOverrides.isEmpty
+        !textEdits.isEmpty || !speakerOverrides.isEmpty
     }
 
     /// Совпадают ли правки по содержанию, без учёта счётчика.
@@ -138,6 +144,13 @@ enum EditAnchor: Hashable, Codable {
     }
 }
 
+/// Новый текст для диапазона исходных слов (или бессловного сегмента).
+struct TextEdit: Codable, Equatable {
+    let anchor: EditAnchor
+    /// Нормализованный текст: без краевых пробелов, пробельные схлопнуты.
+    let text: String
+}
+
 /// Переназначение реплики (или её части) другому спикеру.
 struct SpeakerOverride: Codable, Equatable {
     let anchor: EditAnchor
@@ -146,31 +159,52 @@ struct SpeakerOverride: Codable, Equatable {
 
 /// Адрес отображаемого сегмента в координатах исходного результата — одинаков
 /// на любой детализации. Вью передаёт в правку его, а не индекс строки: адрес
-/// переживает перенарезку между открытием меню и выбором пункта.
+/// переживает перенарезку между открытием редактора и сохранением.
 struct EditTarget: Equatable {
     /// Исходный сегмент, из которого взят отображаемый.
     let rawIndex: Int
+    /// Слова сегмента, расширенные до ЦЕЛЫХ задетых правок текста: у токенов
+    /// правки нет соответствия исходным словам, поэтому правка неделима.
     let anchor: EditAnchor
     /// Сырой id спикера исходного сегмента.
     let originalSpeaker: String?
     let isSpeakerOverridden: Bool
+    /// Задетые правки текста — для валидации адреса и склейки.
+    var absorbed: [TextEdit] = []
+    /// Токены задетой правки ДО начала сегмента…
+    var prefix = ""
+    /// …и ПОСЛЕ его конца: новая правка вбирает их, чтобы не потерять.
+    var suffix = ""
+    /// Исходный текст якоря: тултип «Исходный текст» и распознавание возврата.
+    var originalText = ""
+
+    var isTextEdited: Bool { !absorbed.isEmpty }
 }
 
-/// Слово материализованного результата: исходное (индекс в `words`).
+/// Слово материализованного результата: исходное (индекс в `words`) или
+/// токен правки текста (индекс правки в `textEdits`, номер токена).
 enum WordOrigin: Equatable {
     case original(Int)
+    case edit(Int, token: Int)
 }
 
-/// «Эффективные исходные» куски — вход сплиттера: исходные сегменты,
-/// разрезанные по сменам спикера после переназначений.
+/// «Эффективные исходные» куски — вход сплиттера: исходные сегменты с
+/// применёнными правками текста, разрезанные по сменам спикера.
 struct MaterializedTranscript {
     let segments: [TranscriptSegment]
-    /// Слова каждого куска.
+    /// Слова каждого куска, включая синтетические токены правок.
     let buckets: [[TranscriptWord]]
     /// Происхождение слов куска — параллельно `buckets`.
     let origins: [[WordOrigin]]
     /// Кусок → исходный сегмент.
     let rawIndex: [Int]
+    /// Слова каждого исходного сегмента (`assignWordRanges`).
+    let rawWordRanges: [Range<Int>]
+    /// Токены применённых правок текста по индексу правки.
+    let editTokens: [Int: [String]]
+    /// Полный текст с правками; nil — текст не правили (берётся `fullText`
+    /// сервера). От детализации не зависит.
+    let editedFullText: String?
 }
 
 // MARK: - Спикеры: имена и слияние
@@ -183,7 +217,7 @@ extension TranscriptEdits {
     /// (включая переводы строк) схлопнуты в один пробел. Длину не режет —
     /// поповер показывает ошибку, а `rename` обрезает на всякий случай.
     static func normalizeName(_ name: String) -> String {
-        name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        normalizeText(name)
     }
 
     /// Канонический id: проход по цепочке слияний. Лимит шагов — защита от
@@ -269,7 +303,9 @@ extension TranscriptEdits {
 extension TranscriptEdits {
     /// Назначить отображаемый сегмент спикеру. Диапазон цели вырезается из
     /// прежних переназначений (они делятся), затем вставляется новое — если
-    /// спикер не совпал с исходным: совпадение и есть возврат.
+    /// спикер не совпал с исходным: совпадение и есть возврат. Якорь цели уже
+    /// расширен до целых правок текста, поэтому правка никогда не пересекает
+    /// границу спикеров.
     mutating func setSpeaker(_ speaker: String, at target: EditTarget) {
         cutSpeakerOverrides(target.anchor)
         guard canonical(speaker) != target.originalSpeaker.map(canonical) else { return }
@@ -305,16 +341,116 @@ extension TranscriptEdits {
     }
 }
 
+// MARK: - Правка текста
+
+extension TranscriptEdits {
+    /// Текст, как его сохранят: без краевых пробелов, пробельные (включая
+    /// переводы строк из Option+Return) схлопнуты в один пробел.
+    static func normalizeText(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// Токены текста по тому же правилу, что `joinWords`: одиночная
+    /// пунктуация приклеивается к предыдущему слову. Поэтому сплиттер видит
+    /// правленый текст так же, как исходные слова (границы предложений).
+    static func tokens(_ text: String) -> [String] {
+        var tokens: [String] = []
+        for part in text.split(whereSeparator: \.isWhitespace) {
+            let token = String(part)
+            if !tokens.isEmpty, token.allSatisfy({ $0.isPunctuation || $0.isSymbol }) {
+                tokens[tokens.count - 1] += token
+            } else {
+                tokens.append(token)
+            }
+        }
+        return tokens
+    }
+
+    /// Синтетические тайминги токенов правки. При том же числе токенов —
+    /// тайминги исходных слов 1:1 (исправленная опечатка сохраняет точные
+    /// тайм-коды), иначе отрезок `[first.start, last.end]` делится
+    /// пропорционально длине токена + 1: монотонно и строго внутри отрезка.
+    static func synthesizeWords(_ tokens: [String],
+                                replacing original: ArraySlice<TranscriptWord>) -> [TranscriptWord] {
+        guard let first = original.first, let last = original.last, !tokens.isEmpty else { return [] }
+        if tokens.count == original.count {
+            return zip(tokens, original).map { TranscriptWord(text: $0, start: $1.start, end: $1.end) }
+        }
+        let start = first.start
+        let span = max(last.end, start) - start
+        let weights = tokens.map { Double($0.count + 1) }
+        let total = weights.reduce(0, +)
+        var words: [TranscriptWord] = []
+        var accumulated = 0.0
+        for (index, token) in tokens.enumerated() {
+            let wordStart = start + span * accumulated / total
+            accumulated += weights[index]
+            let wordEnd = index == tokens.count - 1 ? start + span : start + span * accumulated / total
+            words.append(TranscriptWord(text: token, start: wordStart, end: wordEnd))
+        }
+        return words
+    }
+
+    /// Адрес ещё соответствует правкам: все задетые правки на месте без
+    /// изменений и нет других правок текста в его диапазоне. Устаревший адрес
+    /// (открытый редактор, пока реплику правили иначе) отвергается — данные
+    /// не портятся.
+    func isValid(_ target: EditTarget) -> Bool {
+        for edit in target.absorbed where !textEdits.contains(edit) { return false }
+        for edit in textEdits where edit.anchor.intersects(target.anchor) && !target.absorbed.contains(edit) {
+            return false
+        }
+        return true
+    }
+
+    /// Новый текст отображаемого сегмента. Задетые правки заменяются одной на
+    /// весь якорь; их токены за границами сегмента сохраняются
+    /// (`prefix`/`suffix`). Текст, совпавший с исходным, — это возврат.
+    /// Пустой текст запрещён: реплика исчезла бы, и вернуть её было бы нечем.
+    mutating func setText(_ text: String, at target: EditTarget) {
+        let body = Self.normalizeText(text)
+        guard !body.isEmpty else { return }
+        let full = Self.normalizeText([target.prefix, body, target.suffix].joined(separator: " "))
+        textEdits.removeAll { $0.anchor.intersects(target.anchor) }
+        guard full != Self.normalizeText(target.originalText) else { return }
+        textEdits.append(TextEdit(anchor: target.anchor, text: full))
+        textEdits.sort { $0.anchor.sortKey < $1.anchor.sortKey }
+    }
+
+    /// «Вернуть исходный текст» — задетые правки удаляются целиком. Если
+    /// правка видна и в соседней строке (правили на «Средней», смотрим на
+    /// «Подробной»), вернётся и соседняя часть: у токенов правки нет
+    /// соответствия исходным словам.
+    mutating func revertText(at target: EditTarget) {
+        textEdits.removeAll { $0.anchor.intersects(target.anchor) }
+    }
+}
+
 // MARK: - Материализация
 
 extension TranscriptEdits {
     /// Исходники с применёнными правками — вход сплиттера. Слова раздаются
-    /// исходным сегментам тем же `assignWordRanges`, что и без правок; каждый
-    /// сегмент режется на куски по сменам спикера. Без переназначений и
-    /// слияний результат побитно равен исходникам — регресс-гарантия.
+    /// исходным сегментам тем же `assignWordRanges`, что и без правок; правки
+    /// текста подставляют свои токены вместо слов якоря; каждый сегмент
+    /// режется на куски по сменам спикера. Без правок результат побитно равен
+    /// исходникам — регресс-гарантия. O(слов).
     func materialize(rawSegments: [TranscriptSegment],
                      words: [TranscriptWord]) -> MaterializedTranscript {
         let ranges = TranscriptSegmentSplitter.assignWordRanges(words, to: rawSegments)
+
+        var wordEdits: [Int: Int] = [:]       // начало якоря → индекс правки
+        var segmentEdits: [Int: Int] = [:]
+        var editTokens: [Int: [String]] = [:]
+        for (index, edit) in textEdits.enumerated() {
+            let tokens = Self.tokens(edit.text)
+            guard !tokens.isEmpty else { continue }
+            switch edit.anchor {
+            case .words(let range): wordEdits[range.lowerBound] = index
+            case .segment(let segment): segmentEdits[segment] = index
+            }
+            editTokens[index] = tokens
+        }
+
         var wordOverrides: [(range: Range<Int>, speaker: String)] = []
         var segmentOverrides: [Int: String] = [:]
         for override in speakerOverrides {
@@ -337,76 +473,162 @@ extension TranscriptEdits {
         var buckets: [[TranscriptWord]] = []
         var origins: [[WordOrigin]] = []
         var rawIndex: [Int] = []
+        var textChanged = false
 
         for (r, raw) in rawSegments.enumerated() {
             let range = ranges[r]
             guard !range.isEmpty else {
-                // Сегмент без слов — целиком, со своим переназначением.
+                // Сегмент без слов — целиком, со своими правками.
+                let edit = segmentEdits[r].map { textEdits[$0] }
+                if edit != nil { textChanged = true }
                 segments.append(TranscriptSegment(speaker: (segmentOverrides[r] ?? raw.speaker).map(canonical),
-                                                  start: raw.start, end: raw.end, text: raw.text))
+                                                  start: raw.start, end: raw.end,
+                                                  text: edit?.text ?? raw.text))
                 buckets.append([])
                 origins.append([])
                 rawIndex.append(r)
                 continue
             }
 
-            let speakers = range.map { (overriddenSpeaker(at: $0) ?? raw.speaker).map(canonical) }
-            var runStart = 0
+            // Эффективные слова сегмента: исходные и токены правок.
+            var effective: [TranscriptWord] = []
+            var wordOrigins: [WordOrigin] = []
+            var speakers: [String?] = []
+            var usedEdits: [Int] = []
+            var i = range.lowerBound
+            while i < range.upperBound {
+                if let k = wordEdits[i], case .words(let editRange) = textEdits[k].anchor,
+                   let tokens = editTokens[k] {
+                    if editRange.upperBound <= range.upperBound {
+                        // Спикер токенов — спикер первого исходного слова правки.
+                        let speaker = (overriddenSpeaker(at: i) ?? raw.speaker).map(canonical)
+                        effective += Self.synthesizeWords(tokens, replacing: words[editRange])
+                        wordOrigins += tokens.indices.map { .edit(k, token: $0) }
+                        speakers += Array(repeating: speaker, count: tokens.count)
+                        usedEdits.append(k)
+                        i = editRange.upperBound
+                        continue
+                    }
+                    NSLog("DOKA: правка текста выходит за исходный сегмент \(r) — пропущена")
+                }
+                effective.append(words[i])
+                wordOrigins.append(.original(i))
+                speakers.append((overriddenSpeaker(at: i) ?? raw.speaker).map(canonical))
+                i += 1
+            }
+            if !usedEdits.isEmpty { textChanged = true }
+
             var runs: [Range<Int>] = []
+            var runStart = 0
             for offset in 1...speakers.count where offset == speakers.count || speakers[offset] != speakers[runStart] {
                 runs.append(runStart..<offset)
                 runStart = offset
             }
 
             for run in runs {
-                let runWords = Array(words[(range.lowerBound + run.lowerBound)..<(range.lowerBound + run.upperBound)])
+                let runWords = Array(effective[run])
+                let runOrigins = Array(wordOrigins[run])
                 let segment: TranscriptSegment
                 if runs.count == 1 {
-                    // Один кусок: границы и текст сервера (пунктуация сохраняется).
+                    // Один кусок: границы сервера. Текст: (a) без правок — серверный
+                    // (пунктуация сохраняется); (b) правка на все слова — её текст;
+                    // (c) иначе — из эффективных слов.
+                    let text: String
+                    if usedEdits.isEmpty {
+                        text = raw.text
+                    } else if usedEdits.count == 1, textEdits[usedEdits[0]].anchor == .words(range) {
+                        text = textEdits[usedEdits[0]].text
+                    } else {
+                        text = TranscriptSegmentSplitter.joinWords(runWords)
+                    }
                     segment = TranscriptSegment(speaker: speakers[run.lowerBound],
-                                                start: raw.start, end: raw.end, text: raw.text)
+                                                start: raw.start, end: raw.end, text: text)
                 } else {
-                    // Смена спикера внутри сегмента: границы и текст — из слов.
+                    // Смена спикера внутри сегмента: границы из слов; текст —
+                    // правки, если кусок ровно её токены, иначе из слов.
                     segment = TranscriptSegment(speaker: speakers[run.lowerBound],
                                                 start: runWords[0].start,
                                                 end: runWords[runWords.count - 1].end,
-                                                text: TranscriptSegmentSplitter.joinWords(runWords))
+                                                text: Self.wholeEditText(runOrigins, textEdits: textEdits,
+                                                                         editTokens: editTokens)
+                                                    ?? TranscriptSegmentSplitter.joinWords(runWords))
                 }
                 segments.append(segment)
                 buckets.append(runWords)
-                origins.append(run.map { .original(range.lowerBound + $0) })
+                origins.append(runOrigins)
                 rawIndex.append(r)
             }
         }
-        return MaterializedTranscript(segments: segments, buckets: buckets,
-                                      origins: origins, rawIndex: rawIndex)
+        return MaterializedTranscript(segments: segments, buckets: buckets, origins: origins,
+                                      rawIndex: rawIndex, rawWordRanges: ranges, editTokens: editTokens,
+                                      editedFullText: textChanged
+                                          ? segments.map(\.text).joined(separator: " ")
+                                          : nil)
     }
 
-    /// Адреса отображаемых сегментов: исходный сегмент и диапазон исходных слов.
+    /// Текст правки, если слова куска — ровно все её токены.
+    private static func wholeEditText(_ origins: [WordOrigin], textEdits: [TextEdit],
+                                      editTokens: [Int: [String]]) -> String? {
+        guard case .edit(let k, 0)? = origins.first, let tokens = editTokens[k],
+              origins.count == tokens.count,
+              case .edit(k, tokens.count - 1)? = origins.last else { return nil }
+        return textEdits[k].text
+    }
+
+    /// Адреса отображаемых сегментов: исходный сегмент, диапазон исходных
+    /// слов, расширенный до целых задетых правок, и сами эти правки.
     func targets(for parts: [TranscriptSegmentSplitter.SplitPart],
                  in materialized: MaterializedTranscript,
-                 rawSegments: [TranscriptSegment]) -> [EditTarget] {
+                 rawSegments: [TranscriptSegment],
+                 words: [TranscriptWord]) -> [EditTarget] {
         parts.map { part in
             let r = materialized.rawIndex[part.piece]
-            let original = rawSegments[r].speaker
-            let anchor: EditAnchor
+            let raw = rawSegments[r]
             let pieceOrigins = materialized.origins[part.piece]
-            if pieceOrigins.isEmpty || part.words.isEmpty {
-                anchor = .segment(r)
-            } else {
-                var lower = Int.max
-                var upper = Int.min
-                for origin in pieceOrigins[part.words] {
-                    switch origin {
-                    case .original(let index):
-                        lower = min(lower, index)
-                        upper = max(upper, index + 1)
+            guard !pieceOrigins.isEmpty, !part.words.isEmpty else {
+                let anchor = EditAnchor.segment(r)
+                return EditTarget(rawIndex: r, anchor: anchor, originalSpeaker: raw.speaker,
+                                  isSpeakerOverridden: speakerOverrides.contains { $0.anchor == anchor },
+                                  absorbed: textEdits.filter { $0.anchor == anchor },
+                                  originalText: raw.text)
+            }
+
+            let slice = pieceOrigins[part.words]
+            var lower = Int.max
+            var upper = Int.min
+            var absorbed: [Int] = []
+            for origin in slice {
+                switch origin {
+                case .original(let index):
+                    lower = min(lower, index)
+                    upper = max(upper, index + 1)
+                case .edit(let k, _):
+                    if absorbed.last != k { absorbed.append(k) }
+                    if case .words(let range) = textEdits[k].anchor {
+                        lower = min(lower, range.lowerBound)
+                        upper = max(upper, range.upperBound)
                     }
                 }
-                anchor = .words(lower..<upper)
             }
-            return EditTarget(rawIndex: r, anchor: anchor, originalSpeaker: original,
-                              isSpeakerOverridden: speakerOverrides.contains { $0.anchor.intersects(anchor) })
+            var prefix = ""
+            var suffix = ""
+            if case .edit(let k, let token)? = slice.first, token > 0, let tokens = materialized.editTokens[k] {
+                prefix = tokens[..<token].joined(separator: " ")
+            }
+            if case .edit(let k, let token)? = slice.last, let tokens = materialized.editTokens[k],
+               token < tokens.count - 1 {
+                suffix = tokens[(token + 1)...].joined(separator: " ")
+            }
+            let range = lower..<upper
+            let anchor = EditAnchor.words(range)
+            // Весь сегмент — серверный текст с пунктуацией; часть — из слов.
+            let originalText = range == materialized.rawWordRanges[r]
+                ? raw.text
+                : TranscriptSegmentSplitter.joinWords(Array(words[range]))
+            return EditTarget(rawIndex: r, anchor: anchor, originalSpeaker: raw.speaker,
+                              isSpeakerOverridden: speakerOverrides.contains { $0.anchor.intersects(anchor) },
+                              absorbed: absorbed.map { textEdits[$0] },
+                              prefix: prefix, suffix: suffix, originalText: originalText)
         }
     }
 }
@@ -450,7 +672,8 @@ extension TranscriptResult {
                                 segments: parts.map(\.segment), rawSegments: rawSegments, words: words,
                                 llmOutput: llmOutput, edits: edits,
                                 segmentTargets: edits.targets(for: parts, in: materialized,
-                                                              rawSegments: rawSegments))
+                                                              rawSegments: rawSegments, words: words),
+                                editedFullText: materialized.editedFullText)
     }
 
     /// Правка сегментов доступна: у каждого показанного сегмента есть адрес

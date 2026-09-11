@@ -43,6 +43,9 @@ struct TranscriptResult: Equatable {
     /// Адрес каждого сегмента в исходниках — параллельно `segments`. Пуст у
     /// результата, собранного мимо `withEdits`: тогда UI не даёт править.
     var segmentTargets: [EditTarget] = []
+    /// Полный текст с правками текста; nil — текст не правили (см.
+    /// `TranscriptFormatter.plainText`).
+    var editedFullText: String? = nil
 
     /// Есть ли разметка по спикерам (доступен формат «со спикерами»).
     var hasSpeakers: Bool { segments.contains { ($0.speaker?.isEmpty == false) } }

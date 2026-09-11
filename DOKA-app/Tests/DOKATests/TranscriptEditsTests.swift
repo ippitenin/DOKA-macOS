@@ -471,6 +471,224 @@ final class TranscriptEditsTests: XCTestCase {
         XCTAssertEqual(roundTrip, edits)
     }
 
+    // MARK: - Правка текста
+
+    /// Как у Nexara: слова без пунктуации, текст сегмента ≠ joinWords(words).
+    private func nexaraDialogue() -> TranscriptResult {
+        result([segment("Добрый день, коллеги.", 0, 5, speaker: "speaker_0"),
+                segment("Здравствуйте! Начнём?", 5, 10, speaker: "speaker_1")],
+               words: [word("добрый", 0.2, 0.6), word("день", 0.7, 1.0), word("коллеги", 1.2, 1.9),
+                       word("здравствуйте", 5.2, 6.0), word("начнём", 6.3, 7.0)],
+               fullText: "Добрый день, коллеги. Здравствуйте! Начнём?")
+    }
+
+    /// Шесть предложений по четыре токена — замена фрагмента «Средне» (30 с).
+    private let sixSentences = (0..<6).map { "Н\($0) а\($0) б\($0) в\($0)." }.joined(separator: " ")
+
+    /// Непоправленные сегменты сохраняют серверный текст с пунктуацией, а
+    /// правленый показывает ровно введённое — на любом уровне.
+    func testUntouchedSegmentsKeepServerText() {
+        let r = nexaraDialogue()
+        XCTAssertNotEqual(r.rawSegments[0].text, TranscriptSegmentSplitter.joinWords(Array(r.words[0..<3])))
+        var edits = TranscriptEdits()
+        edits.setText("Привет всем!", at: r.withDetail(.medium).segmentTargets[1])
+        for detail in TimestampDetail.allCases {
+            let edited = r.withEdits(edits, detail: detail)
+            XCTAssertEqual(edited.segments.map(\.text), ["Добрый день, коллеги.", "Привет всем!"], "уровень \(detail)")
+            XCTAssertEqual(edited.segmentTargets[1].originalText, "Здравствуйте! Начнём?")
+            XCTAssertTrue(edited.segmentTargets[1].isTextEdited)
+            XCTAssertFalse(edited.segmentTargets[0].isTextEdited)
+        }
+        let server = r.withEdits(edits, detail: .server)
+        XCTAssertEqual(server.editedFullText, "Добрый день, коллеги. Привет всем!")
+        XCTAssertEqual(TranscriptFormatter.plainText(server), "Добрый день, коллеги. Привет всем!")
+        XCTAssertNil(r.withDetail(.server).editedFullText, "без правок текста — fullText сервера")
+    }
+
+    /// Один сегмент на всю запись (Parakeet): правка фрагмента на «Подробно»
+    /// видна в единственном сегменте «как сервер» и в куске «Крупно»; цикл
+    /// детализаций её не теряет, заменённых слов нигде нет; возврат — исходник.
+    func testTextEditSurvivesDetailCycleOnSingleSegment() {
+        let r = longTurn()
+        let fine = r.withDetail(.fine)
+        XCTAssertEqual(fine.segmentTargets[2].anchor, .words(20..<30))
+        var edits = TranscriptEdits()
+        edits.setText("Совсем новый текст фрагмента.", at: fine.segmentTargets[2])
+        XCTAssertEqual(r.withEdits(edits, detail: .fine).segments[2].text, "Совсем новый текст фрагмента.")
+        for detail in [TimestampDetail.fine, .server, .coarse, .medium] {
+            let edited = r.withEdits(edits, detail: detail)
+            XCTAssertTrue(edited.segments.contains { $0.text.contains("Совсем новый текст фрагмента.") },
+                          "уровень \(detail)")
+            let text = edited.segments.map(\.text).joined(separator: " ")
+            XCTAssertFalse(text.contains("с4.1") || text.contains("с5.1"), "уровень \(detail)")
+        }
+        XCTAssertEqual(r.withEdits(edits, detail: .server).segments.count, 1)
+
+        edits.revertText(at: r.withEdits(edits, detail: .fine).segmentTargets[2])
+        XCTAssertTrue(edits.isEmpty)
+        for detail in TimestampDetail.allCases {
+            XCTAssertEqual(r.withEdits(edits, detail: detail), r.withDetail(detail))
+        }
+    }
+
+    func testSyntheticTimingsOneToOneForSameTokenCount() {
+        let original = [word("превет", 1, 1.5), word("мир", 1.6, 2)]
+        let words = TranscriptEdits.synthesizeWords(["привет", "мир"], replacing: original[...])
+        XCTAssertEqual(words.map(\.start), [1, 1.6])
+        XCTAssertEqual(words.map(\.end), [1.5, 2])
+    }
+
+    func testSyntheticTimingsAreMonotonicWithinSpan() {
+        let original = sentenceWords(sentences: 1)
+        let tokens = ["а", "длинное", "слово", "и", "ещё", "одно", "тут"]
+        let words = TranscriptEdits.synthesizeWords(tokens, replacing: original[...])
+        XCTAssertEqual(words.map(\.text), tokens)
+        XCTAssertEqual(words.first?.start, original.first?.start)
+        XCTAssertEqual(words.last?.end, original.last?.end)
+        for w in words {
+            XCTAssertLessThanOrEqual(w.start, w.end)
+            XCTAssertGreaterThanOrEqual(w.start, 0)
+            XCTAssertLessThanOrEqual(w.end, 4.9)
+        }
+        for (a, b) in zip(words, words.dropFirst()) {
+            XCTAssertLessThanOrEqual(a.end, b.start + 1e-9)
+        }
+    }
+
+    func testTokensFollowJoinWordsRule() {
+        XCTAssertEqual(TranscriptEdits.tokens("  привет ,  мир !\nда "), ["привет,", "мир!", "да"])
+        XCTAssertEqual(TranscriptEdits.normalizeText(" а\n\tб  в "), "а б в")
+        XCTAssertTrue(TranscriptEdits.tokens(" \n ").isEmpty)
+    }
+
+    /// Поглощение: правка на «Средне», затем правка вложенного куска на
+    /// «Подробно» — одна правка на прежнем якоре со склеенным текстом;
+    /// старый адрес устаревает; возврат снимает её целиком.
+    func testNestedEditIsAbsorbedIntoOne() throws {
+        let r = longTurn()
+        let medium = r.withDetail(.medium).segmentTargets
+        XCTAssertEqual(medium[1].anchor, .words(30..<60))
+        var edits = TranscriptEdits()
+        edits.setText(sixSentences, at: medium[1])
+        let first = edits.textEdits
+        XCTAssertEqual(first.count, 1)
+
+        let inside = r.withEdits(edits, detail: .fine).segmentTargets.filter { $0.absorbed == first }
+        XCTAssertEqual(inside.count, 3)
+        let middle = inside[1]
+        XCTAssertEqual(middle.anchor, .words(30..<60))
+        XCTAssertEqual(middle.prefix, "Н0 а0 б0 в0. Н1 а1 б1 в1.")
+        XCTAssertEqual(middle.suffix, "Н4 а4 б4 в4. Н5 а5 б5 в5.")
+
+        edits.setText("Заменено.", at: middle)
+        XCTAssertEqual(edits.textEdits, [TextEdit(anchor: .words(30..<60),
+                                                  text: "Н0 а0 б0 в0. Н1 а1 б1 в1. Заменено. Н4 а4 б4 в4. Н5 а5 б5 в5.")])
+        XCTAssertFalse(edits.isValid(middle), "адрес до правки устарел")
+
+        let fresh = try XCTUnwrap(r.withEdits(edits, detail: .fine).segmentTargets.first { $0.isTextEdited })
+        edits.revertText(at: fresh)
+        XCTAssertTrue(edits.textEdits.isEmpty)
+    }
+
+    /// Переназначение правленого куска берёт правку целиком — правка никогда
+    /// не пересекает границу спикеров.
+    func testReassignCoversWholeTextEdit() throws {
+        let r = longTurn()
+        var edits = TranscriptEdits()
+        edits.setText(sixSentences, at: r.withDetail(.medium).segmentTargets[1])
+        let fineTarget = try XCTUnwrap(r.withEdits(edits, detail: .fine).segmentTargets.first { $0.isTextEdited })
+        edits.setSpeaker("speaker_1", at: fineTarget)
+        XCTAssertEqual(edits.speakerOverrides, [SpeakerOverride(anchor: .words(30..<60), speaker: "speaker_1")])
+        let server = r.withEdits(edits, detail: .server)
+        XCTAssertEqual(server.segments.map(\.speaker), ["speaker_0", "speaker_1", "speaker_0"])
+        XCTAssertEqual(server.segments[1].text, sixSentences, "кусок = ровно токены правки → её текст")
+    }
+
+    /// Бессловный результат (Nexara с анализом ИИ): правка по сегменту;
+    /// текст, совпавший с исходным, — возврат.
+    func testWordlessTextEdit() {
+        let r = dialogue()
+        var edits = TranscriptEdits()
+        edits.setText("Добрый вечер.", at: r.withDetail(.server).segmentTargets[1])
+        for detail in TimestampDetail.allCases {
+            XCTAssertEqual(r.withEdits(edits, detail: detail).segments[1].text, "Добрый вечер.")
+        }
+        let target = r.withEdits(edits, detail: .server).segmentTargets[1]
+        XCTAssertTrue(target.isTextEdited)
+        XCTAssertEqual(target.originalText, "Здравствуйте.")
+        edits.setText("Здравствуйте.", at: target)
+        XCTAssertTrue(edits.isEmpty)
+    }
+
+    func testEmptyTextIsRejected() {
+        var edits = TranscriptEdits()
+        edits.setText("  \n ", at: dialogue().withDetail(.server).segmentTargets[0])
+        XCTAssertTrue(edits.isEmpty)
+    }
+
+    /// Адрес, устаревший после другой правки текста, отвергается; после
+    /// переименования — остаётся валидным.
+    func testStaleTargetIsRejected() {
+        let r = longTurn()
+        let fine = r.withDetail(.fine).segmentTargets
+        var edits = TranscriptEdits()
+        edits.setText("Первая правка.", at: fine[0])
+        XCTAssertFalse(edits.isValid(fine[0]))
+        XCTAssertTrue(edits.isValid(fine[5]), "чужой диапазон не задет")
+        edits.rename("speaker_0", to: "Анна")
+        XCTAssertTrue(edits.isValid(fine[5]))
+        XCTAssertTrue(edits.isValid(r.withEdits(edits, detail: .fine).segmentTargets[0]))
+    }
+
+    func testIdempotentWithTextEdits() {
+        let r = longDialogue()
+        var edits = TranscriptEdits()
+        edits.setText("Правка первой реплики.", at: r.withDetail(.fine).segmentTargets[1])
+        edits.setSpeaker("speaker_1", at: r.withEdits(edits, detail: .fine).segmentTargets[3])
+        for detail in TimestampDetail.allCases {
+            let once = r.withEdits(edits, detail: detail)
+            XCTAssertEqual(once.withDetail(detail), once)
+            XCTAssertEqual(once.editedFullText, r.withEdits(edits, detail: .server).editedFullText,
+                           "полный текст с правками не зависит от детализации")
+        }
+    }
+
+    /// Словарь для файлов применяется и к правленому тексту (решение плана).
+    func testDictionaryAppliesToEditedText() {
+        var edits = TranscriptEdits()
+        edits.setText("дока работает.", at: dialogue().withDetail(.server).segmentTargets[0])
+        let out = TranscriptOutput.applyingDictionary(dialogue().withEdits(edits, detail: .server),
+                                                      rules: [ReplacementRule(from: "дока", to: "DOKA")])
+        XCTAssertEqual(out.segments[0].text, "DOKA работает.")
+        XCTAssertTrue(TranscriptFormatter.plainText(out).hasPrefix("DOKA работает."))
+        XCTAssertTrue(out.segmentTargets[0].isTextEdited)
+    }
+
+    func testTextEditsRoundTripAndSanitize() throws {
+        var edits = TranscriptEdits()
+        edits.setText("Добрый вечер.", at: dialogue().withDetail(.server).segmentTargets[1])
+        let decoded = try JSONDecoder().decode(TranscriptEdits.self, from: JSONEncoder().encode(edits))
+        XCTAssertEqual(decoded, edits)
+
+        let json = #"""
+        {"textEdits":[{"anchor":{"w":[0,4]},"text":"а б"},{"anchor":{"w":[2,6]},"text":"в"},
+         {"anchor":{"s":1},"text":"   "},{"anchor":{"s":2}}]}
+        """#
+        let sanitized = try JSONDecoder().decode(TranscriptEdits.self, from: Data(json.utf8))
+        XCTAssertEqual(sanitized.textEdits, [TextEdit(anchor: .words(0..<4), text: "а б")])
+    }
+
+    /// Правка, вылезшая за исходный сегмент (битые данные), пропускается, а не
+    /// роняет показ.
+    func testEditCrossingSegmentIsSkipped() {
+        let r = longDialogue()
+        var edits = TranscriptEdits()
+        edits.textEdits = [TextEdit(anchor: .words(55..<65), text: "Через границу.")]
+        let server = r.withEdits(edits, detail: .server)
+        XCTAssertEqual(server.segments, r.rawSegments)
+        XCTAssertNil(server.editedFullText)
+    }
+
     func testSameContentIgnoresRevision() {
         var a = TranscriptEdits()
         a.rename("speaker_0", to: "Анна")
@@ -555,6 +773,22 @@ final class TranscriptDocumentEditsTests: XCTestCase {
         XCTAssertEqual(store.record(id)?.summary?.speakerCount, 2)
         document.revertSegmentSpeaker(at: target)
         XCTAssertEqual(document.output(detail: .server)?.segments.first?.speaker, "speaker_0")
+    }
+
+    /// Правка текста доходит до текста поиска и сводки; устаревший адрес
+    /// (до правки) отвергается.
+    func testTextEditIsSavedAndSearchable() {
+        let (store, document, id) = makeDocument()
+        guard let target = document.output(detail: .server)?.segmentTargets.first else {
+            return XCTFail("нет адресов сегментов")
+        }
+        document.setSegmentText("Добрый вечер.", at: target)
+        XCTAssertEqual(store.cachedBody(id)?.plainText, "Добрый вечер. Здравствуйте.")
+        XCTAssertEqual(store.record(id)?.summary?.preview.hasPrefix("Добрый вечер."), true)
+
+        document.setSegmentText("Ещё раз.", at: target)
+        XCTAssertEqual(document.output(detail: .server)?.segments.first?.text, "Добрый вечер.")
+        XCTAssertEqual(document.source(detail: .server)?.segments.first?.text, "Добрый вечер.")
     }
 
     /// После переноса «Папки данных» библиотека заморожена — правки не принимаются.
