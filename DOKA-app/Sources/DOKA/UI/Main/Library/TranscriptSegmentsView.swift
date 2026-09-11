@@ -114,13 +114,20 @@ struct TranscriptSegmentsView: View {
     }
 
     private func rows(colors: [String: Int], active: Int?) -> some View {
-        ForEach(Array(result.segments.enumerated()), id: \.offset) { index, segment in
+        // Адреса есть только у результата, собранного через правки.
+        let targets = result.canEditSegments ? result.segmentTargets : nil
+        return ForEach(Array(result.segments.enumerated()), id: \.offset) { index, segment in
+            let target = targets?[index]
             SegmentRow(segment: segment,
                        isActive: index == active,
                        colorIndex: segment.speaker.flatMap { colors[$0] },
                        speakerLabel: segment.speaker.map(result.speakerLabel),
+                       originalSpeakerLabel: target.flatMap { target in
+                           target.isSpeakerOverridden ? target.originalSpeaker.map(result.speakerLabel) : nil
+                       },
                        canSeek: canSeek,
-                       edit: editContext,
+                       edit: target == nil ? nil : editContext,
+                       target: target,
                        onSeek: { onSeek(segment.start) })
                 .equatable()
                 .id(SegmentAnchor(index: index))
@@ -150,14 +157,21 @@ private struct SegmentRow: View, Equatable {
     let colorIndex: Int?
     /// Имя спикера с учётом правок (nil — у сегмента нет спикера).
     let speakerLabel: String?
+    /// Имя исходного спикера, если реплику переназначили.
+    let originalSpeakerLabel: String?
     let canSeek: Bool
+    /// nil — правка недоступна.
     let edit: SegmentEditContext?
+    let target: EditTarget?
     let onSeek: () -> Void
+
+    @State private var isHovering = false
 
     static func == (lhs: SegmentRow, rhs: SegmentRow) -> Bool {
         lhs.segment == rhs.segment && lhs.isActive == rhs.isActive
             && lhs.colorIndex == rhs.colorIndex && lhs.speakerLabel == rhs.speakerLabel
-            && lhs.canSeek == rhs.canSeek && lhs.edit == rhs.edit
+            && lhs.originalSpeakerLabel == rhs.originalSpeakerLabel
+            && lhs.canSeek == rhs.canSeek && lhs.edit == rhs.edit && lhs.target == rhs.target
     }
 
     var body: some View {
@@ -170,12 +184,18 @@ private struct SegmentRow: View, Equatable {
                                  colorIndex: colorIndex ?? 0,
                                  info: edit?.roster.first { $0.id == speaker },
                                  roster: edit?.roster ?? [],
-                                 document: edit?.document)
+                                 document: edit?.document,
+                                 help: originalSpeakerLabel.map { L("transcribe.segment.speakerChanged", $0) })
                 }
                 Text(segment.text)
                     .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if let edit, let target {
+                // Место под меню держится всегда — строка не прыгает под курсором.
+                actionsMenu(edit, target)
+                    .opacity(isHovering ? 1 : 0)
+            }
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
@@ -191,6 +211,49 @@ private struct SegmentRow: View, Equatable {
                     .padding(.vertical, 4)
             }
         }
+        .onHover { isHovering = $0 }
+        .contextMenu {
+            if let edit, let target {
+                actionItems(edit, target)
+            }
+        }
+    }
+
+    /// Меню «⋯» реплики — SF Symbol-лейбл, как у «Сохранить как…»: кастомный
+    /// лейбл SwiftUI `Menu` на macOS ломает.
+    private func actionsMenu(_ edit: SegmentEditContext, _ target: EditTarget) -> some View {
+        Menu {
+            actionItems(edit, target)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(L("transcribe.segment.menu"))
+    }
+
+    /// Пункты действий — общие у меню «⋯» и контекстного меню строки.
+    @ViewBuilder
+    private func actionItems(_ edit: SegmentEditContext, _ target: EditTarget) -> some View {
+        if !edit.roster.isEmpty {
+            Menu(L("transcribe.segment.assign")) {
+                ForEach(edit.roster.filter { $0.id != segment.speaker }) { info in
+                    Button(info.label) { edit.document.reassignSegment(at: target, to: info.id) }
+                }
+                Divider()
+                Button(L("transcribe.speaker.new")) { edit.document.reassignSegment(at: target, to: nil) }
+            }
+            if target.isSpeakerOverridden {
+                Button(L("transcribe.segment.revertSpeaker")) {
+                    edit.document.revertSegmentSpeaker(at: target)
+                }
+            }
+            Divider()
+        }
+        Button(L("transcribe.segment.copy")) { ClipboardManager.setString(segment.text) }
     }
 
     @ViewBuilder

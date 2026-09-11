@@ -374,6 +374,12 @@
 "transcribe.speaker.mergeAction" = "Merge";
 "transcribe.speaker.mergeInto" = "Merge with";
 "transcribe.speaker.unmerge" = "Split out “%@”";
+"transcribe.speaker.new" = "New speaker";
+"transcribe.segment.menu" = "Segment actions";
+"transcribe.segment.assign" = "Assign segment to";
+"transcribe.segment.revertSpeaker" = "Restore original speaker";
+"transcribe.segment.speakerChanged" = "Original speaker: %@";
+"transcribe.segment.copy" = "Copy segment";
 "transcribe.edits.save" = "Save";
 "transcribe.edits.resetAll" = "Reset edits";
 "transcribe.edits.resetAll.title" = "Reset all edits?";

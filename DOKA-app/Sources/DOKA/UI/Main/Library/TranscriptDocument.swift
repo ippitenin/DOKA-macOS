@@ -96,6 +96,19 @@ final class TranscriptDocument: ObservableObject {
         mutateEdits { $0.unmerge(id) }
     }
 
+    /// «Назначить реплику»: `speaker == nil` — новый спикер со свободным id.
+    func reassignSegment(at target: EditTarget, to speaker: String?) {
+        guard let rawSegments = body?.transcript.rawSegments else { return }
+        mutateEdits { edits in
+            let id = speaker ?? SpeakerName.nextID(existing: edits.knownSpeakerIDs(rawSegments: rawSegments))
+            edits.setSpeaker(id, at: target)
+        }
+    }
+
+    func revertSegmentSpeaker(at target: EditTarget) {
+        mutateEdits { $0.revertSpeaker(at: target) }
+    }
+
     /// «Сбросить правки»: всё возвращается к результату распознавания,
     /// счётчик правок продолжает расти.
     func resetAllEdits() {

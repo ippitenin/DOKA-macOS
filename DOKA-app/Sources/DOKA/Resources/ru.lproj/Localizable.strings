@@ -374,6 +374,12 @@
 "transcribe.speaker.mergeAction" = "Объединить";
 "transcribe.speaker.mergeInto" = "Объединить с";
 "transcribe.speaker.unmerge" = "Отделить «%@»";
+"transcribe.speaker.new" = "Новый спикер";
+"transcribe.segment.menu" = "Действия с репликой";
+"transcribe.segment.assign" = "Назначить реплику";
+"transcribe.segment.revertSpeaker" = "Вернуть исходного спикера";
+"transcribe.segment.speakerChanged" = "Исходный спикер: %@";
+"transcribe.segment.copy" = "Скопировать реплику";
 "transcribe.edits.save" = "Сохранить";
 "transcribe.edits.resetAll" = "Сбросить правки";
 "transcribe.edits.resetAll.title" = "Сбросить все правки?";

@@ -40,6 +40,9 @@ struct TranscriptResult: Equatable {
     /// Пользовательские правки, применённые к `segments` (см. `TranscriptEdits`).
     /// `var` с дефолтом — все прежние вызовы memberwise-init остаются как есть.
     var edits = TranscriptEdits()
+    /// Адрес каждого сегмента в исходниках — параллельно `segments`. Пуст у
+    /// результата, собранного мимо `withEdits`: тогда UI не даёт править.
+    var segmentTargets: [EditTarget] = []
 
     /// Есть ли разметка по спикерам (доступен формат «со спикерами»).
     var hasSpeakers: Bool { segments.contains { ($0.speaker?.isEmpty == false) } }

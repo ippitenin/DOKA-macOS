@@ -29,6 +29,15 @@ enum TranscriptSegmentSplitter {
     /// не начинается с заглавной буквы. От детализации не зависит.
     static let sentencePauseThreshold: Double = 0.5
 
+    /// Отображаемый сегмент и его происхождение: кусок входа (`piece`) и
+    /// диапазон слов этого куска. По такому адресу слой правок находит
+    /// исходные слова на любой детализации (см. `TranscriptEdits`).
+    struct SplitPart: Equatable {
+        let segment: TranscriptSegment
+        let piece: Int
+        let words: Range<Int>
+    }
+
     /// Точка входа: длинные сегменты заменяются цепочкой подсегментов,
     /// короткие и «бессловные» проходят без изменений. Пустые `words` —
     /// деградация в исходные сегменты (сервер не отдал пословные тайм-коды).
@@ -36,13 +45,31 @@ enum TranscriptSegmentSplitter {
                       words: [TranscriptWord],
                       config: Config = .medium) -> [TranscriptSegment] {
         guard !words.isEmpty, !segments.isEmpty else { return segments }
-        let assigned = assignWords(words, to: segments)
-        var result: [TranscriptSegment] = []
-        for (segment, segmentWords) in zip(segments, assigned) {
-            if segment.end - segment.start <= config.splitThreshold || segmentWords.isEmpty {
-                result.append(segment)
-            } else {
-                result.append(contentsOf: subsegments(of: segment, words: segmentWords, config: config))
+        let buckets = assignWords(words, to: segments)
+        return splitWithSources(segments: segments, buckets: buckets, config: config).map(\.segment)
+    }
+
+    /// Нарезка с происхождением. Слова приходят уже разложенными по кускам:
+    /// повторная раздача по середине слова ошибалась бы на кусках, которые
+    /// слой правок режет по спикерам (у ASR слова перекрываются по времени).
+    /// `config == nil` — «как сервер»: каждый кусок как есть.
+    static func splitWithSources(segments: [TranscriptSegment],
+                                 buckets: [[TranscriptWord]],
+                                 config: Config?) -> [SplitPart] {
+        var result: [SplitPart] = []
+        result.reserveCapacity(segments.count)
+        for (piece, segment) in segments.enumerated() {
+            let bucket = piece < buckets.count ? buckets[piece] : []
+            guard let config, segment.end - segment.start > config.splitThreshold, !bucket.isEmpty else {
+                result.append(SplitPart(segment: segment, piece: piece, words: 0..<bucket.count))
+                continue
+            }
+            for range in chunkRanges(of: bucket, config: config) {
+                let chunk = TranscriptSegment(speaker: segment.speaker,
+                                              start: bucket[range.lowerBound].start,
+                                              end: bucket[range.upperBound - 1].end,
+                                              text: joinWords(Array(bucket[range])))
+                result.append(SplitPart(segment: chunk, piece: piece, words: range))
             }
         }
         return result
@@ -54,16 +81,30 @@ enum TranscriptSegmentSplitter {
     /// сегмента достаются первому, после последнего — последнему.
     static func assignWords(_ words: [TranscriptWord],
                             to segments: [TranscriptSegment]) -> [[TranscriptWord]] {
-        var buckets = [[TranscriptWord]](repeating: [], count: segments.count)
-        var index = 0
-        for word in words {
+        assignWordRanges(words, to: segments).map { Array(words[$0]) }
+    }
+
+    /// То же в индексах: указатель сегмента только растёт, поэтому корзина
+    /// каждого сегмента — непрерывный диапазон индексов `words`.
+    static func assignWordRanges(_ words: [TranscriptWord],
+                                 to segments: [TranscriptSegment]) -> [Range<Int>] {
+        guard !segments.isEmpty else { return [] }
+        var ranges: [Range<Int>] = []
+        ranges.reserveCapacity(segments.count)
+        var start = 0
+        for (offset, word) in words.enumerated() {
             let mid = (word.start + word.end) / 2
-            while index < segments.count - 1, mid >= segments[index].end {
-                index += 1
+            // Текущий сегмент — `ranges.count`; последний забирает хвост.
+            while ranges.count < segments.count - 1, mid >= segments[ranges.count].end {
+                ranges.append(start..<offset)
+                start = offset
             }
-            buckets[index].append(word)
         }
-        return buckets
+        while ranges.count < segments.count {
+            ranges.append(start..<words.count)
+            start = words.count
+        }
+        return ranges
     }
 
     /// Конец ли предложения после слова: слово (без замыкающих кавычек и
@@ -95,69 +136,59 @@ enum TranscriptSegmentSplitter {
         return characters.last
     }
 
-    /// Режет слова сегмента на предложения, группирует их в блоки
-    /// до `config.targetChunkDuration` и собирает подсегменты. Спикер
-    /// наследуется, тайм-код блока — start его первого слова.
-    private static func subsegments(of segment: TranscriptSegment,
-                                    words: [TranscriptWord],
-                                    config: Config) -> [TranscriptSegment] {
-        var sentences: [[TranscriptWord]] = []
-        var current: [TranscriptWord] = []
-        for (offset, word) in words.enumerated() {
-            current.append(word)
+    /// Режет слова куска на предложения и группирует их в блоки до
+    /// `config.targetChunkDuration`; результат — непрерывные диапазоны
+    /// индексов, покрывающие все слова. Тайм-код блока — start его первого слова.
+    private static func chunkRanges(of words: [TranscriptWord], config: Config) -> [Range<Int>] {
+        var sentences: [Range<Int>] = []
+        var start = 0
+        for offset in words.indices {
+            let word = words[offset]
             let next = offset + 1 < words.count ? words[offset + 1] : nil
             if isSentenceBoundary(after: word, next: next) {
-                sentences.append(current)
-                current.removeAll()
-            } else if let first = current.first, word.end - first.start > config.hardBreakDuration {
-                let head = breakAtWidestPause(current)
-                sentences.append(head)
-                current.removeFirst(head.count)
+                sentences.append(start..<offset + 1)
+                start = offset + 1
+            } else if word.end - words[start].start > config.hardBreakDuration {
+                let head = headCountAtWidestPause(words[start...offset])
+                sentences.append(start..<start + head)
+                start += head
             }
         }
-        if !current.isEmpty { sentences.append(current) }
+        if start < words.count { sentences.append(start..<words.count) }
 
-        var chunks: [[TranscriptWord]] = []
-        var chunk: [TranscriptWord] = []
+        var chunks: [Range<Int>] = []
+        var chunk: Range<Int>?
         for sentence in sentences {
-            if chunk.isEmpty {
+            guard let current = chunk else {
                 chunk = sentence
-            } else if let first = chunk.first, let last = sentence.last,
-                      last.end - first.start <= config.targetChunkDuration {
-                chunk.append(contentsOf: sentence)
+                continue
+            }
+            if words[sentence.upperBound - 1].end - words[current.lowerBound].start <= config.targetChunkDuration {
+                chunk = current.lowerBound..<sentence.upperBound
             } else {
-                chunks.append(chunk)
+                chunks.append(current)
                 chunk = sentence
             }
         }
-        if !chunk.isEmpty { chunks.append(chunk) }
-
-        return chunks.compactMap { chunkWords in
-            guard let first = chunkWords.first, let last = chunkWords.last else { return nil }
-            return TranscriptSegment(
-                speaker: segment.speaker,
-                start: first.start,
-                end: last.end,
-                text: joinWords(chunkWords)
-            )
-        }
+        if let chunk { chunks.append(chunk) }
+        return chunks
     }
 
     /// Принудительный разрыв куска без пунктуации: голова до самой длинной
-    /// межсловной паузы. Если пауз нет (слова впритык) — рвётся как есть,
-    /// по текущей длине.
-    private static func breakAtWidestPause(_ words: [TranscriptWord]) -> [TranscriptWord] {
-        guard words.count > 1 else { return words }
-        var bestIndex = words.count
+    /// межсловной паузы (число слов головы). Если пауз нет (слова впритык) —
+    /// рвётся как есть, по текущей длине.
+    private static func headCountAtWidestPause(_ words: ArraySlice<TranscriptWord>) -> Int {
+        guard words.count > 1 else { return words.count }
+        var bestIndex = words.endIndex
         var bestPause = -Double.infinity
-        for index in 1..<words.count {
+        for index in (words.startIndex + 1)..<words.endIndex {
             let pause = words[index].start - words[index - 1].end
             if pause > bestPause {
                 bestPause = pause
                 bestIndex = index
             }
         }
-        return Array(words.prefix(bestIndex))
+        return bestIndex - words.startIndex
     }
 
     /// Склейка текста из слов: одиночная пунктуация (мусорные токены)

@@ -27,7 +27,8 @@ enum TranscriptOutput {
             rawSegments: result.rawSegments,
             words: result.words,
             llmOutput: result.llmOutput,
-            edits: result.edits
+            edits: result.edits,
+            segmentTargets: result.segmentTargets
         )
     }
 

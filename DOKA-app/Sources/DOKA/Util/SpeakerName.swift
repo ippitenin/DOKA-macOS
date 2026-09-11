@@ -31,6 +31,15 @@ enum SpeakerName {
         return raw
     }
 
+    /// id нового спикера («Назначить реплику → Новый спикер»): `speaker_N`
+    /// со следующим номером после всех известных. `existing` обязан включать
+    /// и ключи слияний — иначе новый спикер мог бы получить id влитого, и
+    /// переназначение молча слилось бы с ним.
+    static func nextID(existing: some Sequence<String>) -> String {
+        let maxIndex = existing.compactMap(index(of:)).max() ?? -1
+        return prefix + String(maxIndex + 1)
+    }
+
     /// Индексы цветов бэйджей: `speaker_N` — по номеру, остальные id (роли,
     /// `unknown_N`, новые спикеры) — по порядку в `orderedIDs`, пропуская
     /// номера, занятые `speaker_N`: иначе роль и «Новый спикер» делили бы цвет.

@@ -275,6 +275,202 @@ final class TranscriptEditsTests: XCTestCase {
         XCTAssertEqual(out.segments[0].text, "Салют.")
     }
 
+    // MARK: - Материализация без правок
+
+    /// Речь предложениями по 5 слов, слово в секунду. У слов уникальный текст
+    /// («с3.1»), по нему видно, какие исходные слова попали в сегмент.
+    private func sentenceWords(sentences: Int, from start: Double = 0) -> [TranscriptWord] {
+        var words: [TranscriptWord] = []
+        for s in 0..<sentences {
+            for k in 0..<5 {
+                let t = start + Double(s * 5 + k)
+                let text = k == 0 ? "С\(s).\(k)" : (k == 4 ? "с\(s).\(k)." : "с\(s).\(k)")
+                words.append(word(text, t, t + 0.9))
+            }
+        }
+        return words
+    }
+
+    /// Монолог на 120 с одним сегментом — как у Parakeet.
+    private func longTurn() -> TranscriptResult {
+        result([segment("Серверный текст монолога.", 0, 120, speaker: "speaker_0")],
+               words: sentenceWords(sentences: 24))
+    }
+
+    /// Два длинных сегмента разных спикеров со словами.
+    private func longDialogue() -> TranscriptResult {
+        result([segment("Первая реплика сервера.", 0, 60, speaker: "speaker_0"),
+                segment("Вторая реплика сервера.", 60, 120, speaker: "speaker_1")],
+               words: sentenceWords(sentences: 24))
+    }
+
+    /// Без правок — ровно прежняя нарезка на каждом уровне (регресс-гарантия).
+    func testEmptyEditsMatchSplitterOnEveryLevel() {
+        for r in [longTurn(), longDialogue(), dialogue()] {
+            for detail in TimestampDetail.allCases {
+                let edited = r.withEdits(TranscriptEdits(), detail: detail)
+                let expected = detail.config.map {
+                    TranscriptSegmentSplitter.split(segments: r.rawSegments, words: r.words, config: $0)
+                } ?? r.rawSegments
+                XCTAssertEqual(edited.segments, expected, "уровень \(detail)")
+                XCTAssertEqual(edited.segmentTargets.count, edited.segments.count)
+                XCTAssertTrue(edited.canEditSegments)
+            }
+        }
+    }
+
+    /// Адреса на любом уровне — в координатах исходных слов и без дыр.
+    func testTargetsPartitionOriginalWords() {
+        let r = longTurn()
+        XCTAssertEqual(r.withDetail(.server).segmentTargets.map(\.anchor), [.words(0..<120)])
+        let fine = r.withDetail(.fine).segmentTargets.map(\.anchor)
+        XCTAssertGreaterThan(fine.count, 1)
+        var next = 0
+        for anchor in fine {
+            guard case .words(let range) = anchor else { return XCTFail("ожидался диапазон слов") }
+            XCTAssertEqual(range.lowerBound, next)
+            next = range.upperBound
+        }
+        XCTAssertEqual(next, 120)
+        // Без слов — адрес исходного сегмента.
+        XCTAssertEqual(dialogue().withDetail(.medium).segmentTargets.map(\.anchor),
+                       [.segment(0), .segment(1), .segment(2), .segment(3)])
+    }
+
+    // MARK: - Переназначение
+
+    /// Фрагмент длинной реплики другому спикеру: «как сервер» честно режет
+    /// реплику на A/B/A, на «Крупно» кусок B виден; возврат — исходник.
+    func testReassignFragmentSplitsTurn() {
+        let r = longTurn()
+        let fine = r.withDetail(.fine)
+        let target = fine.segmentTargets[3]
+        XCTAssertEqual(target.anchor, .words(30..<40))
+        var edits = TranscriptEdits()
+        edits.setSpeaker("speaker_1", at: target)
+
+        let server = r.withEdits(edits, detail: .server)
+        XCTAssertEqual(server.segments.map(\.speaker), ["speaker_0", "speaker_1", "speaker_0"])
+        XCTAssertEqual(server.segments[1].start, 30)
+        XCTAssertEqual(server.segments[1].text, fine.segments[3].text)
+        XCTAssertTrue(server.segmentTargets[1].isSpeakerOverridden)
+        XCTAssertFalse(server.segmentTargets[0].isSpeakerOverridden)
+        XCTAssertTrue(r.withEdits(edits, detail: .coarse).segments.contains { $0.speaker == "speaker_1" })
+
+        edits.revertSpeaker(at: target)
+        XCTAssertTrue(edits.isEmpty)
+        XCTAssertEqual(r.withEdits(edits, detail: .server).segments, r.rawSegments)
+    }
+
+    /// Вырезание интервалов: переназначения делятся, на исходного спикера не хранятся.
+    func testOverrideCuttingSplitsIntervals() {
+        func target(_ range: Range<Int>) -> EditTarget {
+            EditTarget(rawIndex: 0, anchor: .words(range), originalSpeaker: "A", isSpeakerOverridden: false)
+        }
+        var edits = TranscriptEdits()
+        edits.setSpeaker("B", at: target(0..<10))
+        edits.setSpeaker("C", at: target(3..<5))
+        XCTAssertEqual(edits.speakerOverrides, [
+            SpeakerOverride(anchor: .words(0..<3), speaker: "B"),
+            SpeakerOverride(anchor: .words(3..<5), speaker: "C"),
+            SpeakerOverride(anchor: .words(5..<10), speaker: "B")
+        ])
+        edits.revertSpeaker(at: target(3..<5))
+        XCTAssertEqual(edits.speakerOverrides, [
+            SpeakerOverride(anchor: .words(0..<3), speaker: "B"),
+            SpeakerOverride(anchor: .words(5..<10), speaker: "B")
+        ])
+        edits.setSpeaker("A", at: target(0..<3))
+        XCTAssertEqual(edits.speakerOverrides, [SpeakerOverride(anchor: .words(5..<10), speaker: "B")])
+    }
+
+    /// Бессловный результат (Nexara с анализом ИИ) — переназначение по сегменту.
+    func testReassignWordlessSegment() {
+        let r = dialogue()
+        let target = r.withDetail(.server).segmentTargets[1]
+        var edits = TranscriptEdits()
+        edits.setSpeaker("speaker_0", at: target)
+        for detail in TimestampDetail.allCases {
+            XCTAssertEqual(speakers(r.withEdits(edits, detail: detail)),
+                           ["speaker_0", "speaker_0", "speaker_2", "speaker_0"])
+        }
+        edits.revertSpeaker(at: target)
+        XCTAssertEqual(r.withEdits(edits, detail: .server).segments, r.rawSegments)
+    }
+
+    /// Переназначение на влитого следует за слиянием; после «Отделить» —
+    /// снова он сам.
+    func testOverrideFollowsMerge() {
+        let r = longDialogue()
+        let target = r.withDetail(.fine).segmentTargets[0]
+        var edits = TranscriptEdits()
+        edits.setSpeaker("speaker_2", at: target)
+        edits.merge("speaker_2", into: "speaker_1")
+        XCTAssertEqual(r.withEdits(edits, detail: .server).segments.first?.speaker, "speaker_1")
+        edits.unmerge("speaker_2")
+        XCTAssertEqual(r.withEdits(edits, detail: .server).segments.first?.speaker, "speaker_2")
+    }
+
+    /// Влили переназначенного обратно в исходного — кусок склеивается с
+    /// соседями, и сегмент снова один, с текстом сервера.
+    func testOverrideMergedIntoOriginalCollapses() {
+        let r = longTurn()
+        var edits = TranscriptEdits()
+        edits.setSpeaker("speaker_1", at: r.withDetail(.fine).segmentTargets[2])
+        edits.merge("speaker_1", into: "speaker_0")
+        XCTAssertEqual(r.withEdits(edits, detail: .server).segments, r.rawSegments)
+    }
+
+    /// Идемпотентность с правками: перенарезка всегда от исходников.
+    func testWithDetailIsIdempotentWithEdits() {
+        let r = longDialogue()
+        var edits = TranscriptEdits()
+        edits.setSpeaker("speaker_1", at: r.withDetail(.fine).segmentTargets[1])
+        edits.rename("speaker_1", to: "Анна")
+        for detail in TimestampDetail.allCases {
+            let once = r.withEdits(edits, detail: detail)
+            XCTAssertEqual(once.withDetail(detail), once)
+        }
+        XCTAssertEqual(r.withEdits(edits, detail: .fine).withDetail(.server).segments,
+                       r.withEdits(edits, detail: .server).segments)
+    }
+
+    func testNextSpeakerID() {
+        XCTAssertEqual(SpeakerName.nextID(existing: ["speaker_0", "speaker_1"]), "speaker_2")
+        XCTAssertEqual(SpeakerName.nextID(existing: ["Клиент", "Агент"]), "speaker_0")
+        // Ключ слияния учитывается: иначе новый спикер получил бы id влитого.
+        var edits = TranscriptEdits()
+        edits.merge("speaker_2", into: "speaker_0")
+        let raw = [segment("а", 0, 1, speaker: "speaker_0"), segment("б", 1, 2, speaker: "speaker_1"),
+                   segment("в", 2, 3, speaker: "speaker_2")]
+        let known = edits.knownSpeakerIDs(rawSegments: Array(raw.prefix(2)))
+        XCTAssertEqual(SpeakerName.nextID(existing: known), "speaker_3")
+    }
+
+    /// «Новый спикер» в записи с ролями не делит цвет с ролями.
+    func testNewSpeakerInRolesRecordHasOwnColor() {
+        let r = result([segment("а", 0, 1, speaker: "Клиент"), segment("б", 1, 2, speaker: "Агент")])
+        var edits = TranscriptEdits()
+        let newID = SpeakerName.nextID(existing: edits.knownSpeakerIDs(rawSegments: r.rawSegments))
+        edits.setSpeaker(newID, at: r.withDetail(.server).segmentTargets[1])
+        let roster = r.withEdits(edits, detail: .server).speakerRoster
+        XCTAssertEqual(roster.map(\.id), ["Клиент", newID])
+        XCTAssertEqual(Set(r.withEdits(edits, detail: .server).speakerColorIndices.values).count, 3)
+    }
+
+    /// Пересекающиеся и битые переназначения при чтении отбрасываются поштучно.
+    func testOverlappingOverridesAreDroppedOnDecode() throws {
+        let json = #"""
+        {"speakerOverrides":[{"anchor":{"w":[0,10]},"speaker":"B"},{"anchor":{"w":[5,8]},"speaker":"C"},
+         {"anchor":{"w":[9,3]},"speaker":"D"},{"anchor":{"s":2},"speaker":"E"},{"speaker":"F"}]}
+        """#
+        let edits = try JSONDecoder().decode(TranscriptEdits.self, from: Data(json.utf8))
+        XCTAssertEqual(edits.speakerOverrides, [SpeakerOverride(anchor: .words(0..<10), speaker: "B"),
+                                                SpeakerOverride(anchor: .segment(2), speaker: "E")])
+        let roundTrip = try JSONDecoder().decode(TranscriptEdits.self, from: JSONEncoder().encode(edits))
+        XCTAssertEqual(roundTrip, edits)
+    }
+
     func testSameContentIgnoresRevision() {
         var a = TranscriptEdits()
         a.rename("speaker_0", to: "Анна")
@@ -342,6 +538,23 @@ final class TranscriptDocumentEditsTests: XCTestCase {
         XCTAssertEqual(edits?.isEmpty, true)
         XCTAssertEqual(edits?.revision, 2)
         XCTAssertTrue(document.edits.isEmpty)
+    }
+
+    /// «Новый спикер» получает свободный id, реплика — его имя по умолчанию.
+    func testReassignToNewSpeaker() {
+        let (store, document, id) = makeDocument()
+        guard let target = document.output(detail: .server)?.segmentTargets.first else {
+            return XCTFail("нет адресов сегментов")
+        }
+        document.reassignSegment(at: target, to: nil)
+        let output = document.output(detail: .server)
+        XCTAssertEqual(output?.segments.first?.speaker, "speaker_2")
+        XCTAssertEqual(output?.segmentTargets.first?.isSpeakerOverridden, true)
+        // Единственная реплика speaker_0 ушла новому спикеру — в сводке двое.
+        XCTAssertEqual(output?.speakerRoster.map(\.id), ["speaker_2", "speaker_1"])
+        XCTAssertEqual(store.record(id)?.summary?.speakerCount, 2)
+        document.revertSegmentSpeaker(at: target)
+        XCTAssertEqual(document.output(detail: .server)?.segments.first?.speaker, "speaker_0")
     }
 
     /// После переноса «Папки данных» библиотека заморожена — правки не принимаются.
