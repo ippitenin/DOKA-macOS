@@ -32,8 +32,17 @@ enum AudioFileDecoder {
         }
     }
 
-    private static func decodeWork(_ sourceURL: URL) async throws -> (url: URL, duration: TimeInterval) {
-        let asset = AVURLAsset(url: sourceURL)
+    /// Ридер PCM по ПЕРВОЙ звуковой дорожке файла: у видео берётся только звук,
+    /// картинка не декодируется вовсе. Выход всегда 16 кГц mono
+    /// (`WavWriter.sampleRate/channels`) — ресэмплинг и сведение каналов делает
+    /// AVFoundation. `float == false` — Int16 interleaved little-endian, ровно
+    /// тело WAV диктовки (`decodeToWav`); `float == true` — Float32
+    /// non-interleaved, формат `AVAudioPCMBuffer` для кодирования в AAC
+    /// (`SourceAudioArchiver`). Общий хелпер, чтобы оба пути одинаково выбирали
+    /// дорожку и одинаково падали. `startReading()` зовёт вызывающий.
+    static func makePCMReader(_ url: URL, float: Bool) async throws
+        -> (reader: AVAssetReader, output: AVAssetReaderTrackOutput) {
+        let asset = AVURLAsset(url: url)
         guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
             throw DecoderError.noAudioTrack
         }
@@ -43,15 +52,20 @@ enum AudioFileDecoder {
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: WavWriter.sampleRate,
             AVNumberOfChannelsKey: WavWriter.channels,
-            AVLinearPCMBitDepthKey: WavWriter.bitsPerSample,
-            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMBitDepthKey: float ? 32 : WavWriter.bitsPerSample,
+            AVLinearPCMIsFloatKey: float,
             AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false
+            AVLinearPCMIsNonInterleaved: float
         ]
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
         output.alwaysCopiesSampleData = false
         guard reader.canAdd(output) else { throw DecoderError.readFailed }
         reader.add(output)
+        return (reader, output)
+    }
+
+    private static func decodeWork(_ sourceURL: URL) async throws -> (url: URL, duration: TimeInterval) {
+        let (reader, output) = try await makePCMReader(sourceURL, float: false)
 
         let wavURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("doka-local-\(UUID().uuidString).wav")

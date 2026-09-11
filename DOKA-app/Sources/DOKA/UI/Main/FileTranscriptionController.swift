@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Режим разметки ролей на странице «Транскрибация» (UI поверх `RolesSpec`).
@@ -35,17 +36,49 @@ final class FileTranscriptionController: ObservableObject {
     /// переключении секций (`MainWindowView` рендерит контент с `.id(section)`)
     /// и живут до закрытия приложения.
     static let shared = FileTranscriptionController()
-    private init() {}
+
+    private let store = TranscriptHistoryStore.shared
+    private var cancellables = Set<AnyCancellable>()
+    private var documentCancellable: AnyCancellable?
+
+    private init() {
+        // Показанную запись удалили (срок хранения, удаление из списка) —
+        // скрываем результат, а не показываем карточки несуществующей записи.
+        // @Published отдаёт новое значение параметром (willSet).
+        store.$records
+            .sink { [weak self] records in
+                guard let self, let id = self.shownRecordID,
+                      !records.contains(where: { $0.id == id }) else { return }
+                self.hideResult()
+            }
+            .store(in: &cancellables)
+    }
 
     enum Phase: Equatable {
         case idle
         case picked(name: String, sizeBytes: Int64)
         case transcribing
-        case done(TranscriptResult)
+        /// Показана запись библиотеки: результат живёт в ней (единственный
+        /// источник), а не копией в фазе — правки и анализы видны сразу.
+        case done(recordID: UUID)
         case error(String)
     }
 
-    @Published private(set) var phase: Phase = .idle
+    /// Куда писать результат запуска.
+    enum Target: Equatable {
+        /// Новая запись (для «Распознать заново» — с исходной записью и заголовком).
+        case new(parentID: UUID?, title: String?)
+        /// «Повторить» на месте: та же запись снова в работе.
+        case reuse(UUID)
+    }
+
+    @Published private(set) var phase: Phase = .idle {
+        didSet { syncShownDocument() }
+    }
+    /// Документ показанной записи (при `phase == .done`); его изменения
+    /// пробрасываются в `objectWillChange` контроллера — страница, наблюдающая
+    /// контроллер, перерисовывается, когда тело догрузилось или изменилось.
+    @Published private(set) var shownDocument: TranscriptDocument?
     /// Под-статус длинной операции («Разделение по спикерам… 40 %»):
     /// локальная диаризация идёт минутами, неподвижный спиннер выглядел бы
     /// зависанием. nil — показывается обычный текст прогресса.
@@ -67,14 +100,9 @@ final class FileTranscriptionController: ObservableObject {
     @Published var numSpeakers: Int? = nil
     /// Тип записи для диаризации (только Nexara).
     @Published var diarizationSetting: DiarizationSetting = .general
-    /// Детализация тайм-кодов. Нарезка локальная, поэтому смена на готовом
-    /// результате перенарезает его сразу, без повторного запроса.
-    @Published var timestampDetail: TimestampDetail = .medium {
-        didSet {
-            guard timestampDetail != oldValue, case let .done(result) = phase else { return }
-            phase = .done(result.withDetail(timestampDetail))
-        }
-    }
+    /// Детализация тайм-кодов. Нарезка локальная: показанная запись
+    /// перенарезается документом сразу, без повторного запроса.
+    @Published var timestampDetail: TimestampDetail = .medium
     /// Разметка ролей (только Nexara, только с диаризацией).
     @Published var rolesMode: RolesMode = .off
     /// Свой список ролей: имена через запятую («Клиент, Агент»).
@@ -84,29 +112,33 @@ final class FileTranscriptionController: ObservableObject {
     /// Свой промпт анализа (llmPreset == .custom).
     @Published var llmCustomPrompt: String = ""
 
+    /// Параметры страницы снимком — ровно то, что уйдёт в запрос и в запись
+    /// библиотеки (по ним работают «Повторить» и «Распознать заново»).
+    var pageParams: FileTranscriptionParams {
+        FileTranscriptionParams(providerID: SettingsStore.shared.providerID,
+                                language: language,
+                                diarize: diarize,
+                                numSpeakers: numSpeakers,
+                                diarizationSetting: diarizationSetting.rawValue,
+                                rolesMode: rolesMode.rawValue,
+                                rolesText: rolesText,
+                                llmPreset: llmPreset.rawValue,
+                                llmCustomPrompt: llmCustomPrompt)
+    }
+
     /// Ошибка валидации своего списка ролей; nil — всё валидно.
     /// Не-nil блокирует запуск (кнопка задизейблена в UI).
-    var rolesValidationMessage: String? {
-        guard diarize, isBuiltinService, rolesMode == .custom else { return nil }
-        if case .failure(let error) = SpeakerRolesParser.parse(rolesText) {
-            return error.message
-        }
-        return nil
-    }
+    var rolesValidationMessage: String? { pageParams.rolesValidationMessage }
 
     /// Nexara-специфичные параметры (diarization_setting, роли, LLM-анализ)
     /// доступны только встроенному сервису: у кастомных OpenAI-совместимых
     /// API таких полей нет, строгий сервер ответит 400.
-    var isBuiltinService: Bool {
-        SettingsStore.shared.providerID == TranscriptionProvider.builtin.rawValue
-    }
+    var isBuiltinService: Bool { pageParams.isBuiltin }
 
     /// Разделение по спикерам считается на этом Mac: у локальных моделей
     /// сервера нет вовсе, у пользовательских OpenAI-совместимых сервисов
     /// диаризации нет в API. Ровно этот случай требует модели диаризатора.
-    var usesLocalDiarization: Bool {
-        diarize && !isBuiltinService
-    }
+    var usesLocalDiarization: Bool { pageParams.usesLocalDiarization }
 
     /// Диаризация включена, но модель ещё не скачана — запускать нельзя.
     var isDiarizerModelMissing: Bool {
@@ -118,49 +150,25 @@ final class FileTranscriptionController: ObservableObject {
     /// вызовы безопасны (идущая загрузка и готовая модель — no-op).
     func ensureDiarizerModel() {
         guard usesLocalDiarization else { return }
+        Self.requestDiarizerModel()
+    }
+
+    private static func requestDiarizerModel() {
         if case .notDownloaded = LocalModelStore.shared.state(for: .diarizer) {
             LocalModelStore.shared.download(.diarizer)
         }
     }
 
-    /// Итоговый промпт LLM-анализа; nil — анализ выключен или недоступен.
-    /// Жёсткий гейт builtin: у кастомных OpenAI-совместимых API `prompt` —
-    /// контекстная подсказка Whisper, LLM-инструкция там молча исказила бы
-    /// транскрипцию.
-    var effectiveLLMPrompt: String? {
-        guard isBuiltinService else { return nil }
-        switch llmPreset {
-        case .off:
-            return nil
-        case .custom:
-            let trimmed = llmCustomPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        case .meetingMinutes, .summary, .actionItems:
-            return llmPreset.promptTemplate
-        }
-    }
-
-    /// Разметка ролей для запроса с учётом гейтов (builtin + диаризация).
-    private var rolesSpec: RolesSpec {
-        guard diarize, isBuiltinService else { return .none }
-        switch rolesMode {
-        case .off:
-            return .none
-        case .auto:
-            return .auto
-        case .custom:
-            guard case .success(let names) = SpeakerRolesParser.parse(rolesText) else { return .none }
-            return .custom(names)
-        }
-    }
-
     private var pickedURL: URL?
     private var task: Task<Void, Never>?
-    /// Запись «Недавних транскрибаций» текущей задачи (для done/error/cancel).
-    private var currentRecordID: UUID?
-    /// База имени для «Сохранить как…» у результата, открытого из «Недавних»:
-    /// исходного файла может уже не быть, имя берётся из записи.
-    private var restoredBaseName: String?
+    /// Запись библиотеки, которая распознаётся прямо сейчас.
+    private(set) var runningRecordID: UUID?
+
+    /// Показанная запись библиотеки.
+    var shownRecordID: UUID? {
+        if case let .done(id) = phase { return id }
+        return nil
+    }
 
     /// Поддерживаемые форматы (белый список Nexara) — источник правды для drop,
     /// диалога выбора и валидации.
@@ -202,15 +210,28 @@ final class FileTranscriptionController: ObservableObject {
         }
     }
 
-    /// Имя без расширения для дефолтного имени файла в диалоге «Сохранить как…».
+    /// Имя без расширения для дефолтного имени файла в диалоге «Сохранить как…»:
+    /// заголовок показанной записи (его можно переименовать), иначе имя файла.
     var suggestedBaseName: String {
+        if let id = shownRecordID, let record = store.record(id) {
+            return Self.sanitizedFileName(record.displayTitle)
+        }
         if let base = pickedURL?.deletingPathExtension().lastPathComponent, !base.isEmpty {
             return base
         }
-        if let base = restoredBaseName, !base.isEmpty {
-            return base
-        }
         return "transcript"
+    }
+
+    /// Заголовок → безопасное имя файла: разделители путей и управляющие
+    /// символы заменяются, длина ограничена.
+    static func sanitizedFileName(_ title: String) -> String {
+        let forbidden = CharacterSet(charactersIn: "/:\\").union(.controlCharacters)
+        let cleaned = title.unicodeScalars
+            .map { forbidden.contains($0) ? "-" : String($0) }
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let limited = String(cleaned.prefix(80))
+        return limited.isEmpty ? "transcript" : limited
     }
 
     /// Принять выбранный/перетащенный файл: проверить формат и размер.
@@ -228,52 +249,73 @@ final class FileTranscriptionController: ObservableObject {
         task?.cancel()
         task = nil
         pickedURL = url
-        restoredBaseName = nil
         phase = .picked(name: url.lastPathComponent, sizeBytes: size)
     }
 
-    /// Запустить транскрипцию выбранного файла.
+    /// Запустить транскрипцию выбранного файла с параметрами страницы.
     func transcribe() {
         guard let url = pickedURL else { return }
+        start(source: url, displayName: url.lastPathComponent, params: pageParams,
+              target: .new(parentID: nil, title: nil))
+    }
+
+    /// Единая точка запуска: страница, «Повторить» и «Распознать заново».
+    /// Параметры — снимок (не глобальный `providerID`), поэтому повтор идёт
+    /// сохранённым сервисом, не переключая выбор пользователя. Один файл за
+    /// раз: при идущем распознавании запуск отклоняется.
+    @discardableResult
+    func start(source url: URL, displayName: String,
+               params: FileTranscriptionParams, target: Target) -> Bool {
+        guard !isTranscribing else { return false }
+        // После переноса «Папки данных» до перезапуска новая запись потерялась бы.
+        guard !store.isFrozen else {
+            phase = .error(L("transcribe.error.restartRequired"))
+            return false
+        }
         let route: ServiceRoute
         do {
-            route = try SettingsStore.shared.resolveRoute()
+            route = try SettingsStore.shared.resolveRoute(providerID: params.providerID)
         } catch {
             phase = .error(error.localizedDescription)
-            return
+            return false
         }
         // Локальный сервис: без ключа и конфига, но модель должна быть скачана.
         if case .local(let model) = route, !LocalModelStore.shared.isDownloaded(model) {
             phase = .error(L("transcribe.local.modelMissing"))
-            return
+            return false
         }
-        guard rolesValidationMessage == nil else { return }
-        if isDiarizerModelMissing {
+        guard params.rolesValidationMessage == nil else { return false }
+        if params.usesLocalDiarization && !LocalModelStore.shared.isDownloaded(.diarizer) {
             phase = .error(L("transcribe.diarize.modelMissing"))
-            ensureDiarizerModel()
-            return
+            Self.requestDiarizerModel()
+            return false
         }
-        let options = FileTranscriptionOptions(
-            language: language == "auto" ? nil : language,
-            // На сервер `task=diarize` уходит ТОЛЬКО встроенному: у кастомных
-            // OpenAI-совместимых API такого режима нет. Им спикеров проставит
-            // локальный диаризатор.
-            diarize: diarize && isBuiltinService,
-            numSpeakers: isBuiltinService ? numSpeakers : nil,
-            diarizationSetting: isBuiltinService ? diarizationSetting : .general,
-            roles: rolesSpec,
-            llmPrompt: effectiveLLMPrompt,
-            timestampDetail: timestampDetail
-        )
-        let localDiarization = usesLocalDiarization
-        let speakerHint = numSpeakers
+        let options = params.makeOptions(detail: timestampDetail)
+        let localDiarization = params.usesLocalDiarization
+        let speakerHint = params.numSpeakers
+        let providerTag = SettingsStore.shared.providerTag(for: params.providerID)
+
+        let recordID: UUID
+        switch target {
+        case let .new(parentID, title):
+            recordID = store.addPending(.init(fileName: displayName, provider: providerTag,
+                                              title: title, params: params,
+                                              sourcePath: url.path, parentID: parentID))
+        case .reuse(let id):
+            store.restartPending(id, provider: providerTag, params: params)
+            recordID = id
+        }
+        // Архив исходного звука — параллельно распознаванию, задачей стора:
+        // отмена распознавания его не убивает (иначе «Повторить» не из чего).
+        if SettingsStore.shared.saveTranscriptAudio, store.audioURL(for: recordID) == nil {
+            store.archiveAudio(recordID, from: url)
+        }
+
         phase = .transcribing
         progressNote = nil
-        let recordID = TranscriptHistoryStore.shared.addPending(
-            fileName: url.lastPathComponent,
-            provider: SettingsStore.shared.providerTagForHistory)
-        currentRecordID = recordID
-        let useAsync = isBuiltinService
+        runningRecordID = recordID
+        let useAsync = params.isBuiltin
+        let store = store
         task = Task { [weak self] in
             do {
                 let client = FileTranscriptionClient()
@@ -282,8 +324,8 @@ final class FileTranscriptionController: ObservableObject {
                 case .local(let localModel):
                     // Локальный путь: движок + извлечение звука (в т.ч. из видео)
                     // + маппинг в TranscriptResult. Роли и LLM-анализ сюда не
-                    // попадают — гейт isBuiltinService; спикеров, если они
-                    // запрошены, проставляет локальный диаризатор.
+                    // попадают — гейт isBuiltin; спикеров, если они запрошены,
+                    // проставляет локальный диаризатор.
                     // Загрузка движка и декодирование независимы — перекрываем,
                     // чтобы холодный старт не ждал сумму двух операций.
                     async let engineLoading = LocalEngineManager.shared.engine(for: localModel)
@@ -315,13 +357,13 @@ final class FileTranscriptionController: ObservableObject {
                     ).withDetail(options.timestampDetail)
                 case .remote(let apiKey, let config) where useAsync:
                     // Async-путь Nexara: сабмит сразу возвращает job_id,
-                    // обработка идёт на сервере. job_id персистится до начала
-                    // опроса — задача переживает перезапуск приложения
-                    // (добор в TranscriptHistoryStore.resumePendingJobs).
+                    // обработка идёт на сервере. job_id персистится ДО проверки
+                    // отмены: задача уже поставлена и будет тарифицирована —
+                    // без job_id «Повторить» отправило бы файл второй раз.
                     let jobID = try await client.submitAsync(
                         fileURL: url, options: options, apiKey: apiKey, config: config)
+                    store.setJobID(recordID, jobID: jobID)
                     guard !Task.isCancelled else { return }
-                    TranscriptHistoryStore.shared.setJobID(recordID, jobID: jobID)
                     result = try await client.waitForResult(
                         jobID: jobID, apiKey: apiKey, config: config,
                         detail: options.timestampDetail,
@@ -356,17 +398,28 @@ final class FileTranscriptionController: ObservableObject {
                 }
                 self?.progressNote = nil
                 guard !Task.isCancelled else { return }
-                TranscriptHistoryStore.shared.markDone(recordID, result: result)
-                self?.currentRecordID = nil
-                self?.phase = .done(result)
+                let saved = store.markDone(recordID, result: result)
+                self?.finishRun(showing: saved == nil ? nil : recordID)
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
                 self?.progressNote = nil
+                store.markError(recordID, error: error)
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                TranscriptHistoryStore.shared.markError(recordID, message: message)
-                self?.currentRecordID = nil
+                self?.runningRecordID = nil
                 self?.phase = .error(message)
             }
+        }
+        return true
+    }
+
+    /// Итог успешного запуска: показать запись, если она ещё жива (её могли
+    /// удалить, пока шло распознавание), иначе вернуться к файлу.
+    private func finishRun(showing recordID: UUID?) {
+        runningRecordID = nil
+        if let recordID {
+            phase = .done(recordID: recordID)
+        } else {
+            returnToPickedOrIdle()
         }
     }
 
@@ -419,50 +472,38 @@ final class FileTranscriptionController: ObservableObject {
         }
     }
 
+    // MARK: - Отмена, открытие, сброс
+
     /// Отмена транскрипции: прервать запрос/опрос и вернуться к выбранному
     /// файлу. Async-задачу на сервере остановить нельзя (эндпоинта нет) —
-    /// она доработает и тарифицируется, запись в «Недавних» честно остаётся
-    /// со статусом «Отменена».
+    /// она доработает и тарифицируется; запись остаётся «Отменена», а её
+    /// jobID позволит забрать результат без повторной оплаты.
     func cancelTranscription() {
         task?.cancel()
         task = nil
         progressNote = nil
-        if let id = currentRecordID {
-            TranscriptHistoryStore.shared.markCancelled(id)
-            currentRecordID = nil
+        if let id = runningRecordID {
+            store.markCancelled(id)
+            runningRecordID = nil
         }
-        if let url = pickedURL {
-            phase = .picked(name: url.lastPathComponent, sizeBytes: fileSize(of: url))
-        } else {
-            phase = .idle
-        }
+        returnToPickedOrIdle()
     }
 
-    /// Открыть готовую запись «Недавних»: полный результат в карточки
-    /// «Транскрибация»/«Анализ», перенарезка — от сохранённых rawSegments и
-    /// words, так что смена детализации и все форматы экспорта работают.
-    func restore(_ record: FileTranscriptRecord) {
-        guard case .done = record.status, let stored = record.result,
-              !isTranscribing else { return }
+    /// Открыть готовую запись библиотеки в карточках страницы. Во время
+    /// распознавания запрещено — молча убило бы задачу.
+    func open(_ recordID: UUID) {
+        guard !isTranscribing, let record = store.record(recordID), record.isDone else { return }
         task?.cancel()
         task = nil
-        currentRecordID = nil
         pickedURL = nil
-        restoredBaseName = (record.fileName as NSString).deletingPathExtension
-        phase = .done(stored.toResult(detail: timestampDetail))
+        phase = .done(recordID: recordID)
     }
 
     /// Скрыть показанный результат: вернуться к выбранному файлу либо к
-    /// пустой странице (у результата, открытого из «Недавних», файла уже нет).
-    /// Сам результат не теряется — он остаётся в «Недавних».
+    /// пустой странице. Сама запись не теряется — она остаётся в библиотеке.
     func hideResult() {
         guard case .done = phase else { return }
-        restoredBaseName = nil
-        if let url = pickedURL {
-            phase = .picked(name: url.lastPathComponent, sizeBytes: fileSize(of: url))
-        } else {
-            phase = .idle
-        }
+        returnToPickedOrIdle()
     }
 
     /// Сброс: убрать файл и результат.
@@ -470,8 +511,32 @@ final class FileTranscriptionController: ObservableObject {
         task?.cancel()
         task = nil
         pickedURL = nil
-        restoredBaseName = nil
         phase = .idle
+    }
+
+    private func returnToPickedOrIdle() {
+        if let url = pickedURL {
+            phase = .picked(name: url.lastPathComponent, sizeBytes: fileSize(of: url))
+        } else {
+            phase = .idle
+        }
+    }
+
+    /// Документ следует за фазой: один на показанную запись. Инвариант в
+    /// одном месте — любой уход из `.done` отвязывает документ.
+    private func syncShownDocument() {
+        guard case let .done(id) = phase else {
+            if shownDocument != nil {
+                documentCancellable = nil
+                shownDocument = nil
+            }
+            return
+        }
+        guard shownDocument?.recordID != id else { return }
+        let document = TranscriptDocument(recordID: id)
+        documentCancellable = document.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+        shownDocument = document
     }
 
     private func fileSize(of url: URL) -> Int64 {

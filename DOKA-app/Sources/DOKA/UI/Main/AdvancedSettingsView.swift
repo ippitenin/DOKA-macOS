@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 /// Под-страница «Расширенные» секции «Общие»: иконка в Dock, окно при
-/// запуске и папка данных с полноценным переносом. Открывается плашкой
-/// с шевроном, закрывается кнопкой «назад» (drill-in через @State родителя).
+/// запуске, папка данных с полноценным переносом и библиотека транскрибаций.
+/// Открывается плашкой с шевроном, закрывается кнопкой «назад» (drill-in
+/// через @State родителя).
 struct AdvancedSettingsView: View {
     @ObservedObject var settings = SettingsStore.shared
     let onBack: () -> Void
@@ -12,10 +13,20 @@ struct AdvancedSettingsView: View {
     @State private var folderPath = AppDataFolder.currentURL.path
     @State private var isCustomFolder = AppDataFolder.isCustom
     @State private var migrationAlert: MigrationAlert?
+    /// Сколько занимает библиотека; nil — ещё считается (фоном).
+    @State private var libraryUsage: (total: Int64, audio: Int64)?
+    /// Алерт карточки библиотеки — один на обе ветки (стирание аудио и
+    /// сокращение срока): два .alert на одной вью конфликтуют.
+    @State private var libraryAlert: LibraryAlert?
 
     private enum MigrationAlert {
         case done(path: String)
         case failed(message: String)
+    }
+
+    private enum LibraryAlert {
+        case clearAudio
+        case shorten(TranscriptRetention)
     }
 
     var body: some View {
@@ -32,12 +43,12 @@ struct AdvancedSettingsView: View {
             .padding(.top, 46)
             .padding(.bottom, 20)
         }
-        // Смена срока — мгновенная чистка журнала (onChange, не .alert:
-        // с migration-алертом ниже не конфликтует).
+        // Смена срока — мгновенная чистка библиотеки (onChange, не .alert:
+        // с migration-алертом ниже не конфликтует). Сокращение срока до этого
+        // подтверждается алертом карточки.
         .onChange(of: settings.transcriptRetention) { _, newValue in
-            if let hours = newValue.hours {
-                TranscriptHistoryStore.shared.prune(olderThanHours: hours)
-            }
+            TranscriptHistoryStore.shared.prune(retention: newValue)
+            Task { await refreshUsage() }
         }
         .alert(alertTitle, isPresented: alertPresented) {
             switch migrationAlert {
@@ -113,9 +124,9 @@ struct AdvancedSettingsView: View {
         }
     }
 
-    /// Карточка «Недавних транскрибаций»: срок хранения записей и адрес
-    /// журнала на диске. Журнал лежит в общей «Папке данных» (карточка выше),
-    /// поэтому отдельного переноса нет — перенос папки переносит и его.
+    /// Карточка библиотеки транскрибаций: срок хранения, архив звука, место на
+    /// диске. Библиотека лежит в общей «Папке данных» (карточка выше), поэтому
+    /// отдельного переноса нет — перенос папки переносит и её.
     private var transcriptsCard: some View {
         SettingsCard(header: L("advanced.transcripts"),
                      footer: L("advanced.transcripts.footer")) {
@@ -125,30 +136,86 @@ struct AdvancedSettingsView: View {
                     titles: TranscriptRetention.allCases.map(\.title),
                     selectionIndex: Binding(
                         get: { TranscriptRetention.allCases.firstIndex(of: settings.transcriptRetention) ?? 0 },
-                        set: { settings.transcriptRetention = TranscriptRetention.allCases[$0] }
+                        set: { requestRetention(TranscriptRetention.allCases[$0]) }
                     )
                 )
             }
             CardDivider()
+            SettingsRow(title: L("advanced.transcripts.saveAudio"),
+                        help: L("advanced.transcripts.saveAudio.help")) {
+                SettingsSwitch(isOn: $settings.saveTranscriptAudio)
+            }
+            CardDivider()
             VStack(alignment: .leading, spacing: 10) {
-                Text((folderPath as NSString).appendingPathComponent(TranscriptHistoryStore.fileName))
+                Text((folderPath as NSString).appendingPathComponent(TranscriptLibraryFiles.folderName))
                     .font(.callout.monospaced())
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                HStack {
+                Text(usageText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                HStack(spacing: 10) {
                     Button(L("advanced.revealInFinder")) { revealTranscriptsInFinder() }
                         .dsGlassButton()
+                    Button(L("advanced.transcripts.clearAudio")) { libraryAlert = .clearAudio }
+                        .dsGlassButton()
+                        .disabled((libraryUsage?.audio ?? 0) == 0)
                     Spacer(minLength: 0)
                 }
             }
             .padding(.horizontal, DS.Spacing.cardPadding)
             .padding(.vertical, 10)
         }
+        .task { await refreshUsage() }
+        // Алерт на карточке, а не на корне: на корне уже migration-алерт.
+        .alert(libraryAlertTitle, isPresented: libraryAlertPresented, presenting: libraryAlert) { alert in
+            switch alert {
+            case .clearAudio:
+                Button(L("advanced.transcripts.clearAudio.confirm"), role: .destructive) {
+                    TranscriptHistoryStore.shared.removeAllAudio()
+                    Task { await refreshUsage() }
+                }
+            case .shorten(let retention):
+                Button(L("advanced.transcripts.shorten.confirm"), role: .destructive) {
+                    settings.transcriptRetention = retention
+                }
+            }
+            Button(L("common.cancel"), role: .cancel) {}
+        } message: { alert in
+            switch alert {
+            case .clearAudio: Text(L("advanced.transcripts.clearAudio.message"))
+            case .shorten: Text(L("advanced.transcripts.shorten.message"))
+            }
+        }
     }
 
-    // MARK: - Алерт (один на обе ветки: два .alert на одной вью конфликтуют)
+    private var usageText: String {
+        guard let usage = libraryUsage else { return L("advanced.transcripts.usage.calculating") }
+        return L("advanced.transcripts.usage",
+                 ByteCountFormatter.string(fromByteCount: usage.total, countStyle: .file),
+                 ByteCountFormatter.string(fromByteCount: usage.audio, countStyle: .file))
+    }
+
+    /// Сокращение срока удаляет записи безвозвратно (с аудио и анализами) —
+    /// спрашиваем, если под новый срок попадёт хоть одна запись.
+    private func requestRetention(_ retention: TranscriptRetention) {
+        let store = TranscriptHistoryStore.shared
+        let expiring = TranscriptHistoryStore.expiredIDs(store.records, retention: retention, now: Date())
+        if expiring.isEmpty {
+            settings.transcriptRetention = retention
+        } else {
+            libraryAlert = .shorten(retention)
+        }
+    }
+
+    private func refreshUsage() async {
+        libraryUsage = await TranscriptHistoryStore.shared.librarySize()
+    }
+
+    // MARK: - Алерты (у каждой вью — один .alert)
 
     private var alertTitle: String {
         switch migrationAlert {
@@ -164,16 +231,29 @@ struct AdvancedSettingsView: View {
         )
     }
 
+    private var libraryAlertTitle: String {
+        switch libraryAlert {
+        case .clearAudio, .none: return L("advanced.transcripts.clearAudio.title")
+        case .shorten: return L("advanced.transcripts.shorten.title")
+        }
+    }
+
+    private var libraryAlertPresented: Binding<Bool> {
+        Binding(
+            get: { libraryAlert != nil },
+            set: { if !$0 { libraryAlert = nil } }
+        )
+    }
+
     // MARK: - Действия
 
     private func revealInFinder() {
         NSWorkspace.shared.activateFileViewerSelecting([AppDataFolder.currentURL])
     }
 
-    /// Показать журнал транскрибаций; пока файла нет (записей не было) —
-    /// саму папку данных.
+    /// Показать папку библиотеки; пока её нет (записей не было) — саму папку данных.
     private func revealTranscriptsInFinder() {
-        let url = AppDataFolder.currentURL.appendingPathComponent(TranscriptHistoryStore.fileName)
+        let url = TranscriptHistoryStore.shared.files.root
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
@@ -196,10 +276,23 @@ struct AdvancedSettingsView: View {
     }
 
     private func migrate(_ operation: () throws -> URL) {
+        let store = TranscriptHistoryStore.shared
+        // Идущая транскрибация или архивация/добор допишут файлы уже после
+        // копирования — в папку, которую перенос удалит. Переносим в покое.
+        guard !FileTranscriptionController.shared.isTranscribing, !store.hasBackgroundWork else {
+            migrationAlert = .failed(message: L("advanced.migrate.error.busy"))
+            return
+        }
         // Плеер может держать открытым m4a внутри переносимой папки.
         RecordingPlayer.shared.stop()
+        // Всё поставленное в очередь библиотеки (и стирание корзины) — на диск
+        // до копирования.
+        store.flush()
         do {
             let target = try operation()
+            // До перезапуска библиотека больше ничего не пишет: сторы держат
+            // старый путь, а старая папка уже удалена.
+            store.freeze()
             folderPath = target.path
             isCustomFolder = AppDataFolder.isCustom
             migrationAlert = .done(path: target.path)

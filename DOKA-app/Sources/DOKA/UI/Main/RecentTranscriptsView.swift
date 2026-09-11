@@ -1,15 +1,20 @@
 import SwiftUI
 
-/// Список «Недавние транскрибации» на странице «Транскрибация»: журнал поверх
-/// `TranscriptHistoryStore`. Выполняющиеся задачи видны как «В процессе» (как
-/// в дашборде Nexara), готовые открываются обратно в карточки
-/// «Транскрибация»/«Анализ» со всеми возможностями (детализация, экспорт).
+/// Список последних записей библиотеки на странице «Транскрибация».
+/// Выполняющиеся задачи видны как «В процессе» (как в дашборде Nexara),
+/// готовые открываются обратно в карточки «Транскрибация»/«Анализ» со всеми
+/// возможностями (детализация, экспорт). Полная библиотека с поиском — в
+/// своей секции (следующая фаза); здесь — только хвост списка.
 struct RecentTranscriptsView: View {
     @ObservedObject private var store = TranscriptHistoryStore.shared
     @ObservedObject private var controller = FileTranscriptionController.shared
     @ObservedObject private var settings = SettingsStore.shared
     /// Запись, ожидающая подтверждения удаления.
     @State private var pendingDelete: FileTranscriptRecord?
+
+    /// Без лимита в библиотеке список на странице рос бы бесконечно, а он
+    /// не ленивый: показываем хвост.
+    private static let visibleLimit = 50
 
     /// Подсказка о сроке хранения — живая: следует текущей настройке
     /// `transcriptRetention` (сменили срок в «Расширенных» — текст обновился).
@@ -31,13 +36,13 @@ struct RecentTranscriptsView: View {
                     HelpBubble(text: retentionHelp)
                 }
                 .padding(.top, 6)
-                ForEach(store.records) { record in
+                ForEach(store.records.prefix(Self.visibleLimit)) { record in
                     RecentTranscriptCard(
                         record: record,
                         // Открытие во время активной транскрибации молча убило
                         // бы задачу — блокируем, как дропзону.
                         openDisabled: controller.isTranscribing,
-                        onOpen: { controller.restore(record) },
+                        onOpen: { controller.open(record.id) },
                         onDelete: { pendingDelete = record }
                     )
                 }
@@ -51,17 +56,23 @@ struct RecentTranscriptsView: View {
                    ),
                    presenting: pendingDelete) { record in
                 Button(L("transcribe.recent.delete.confirm"), role: .destructive) {
+                    // Удаление выполняющейся записи: сначала остановить задачу,
+                    // иначе она дописала бы результат в уже удалённую запись.
+                    if controller.runningRecordID == record.id {
+                        controller.cancelTranscription()
+                    }
+                    RecordingPlayer.shared.stopIfCurrent(record.id)
                     store.delete(record.id)
                 }
                 Button(L("common.cancel"), role: .cancel) {}
             } message: { record in
-                Text(record.fileName)
+                Text(record.displayTitle)
             }
         }
     }
 }
 
-/// Карточка одной записи: имя файла, дата/сервис, статус и действия.
+/// Карточка одной записи: заголовок, дата/сервис, статус и действия.
 private struct RecentTranscriptCard: View {
     let record: FileTranscriptRecord
     let openDisabled: Bool
@@ -76,7 +87,7 @@ private struct RecentTranscriptCard: View {
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(record.fileName)
+                Text(record.displayTitle)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(subtitle)

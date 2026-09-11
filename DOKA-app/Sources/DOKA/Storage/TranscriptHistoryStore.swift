@@ -1,123 +1,199 @@
+import Combine
 import Foundation
 
-/// Компактная форма результата транскрибации для диска: без производного
-/// `segments` — отображаемая нарезка восстанавливается `withDetail` при
-/// открытии записи, хранить её значит удваивать JSON.
-struct StoredTranscript: Codable, Equatable {
-    let fullText: String
-    let language: String?
-    let duration: Double?
-    let rawSegments: [TranscriptSegment]
-    let words: [TranscriptWord]
-    let llmOutput: String?
-
-    init(_ result: TranscriptResult) {
-        fullText = result.fullText
-        language = result.language
-        duration = result.duration
-        rawSegments = result.rawSegments
-        words = result.words
-        llmOutput = result.llmOutput
-    }
-
-    /// Результат с нарезкой под запрошенную детализацию — тем же путём
-    /// `withDetail`, что и живой ответ сервера.
-    func toResult(detail: TimestampDetail) -> TranscriptResult {
-        TranscriptResult(fullText: fullText, language: language, duration: duration,
-                         segments: rawSegments, rawSegments: rawSegments, words: words,
-                         llmOutput: llmOutput).withDetail(detail)
-    }
-}
-
-/// Одна запись «Недавних транскрибаций». Запись со статусом `inProgress` и
-/// `jobID` — одновременно элемент списка и точка восстановления async-задачи
-/// после перезапуска приложения.
-struct FileTranscriptRecord: Codable, Identifiable, Equatable {
-    enum Status: Codable, Equatable {
-        case inProgress
-        case done
-        case error(String)       // локализованный текст для показа
-        case cancelled           // отменена пользователем: задачу на сервере
-                                 // остановить нельзя, но результат не забираем
-    }
-
-    let id: UUID
-    let fileName: String         // имя исходного файла: показ + база «Сохранить как…»
-    let date: Date               // момент постановки; от него же дедлайн 12 ч
-    var status: Status
-    var result: StoredTranscript?    // только при .done
-    let provider: String             // SettingsStore.providerTagForHistory
-    var language: String?
-    var duration: Double?
-    var jobID: String?               // async-задача Nexara; nil — sync кастомного сервиса
-}
-
-/// «Недавние транскрибации»: журнал файловых транскрипций поверх JSON-файла
-/// в папке данных. Намеренно ОТДЕЛЬНЫЙ от `HistoryStore` диктовки — пайплайны
-/// изолированы (инвариант проекта). Хранит полный результат (сегменты, слова,
-/// анализ): открытие записи полностью восстанавливает карточки «Транскрибация»
-/// и «Анализ», включая смену детализации и все форматы экспорта.
+/// Библиотека файловых транскрибаций (бывшие «Недавние»): индекс записей в
+/// памяти поверх файлового слоя `TranscriptLibraryFiles`. Намеренно ОТДЕЛЬНА
+/// от `HistoryStore` диктовки — пайплайны изолированы (инвариант проекта).
+///
+/// В памяти — только индекс (`records`); тела (сегменты, слова, анализы)
+/// лежат по файлу на запись и читаются лениво, с маленьким LRU-кэшем. Лимита
+/// по количеству нет: вытеснение в библиотеке — тихая потеря данных; остаётся
+/// только срок хранения, который выбирает пользователь.
 @MainActor
 final class TranscriptHistoryStore: ObservableObject {
-    static let shared = TranscriptHistoryStore()
-    private static let limit = 50
-
-    /// Имя файла журнала в папке данных (показывается в «Расширенных» настройках).
-    static let fileName = "transcripts.json"
+    static let shared = TranscriptHistoryStore(dataFolder: AppDataFolder.currentURL)
 
     /// Срок жизни результата async-задачи на сервере Nexara: после него
     /// добирать нечего (результат удалён безвозвратно).
     static let serverResultLifetime: TimeInterval = 12 * 3_600
 
     @Published private(set) var records: [FileTranscriptRecord] = []
+    /// Запись завершилась (готово или ошибка, которую пользователь ждал) —
+    /// единая точка для уведомлений: путь контроллера, добор после
+    /// перезапуска и повторный опрос.
+    let finished = PassthroughSubject<FileTranscriptRecord, Never>()
+    /// Тело записи изменилось (правки, анализы) — открытые документы
+    /// перечитывают его.
+    let bodyChanged = PassthroughSubject<UUID, Never>()
 
-    private let fileURL: URL
-    /// Задачи добора результатов после перезапуска, по id записи —
-    /// удаление записи отменяет её опрос.
+    let files: TranscriptLibraryFiles
+    private var migratedFromV1: Bool
+    /// Задачи добора результатов по id записи — удаление записи отменяет опрос.
     private var recoveryTasks: [UUID: Task<Void, Never>] = [:]
+    /// Архивация исходного звука — принадлежит стору, а не задаче
+    /// распознавания: отмена распознавания её не убивает (иначе «Повторить»
+    /// было бы не из чего), удаление записи — убивает.
+    private var audioTasks: [UUID: Task<Void, Never>] = [:]
+    private var bodyCache: [UUID: TranscriptBody] = [:]
+    private var bodyCacheOrder: [UUID] = []
+    /// После переноса «Папки данных» до перезапуска библиотека ничего не
+    /// меняет: стор держит старый путь, а старая папка уже удалена.
+    private(set) var isFrozen = false
+    private static let bodyCacheLimit = 3
 
-    private init() {
-        let dir = AppDataFolder.currentURL
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent(Self.fileName)
-        load()
+    /// Полнотекстовый поиск: тексты читаются лениво из `text.txt`.
+    private(set) lazy var textIndex = TranscriptTextIndex(loader: { [files] id in files.readText(id) })
+
+    /// Загрузка синхронная: `prune`/`resumePendingJobs` в AppDelegate идут
+    /// сразу после и должны видеть полный список. Internal ради тестов.
+    init(dataFolder: URL) {
+        files = TranscriptLibraryFiles(dataFolder: dataFolder)
+        let outcome = files.loadOrMigrate()
+        records = outcome.records
+        migratedFromV1 = outcome.migratedFromV1
+        if outcome.indexChanged {
+            files.writeIndex(records, migratedFromV1: migratedFromV1)
+        }
+    }
+
+    // MARK: - Чтение
+
+    func record(_ id: UUID) -> FileTranscriptRecord? {
+        records.first { $0.id == id }
+    }
+
+    /// Тело из кэша без обращения к диску (свежий результат, только что открытая запись).
+    func cachedBody(_ id: UUID) -> TranscriptBody? {
+        bodyCache[id]
+    }
+
+    func loadBody(_ id: UUID) async -> TranscriptBody? {
+        if let cached = bodyCache[id] {
+            touchCache(id)
+            return cached
+        }
+        guard let body = await files.readBody(id) else { return nil }
+        // Запись могли удалить, пока тело читалось.
+        guard record(id) != nil else { return nil }
+        cache(body, for: id)
+        return body
+    }
+
+    /// Архив звука записи, если он есть на диске.
+    func audioURL(for id: UUID) -> URL? {
+        files.existingAudioURL(id)
+    }
+
+    /// Идёт ли фоновая работа с файлами библиотеки (архивация, добор):
+    /// перенос «Папки данных» в это время блокируется.
+    var hasBackgroundWork: Bool {
+        !recoveryTasks.isEmpty || !audioTasks.isEmpty
+    }
+
+    func librarySize() async -> (total: Int64, audio: Int64) {
+        await files.librarySize()
+    }
+
+    /// id → сниппет совпадения по полному тексту готовых записей.
+    func searchFullText(_ query: String) async -> [UUID: String] {
+        let ids = records.filter(\.isDone).map(\.id)
+        return await textIndex.search(query, among: ids)
     }
 
     // MARK: - Жизненный цикл записи
 
+    /// Параметры новой записи.
+    struct PendingDraft {
+        var fileName: String
+        var provider: String
+        var title: String?
+        var params: FileTranscriptionParams?
+        var sourcePath: String?
+        var parentID: UUID?
+    }
+
     @discardableResult
-    func addPending(fileName: String, provider: String) -> UUID {
-        let record = FileTranscriptRecord(id: UUID(), fileName: fileName, date: Date(),
-                                          status: .inProgress, result: nil,
-                                          provider: provider, language: nil,
-                                          duration: nil, jobID: nil)
+    func addPending(_ draft: PendingDraft) -> UUID {
+        let record = FileTranscriptRecord(
+            id: UUID(), fileName: draft.fileName, date: Date(), status: .inProgress,
+            provider: draft.provider, title: draft.title, sourcePath: draft.sourcePath,
+            params: draft.params, parentID: draft.parentID)
         records.insert(record, at: 0)
-        trimToLimit()
-        save()
+        persist(record)
         return record.id
     }
 
-    /// job_id персистится сразу после сабмита: если приложение умрёт во время
-    /// опроса, задача доберётся на следующем старте.
-    func setJobID(_ id: UUID, jobID: String) {
-        update(id) { $0.jobID = jobID }
-    }
-
-    func markDone(_ id: UUID, result: TranscriptResult) {
+    /// «Повторить» на месте: та же запись снова в работе. Сервис и параметры
+    /// — сохранённые (или новые, если вызывающий их передал).
+    func restartPending(_ id: UUID, provider: String, params: FileTranscriptionParams?) {
         update(id) {
-            $0.status = .done
-            $0.result = StoredTranscript(result)
-            $0.language = result.language
-            $0.duration = result.duration
+            $0.status = .inProgress
+            $0.jobID = nil
+            $0.submittedAt = nil
+            $0.failure = nil
+            $0.provider = provider
+            if let params { $0.params = params }
         }
     }
 
-    func markError(_ id: UUID, message: String) {
-        update(id) { $0.status = .error(message) }
+    /// job_id персистится сразу после сабмита: если приложение умрёт во время
+    /// опроса, задача доберётся на следующем старте. От этого момента же
+    /// отсчитывается дедлайн 12 ч.
+    func setJobID(_ id: UUID, jobID: String) {
+        update(id) {
+            $0.jobID = jobID
+            $0.submittedAt = Date()
+        }
+    }
+
+    /// Готовый результат → тело записи. Анализ Nexara из того же запроса
+    /// становится первым анализом записи (источник правды анализов —
+    /// `TranscriptBody.analyses`). Возвращает тело; nil — записи уже нет.
+    @discardableResult
+    func markDone(_ id: UUID, result: TranscriptResult) -> TranscriptBody? {
+        guard let record = record(id) else { return nil }
+        var analyses: [StoredAnalysis] = []
+        if let llm = result.llmOutput, !llm.isEmpty {
+            let preset = record.params?.llmPresetValue
+            analyses.append(StoredAnalysis(
+                title: preset.map(\.title) ?? L("transcribe.llm.result.title"),
+                templateID: preset.map { "nexara.\($0.rawValue)" },
+                source: .nexara, markdown: llm))
+        }
+        let body = TranscriptBody(transcript: StoredTranscript(result).withoutLLMOutput,
+                                  analyses: analyses)
+        writeBody(body, for: id)
+        update(id) {
+            $0.status = .done
+            $0.result = nil
+            $0.language = result.language
+            $0.duration = result.duration
+            $0.failure = nil
+            $0.summary = RecordSummary.make(from: body)
+        }
+        if let done = self.record(id) { finished.send(done) }
+        return body
+    }
+
+    /// Ошибка записи. `notify == false` — для безнадёжных записей, погашенных
+    /// на старте: пользователь не ждал их в этой сессии, уведомлять не о чем.
+    func markError(_ id: UUID, message: String, failure: FailureKind, notify: Bool = true) {
+        guard record(id) != nil else { return }
+        update(id) {
+            $0.status = .error(message)
+            $0.failure = failure
+        }
+        if notify, let failed = record(id) { finished.send(failed) }
+    }
+
+    func markError(_ id: UUID, error: Error, notify: Bool = true) {
+        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        markError(id, message: message, failure: FailureKind.classify(error), notify: notify)
     }
 
     /// Отмена осмысленна только для выполняющейся записи: готовую/ошибочную
-    /// не трогаем (гонка «задача завершилась в момент отмены»).
+    /// не трогаем (гонка «задача завершилась в момент отмены»). jobID
+    /// сохраняется — «Повторить» заберёт результат без повторной оплаты.
     func markCancelled(_ id: UUID) {
         update(id) {
             guard $0.status == .inProgress else { return }
@@ -125,78 +201,214 @@ final class TranscriptHistoryStore: ObservableObject {
         }
     }
 
-    func delete(_ id: UUID) {
-        recoveryTasks[id]?.cancel()
-        recoveryTasks[id] = nil
-        records.removeAll { $0.id == id }
-        save()
+    func rename(_ id: UUID, title: String?) {
+        let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        update(id) { $0.title = (trimmed?.isEmpty ?? true) ? nil : trimmed }
     }
 
-    /// Завершённые записи (done/error/cancelled) старше срока — удалить.
-    /// Выполняющиеся не трогаем: их судьбу решает recovery/опрос.
-    func prune(olderThanHours hours: Int) {
-        let cutoff = Date().addingTimeInterval(-Double(hours) * 3_600)
-        let before = records.count
-        records.removeAll { $0.date < cutoff && $0.status != .inProgress }
-        if records.count != before { save() }
+    /// Сохранить изменённое тело (правки, анализы): кэш, сводка, текст для
+    /// поиска и файлы — одним вызовом. Коммитить по завершённому действию,
+    /// а не на каждое нажатие клавиши.
+    func saveBody(_ id: UUID, _ body: TranscriptBody) {
+        guard record(id) != nil else { return }
+        writeBody(body, for: id)
+        update(id) {
+            $0.summary = RecordSummary.make(from: body)
+            $0.updatedAt = Date()
+        }
+        bodyChanged.send(id)
     }
 
-    // MARK: - Восстановление после перезапуска
+    func delete(_ id: UUID) { delete([id]) }
+
+    func delete(_ ids: Set<UUID>) {
+        guard !isFrozen else { return }
+        let existing = ids.filter { record($0) != nil }
+        guard !existing.isEmpty else { return }
+        for id in existing {
+            recoveryTasks.removeValue(forKey: id)?.cancel()
+            audioTasks.removeValue(forKey: id)?.cancel()
+            bodyCache[id] = nil
+            bodyCacheOrder.removeAll { $0 == id }
+        }
+        records.removeAll { existing.contains($0.id) }
+        // Сначала корзина (атомарный rename), потом индекс: крэш между ними
+        // оставит в индексе запись без папки — её отбросит сверка на старте.
+        files.trash(Array(existing))
+        files.writeIndex(records, migratedFromV1: migratedFromV1)
+        // Стирание — после индекса: kill посреди него не вернёт записи.
+        files.emptyTrash()
+        let index = textIndex
+        Task { await index.remove(existing) }
+    }
+
+    /// Завершённые записи старше срока — удалить. Выполняющиеся не трогаем:
+    /// их судьбу решает добор/опрос.
+    func prune(retention: TranscriptRetention) {
+        let expired = Self.expiredIDs(records, retention: retention, now: Date())
+        if !expired.isEmpty { delete(expired) }
+    }
+
+    nonisolated static func expiredIDs(_ records: [FileTranscriptRecord],
+                                       retention: TranscriptRetention, now: Date) -> Set<UUID> {
+        guard let hours = retention.hours else { return [] }
+        let cutoff = now.addingTimeInterval(-Double(hours) * 3_600)
+        return Set(records.filter { $0.date < cutoff && $0.status != .inProgress }.map(\.id))
+    }
+
+    // MARK: - Исходный звук
+
+    /// Архивировать звук источника в папку записи (m4a 16 кГц mono). Работа
+    /// фоновая; результат фиксируется, только если запись к тому моменту жива.
+    func archiveAudio(_ id: UUID, from source: URL) {
+        // Заморожено: синхронное создание папки ниже прошло бы мимо очереди
+        // и воскресило бы удалённую переносом старую папку данных.
+        guard !isFrozen, record(id) != nil else { return }
+        // Папку создаём сразу: meta пишется очередью асинхронно, а архиватор
+        // начнёт писать .part немедленно.
+        try? FileManager.default.createDirectory(at: files.folder(for: id),
+                                                 withIntermediateDirectories: true)
+        let part = files.audioPartURL(id)
+        audioTasks[id]?.cancel()
+        audioTasks[id] = Task { [weak self] in
+            do {
+                _ = try await SourceAudioArchiver.archive(source: source, to: part)
+                guard let self, !Task.isCancelled else { return }
+                if await self.files.commitAudio(id) {
+                    self.update(id) { $0.audioFileName = TranscriptLibraryFiles.audioFileName }
+                }
+            } catch {
+                if !(error is CancellationError) {
+                    NSLog("DOKA: архив звука записи не создан: \(error.localizedDescription)")
+                }
+                try? FileManager.default.removeItem(at: part)
+            }
+            self?.audioTasks[id] = nil
+        }
+    }
+
+    /// Архив для «Распознать заново»: копия звука исходной записи.
+    func cloneAudio(from parent: UUID, to id: UUID) async -> Bool {
+        guard await files.cloneAudio(from: parent, to: id) else { return false }
+        update(id) { $0.audioFileName = TranscriptLibraryFiles.audioFileName }
+        return true
+    }
+
+    /// «Стереть всё аудио транскрибаций»: тексты и анализы остаются.
+    func removeAllAudio() {
+        for task in audioTasks.values { task.cancel() }
+        audioTasks.removeAll()
+        if let playing = RecordingPlayer.shared.currentRecordID, record(playing) != nil {
+            RecordingPlayer.shared.stop()
+        }
+        files.removeAudio(records.map(\.id))
+        for index in records.indices where records[index].audioFileName != nil {
+            records[index].audioFileName = nil
+            files.writeMeta(records[index])
+        }
+        files.writeIndex(records, migratedFromV1: migratedFromV1)
+    }
+
+    // MARK: - Перенос папки данных
+
+    /// Дождаться записи всего поставленного в очередь (перед переносом папки).
+    func flush() { files.flush() }
+
+    /// После переноса «Папки данных» — никаких записей до перезапуска.
+    func freeze() {
+        isFrozen = true
+        for task in recoveryTasks.values { task.cancel() }
+        for task in audioTasks.values { task.cancel() }
+        recoveryTasks.removeAll()
+        audioTasks.removeAll()
+        files.freeze()
+    }
+
+    // MARK: - Добор после перезапуска и повторный опрос
 
     /// Добор незавершённых задач; один вызов на старте (AppDelegate).
     /// Sync-записи без jobID безнадёжны — запрос умер вместе с процессом;
     /// async-задачи старше 12 ч истекли на сервере; остальные опрашиваются
-    /// в фоне, результат попадает только в стор (фаза контроллера остаётся
-    /// idle — пользователь открывает запись из списка).
+    /// в фоне, результат попадает только в стор (пользователь открывает
+    /// запись из библиотеки). Безнадёжные гасятся без уведомлений.
     func resumePendingJobs() {
         let pending = records.filter { $0.status == .inProgress }
         guard !pending.isEmpty else { return }
 
-        // Безнадёжные записи гасим сразу, без сети и Keychain.
         let now = Date()
         var recoverable: [(id: UUID, jobID: String, deadline: Date)] = []
         for record in pending {
             guard let jobID = record.jobID else {
-                markError(record.id, message: L("transcribe.async.interrupted"))
+                markError(record.id, message: L("transcribe.async.interrupted"),
+                          failure: .interrupted, notify: false)
                 continue
             }
-            let deadline = record.date.addingTimeInterval(Self.serverResultLifetime)
+            let deadline = Self.pollDeadline(for: record)
             guard now < deadline else {
-                markError(record.id, message: L("transcribe.async.jobNotFound"))
+                markError(record.id, message: L("transcribe.async.jobNotFound"),
+                          failure: .expired, notify: false)
                 continue
             }
             recoverable.append((record.id, jobID, deadline))
         }
-        guard !recoverable.isEmpty,
-              let endpoint = TranscriptionProvider.builtin.endpoint else { return }
-        // Credentials всегда builtin, а не текущего сервиса: незавершённая
-        // async-задача — нексаровская, даже если пользователь уже
-        // переключился на кастомный пресет.
+        startPolling(recoverable)
+    }
+
+    /// Можно ли забрать результат с сервера без повторной отправки файла:
+    /// builtin-задача с jobID, результат ещё хранится, задача не упала на сервере.
+    func canRepoll(_ record: FileTranscriptRecord) -> Bool {
+        guard record.jobID != nil, record.failure != .jobFailed else { return false }
+        switch record.status {
+        case .error, .cancelled: break
+        case .inProgress, .done: return false
+        }
+        return Date() < Self.pollDeadline(for: record)
+    }
+
+    /// «Повторить» без повторной оплаты: отмена у Nexara лишь прекращала
+    /// опрос — сервер задачу дообработал, результат забираем.
+    func repoll(_ id: UUID) {
+        guard let record = record(id), canRepoll(record), let jobID = record.jobID else { return }
+        update(id) {
+            $0.status = .inProgress
+            $0.failure = nil
+        }
+        startPolling([(id, jobID, Self.pollDeadline(for: record))])
+    }
+
+    private static func pollDeadline(for record: FileTranscriptRecord) -> Date {
+        (record.submittedAt ?? record.date).addingTimeInterval(serverResultLifetime)
+    }
+
+    /// Опрос задач Nexara. Credentials — всегда builtin, а не текущего
+    /// сервиса: async-задача — нексаровская, даже если пользователь уже
+    /// переключился на свой пресет.
+    private func startPolling(_ items: [(id: UUID, jobID: String, deadline: Date)]) {
+        guard !items.isEmpty, let endpoint = TranscriptionProvider.builtin.endpoint else { return }
         let config = ProviderConfig(endpoint: endpoint,
                                     model: TranscriptionProvider.builtin.defaultModel)
-
         Task { [weak self] in
             // Ключ читается лениво и ВНЕ главного потока: Keychain может
-            // показать диалог подтверждения (например, после пересборки
-            // с новой подписью), и синхронное чтение в пути запуска
-            // заморозило бы всё приложение до ответа пользователя.
+            // показать диалог подтверждения (например, после пересборки с
+            // новой подписью), и синхронное чтение заморозило бы приложение.
             let apiKey = await Task.detached { KeychainHelper.getAPIKey(for: .builtin) }.value
             guard let self, !Task.isCancelled else { return }
             guard let apiKey else {
-                for item in recoverable {
-                    self.markError(item.id, message: L("error.noAPIKey"))
+                for item in items {
+                    self.markError(item.id, message: L("error.noAPIKey"), failure: .auth, notify: false)
                 }
                 return
             }
             var startDelay: TimeInterval = 0
-            for item in recoverable {
+            for item in items {
                 let delay = startDelay
                 startDelay += 0.5   // стаггер стартов: лимит Nexara — 10 запросов/с
+                self.recoveryTasks[item.id]?.cancel()
                 self.recoveryTasks[item.id] = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(delay))
                     guard !Task.isCancelled else { return }
                     do {
-                        // Детализация не важна: в StoredTranscript уходят только
+                        // Детализация не важна: в тело уходят только
                         // rawSegments/words, нарезка выполняется при открытии.
                         let result = try await FileTranscriptionClient().waitForResult(
                             jobID: item.jobID, apiKey: apiKey, config: config,
@@ -205,9 +417,7 @@ final class TranscriptHistoryStore: ObservableObject {
                         self?.markDone(item.id, result: result)
                     } catch {
                         guard !Task.isCancelled else { return }
-                        let message = (error as? LocalizedError)?.errorDescription
-                            ?? error.localizedDescription
-                        self?.markError(item.id, message: message)
+                        self?.markError(item.id, error: error)
                     }
                     self?.recoveryTasks[item.id] = nil
                 }
@@ -221,30 +431,38 @@ final class TranscriptHistoryStore: ObservableObject {
     /// удалил её, пока задача завершалась).
     private func update(_ id: UUID, _ mutate: (inout FileTranscriptRecord) -> Void) {
         guard let index = records.firstIndex(where: { $0.id == id }) else { return }
-        mutate(&records[index])
-        save()
+        var record = records[index]
+        mutate(&record)
+        guard record != records[index] else { return }
+        records[index] = record
+        persist(record)
     }
 
-    /// Вытеснение за лимит: с конца, пропуская выполняющиеся записи.
-    private func trimToLimit() {
-        var excess = records.count - Self.limit
-        guard excess > 0 else { return }
-        for index in stride(from: records.count - 1, through: 0, by: -1) where excess > 0 {
-            if records[index].status != .inProgress {
-                records.remove(at: index)
-                excess -= 1
-            }
+    private func persist(_ record: FileTranscriptRecord) {
+        files.writeMeta(record)
+        files.writeIndex(records, migratedFromV1: migratedFromV1)
+    }
+
+    private func writeBody(_ body: TranscriptBody, for id: UUID) {
+        cache(body, for: id)
+        files.writeBody(body, id: id)
+        let text = body.plainText
+        files.writeText(text, id: id)
+        let index = textIndex
+        Task { await index.update(id, text: text) }
+    }
+
+    private func cache(_ body: TranscriptBody, for id: UUID) {
+        bodyCache[id] = body
+        touchCache(id)
+        while bodyCacheOrder.count > Self.bodyCacheLimit {
+            let evicted = bodyCacheOrder.removeFirst()
+            bodyCache[evicted] = nil
         }
     }
 
-    private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([FileTranscriptRecord].self, from: data) else { return }
-        records = decoded
-    }
-
-    private func save() {
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+    private func touchCache(_ id: UUID) {
+        bodyCacheOrder.removeAll { $0 == id }
+        bodyCacheOrder.append(id)
     }
 }

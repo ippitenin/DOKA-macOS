@@ -10,13 +10,34 @@ struct TranscribeAudioSectionView: View {
     @ObservedObject private var settings = SettingsStore.shared
     @State private var isDropTargeted = false
     @State private var isImporterPresented = false
+    /// Есть ли ключ у сетевого сервиса — мемо: `isServiceReady` читает Keychain
+    /// синхронно, а тело этой страницы перерисовывается постоянно (прогресс,
+    /// документ); при висящем диалоге доступа к ключу это заморозило бы UI.
+    /// Обновляется по событию (появление, смена сервиса), как в онбординге.
+    @State private var hasKey = true
+
+    /// Готовность сервиса без Keychain в теле: локальному ключ не нужен.
+    private var serviceReady: Bool {
+        settings.isLocalService
+            ? settings.isServiceReady
+            : hasKey && settings.providerConfig != nil
+    }
+
+    /// Чтение ключа ВНЕ главного потока: диалог подтверждения доступа к
+    /// Keychain (после пересборки) иначе заморозил бы приложение.
+    private func refreshKeyReadiness() async {
+        guard !settings.isLocalService else { return }
+        let account = settings.currentKeychainAccount
+        hasKey = await Task.detached { KeychainHelper.getAPIKey(account: account) != nil }.value
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 SectionHeader(title: L("section.transcribeAudio"))
+                    .task(id: settings.providerID) { await refreshKeyReadiness() }
 
-                if !settings.isServiceReady {
+                if !serviceReady {
                     notConfiguredBanner
                 }
 
@@ -27,13 +48,23 @@ struct TranscribeAudioSectionView: View {
                 switch controller.phase {
                 case .transcribing:
                     progressCard
-                case let .done(result):
-                    if let llmOutput = result.llmOutput {
-                        analysisCard(llmOutput)
+                case .done:
+                    // Результат живёт в записи библиотеки: документ отдаёт
+                    // нарезку под детализацию и словарь для файлов (выходной
+                    // слой, мемоизирован) — сырой результат не меняется.
+                    if let document = controller.shownDocument,
+                       let shown = document.output(detail: controller.timestampDetail) {
+                        if let llmOutput = shown.llmOutput {
+                            analysisCard(llmOutput)
+                        }
+                        resultCard(shown)
+                    } else if controller.shownDocument?.loadState == .missing {
+                        errorCard(L("transcribe.recordMissing"))
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity)
                     }
-                    // Словарь для файлов — выходной слой: в фазе всегда сырой
-                    // результат, замены только в том, что видно и забирается.
-                    resultCard(TranscriptOutput.prepare(result))
                 case let .error(message):
                     errorCard(message)
                 default:

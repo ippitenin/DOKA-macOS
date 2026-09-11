@@ -98,11 +98,13 @@ enum AudioRetention: String, CaseIterable, Identifiable {
     }
 }
 
-/// Срок хранения записей «Недавних транскрибаций». В часах — короче, чем у
-/// аудио истории: дефолт 12 ч согласован со временем жизни результата
-/// async-задачи на сервере Nexara.
+/// Срок хранения записей библиотеки транскрибаций. Библиотека — место, куда
+/// возвращаются, поэтому дефолт — «всегда»; прежний дефолт 12 ч был
+/// согласован с жизнью результата на сервере Nexara, пока журнал был лишь
+/// списком «недавних». rawValue в UserDefaults — вставка новых сроков
+/// безопасна.
 enum TranscriptRetention: String, CaseIterable, Identifiable {
-    case hours12, hours24, hours48, hours72, forever
+    case hours12, hours24, hours48, hours72, days7, days30, forever
 
     var id: String { rawValue }
 
@@ -115,8 +117,24 @@ enum TranscriptRetention: String, CaseIterable, Identifiable {
         case .hours24: return 24
         case .hours48: return 48
         case .hours72: return 72
+        case .days7: return 7 * 24
+        case .days30: return 30 * 24
         case .forever: return nil
         }
+    }
+
+    /// Срок из UserDefaults. Ключ пишется только при явном выборе в UI
+    /// (`didSet`), поэтому его отсутствие = «пользователь не выбирал» →
+    /// «всегда»; явный выбор сохраняется. Мусор — тоже «всегда»: безопасная
+    /// сторона, ничего не удаляется.
+    static func resolve(stored: String?) -> TranscriptRetention {
+        guard let stored else { return .forever }
+        return TranscriptRetention(rawValue: stored) ?? .forever
+    }
+
+    /// Выбирал ли пользователь срок сам (для однократной плашки о смене дефолта).
+    static func isExplicit(stored: String?) -> Bool {
+        stored.flatMap(TranscriptRetention.init(rawValue:)) != nil
     }
 }
 
@@ -168,6 +186,7 @@ final class SettingsStore: ObservableObject {
         static let servicesMigrated = "servicesMigrated"
         static let skipSilentRecordings = "skipSilentRecordings"
         static let applyDictionaryToFiles = "applyDictionaryToFiles"
+        static let saveTranscriptAudio = "saveTranscriptAudio"
     }
 
     @Published var language: String {
@@ -276,6 +295,11 @@ final class SettingsStore: ObservableObject {
     /// Выбранный пользовательский сервис; nil — встроенный (или пресет удалён,
     /// тогда всё мягко откатывается к встроенному).
     var selectedCustomService: CustomService? {
+        customService(for: providerID)
+    }
+
+    /// Пресет по id сервиса («custom:<uuid>»); nil — не пресет или он удалён.
+    func customService(for providerID: String) -> CustomService? {
         guard providerID.hasPrefix("custom:"),
               let id = UUID(uuidString: String(providerID.dropFirst("custom:".count))) else {
             return nil
@@ -307,11 +331,23 @@ final class SettingsStore: ObservableObject {
     /// не готов. Читает Keychain — не вызывать синхронно в пути запуска
     /// (диалог подтверждения доступа заморозит приложение, см. CLAUDE.md).
     func resolveRoute() throws -> ServiceRoute {
-        if let local = selectedLocalModel { return .local(local) }
-        guard let config = providerConfig else {
+        try resolveRoute(providerID: providerID)
+    }
+
+    /// Маршрут произвольного сервиса — повтор файловой транскрибации по
+    /// сохранённым параметрам записи, не переключая выбор пользователя.
+    /// Удалённый пресет — ошибка «не настроен», а не молчаливый уход на
+    /// встроенный (платный) сервис. Читает Keychain — только по действию
+    /// пользователя, не из тела вью и не в пути запуска.
+    func resolveRoute(providerID: String) throws -> ServiceRoute {
+        if let local = LocalModel.from(providerID: providerID) { return .local(local) }
+        if providerID.hasPrefix("custom:"), customService(for: providerID) == nil {
             throw TranscriptionClient.ClientError.notConfigured
         }
-        guard let apiKey = currentAPIKey else {
+        guard let config = providerConfig(for: providerID) else {
+            throw TranscriptionClient.ClientError.notConfigured
+        }
+        guard let apiKey = KeychainHelper.getAPIKey(account: keychainAccount(for: providerID)) else {
             throw TranscriptionClient.ClientError.noAPIKey
         }
         return .remote(apiKey: apiKey, config: config)
@@ -320,8 +356,12 @@ final class SettingsStore: ObservableObject {
     /// Активная конфигурация запросов. nil — у пресета не разбирается адрес
     /// либо выбран локальный сервис (у него нет ни эндпоинта, ни модели API).
     var providerConfig: ProviderConfig? {
-        guard selectedLocalModel == nil else { return nil }
-        if let service = selectedCustomService {
+        providerConfig(for: providerID)
+    }
+
+    func providerConfig(for providerID: String) -> ProviderConfig? {
+        guard LocalModel.from(providerID: providerID) == nil else { return nil }
+        if let service = customService(for: providerID) {
             guard let url = ProviderConfig.normalizeEndpoint(service.endpoint) else { return nil }
             let model = service.model.trimmingCharacters(in: .whitespacesAndNewlines)
             return ProviderConfig(endpoint: url,
@@ -333,7 +373,24 @@ final class SettingsStore: ObservableObject {
 
     /// Keychain-аккаунт ключа активного сервиса.
     var currentKeychainAccount: String {
-        selectedCustomService?.keychainAccount ?? TranscriptionProvider.builtin.keychainAccount
+        keychainAccount(for: providerID)
+    }
+
+    func keychainAccount(for providerID: String) -> String {
+        customService(for: providerID)?.keychainAccount ?? TranscriptionProvider.builtin.keychainAccount
+    }
+
+    /// Метка сервиса для записей (история, библиотека) по id сервиса.
+    func providerTag(for providerID: String) -> String {
+        if let local = LocalModel.from(providerID: providerID) { return local.title }
+        return customService(for: providerID)?.name ?? TranscriptionProvider.builtin.rawValue
+    }
+
+    /// Сохранять ли архив исходного звука файловых транскрибаций (m4a
+    /// 16 кГц mono) — для плеера и повторного распознавания. Действует на
+    /// новые записи; уже сохранённое стирается только кнопкой в «Расширенных».
+    @Published var saveTranscriptAudio: Bool {
+        didSet { defaults.set(saveTranscriptAudio, forKey: Key.saveTranscriptAudio) }
     }
 
     /// API-ключ активного сервиса. У локального сервиса ключа нет — Keychain
@@ -423,10 +480,12 @@ final class SettingsStore: ObservableObject {
             Key.openWindowAtLaunch: true,
             Key.mouseShortcutButton: -1,
             Key.skipSilentRecordings: true,
-            Key.applyDictionaryToFiles: false
+            Key.applyDictionaryToFiles: false,
+            Key.saveTranscriptAudio: true
         ])
         skipSilentRecordings = defaults.bool(forKey: Key.skipSilentRecordings)
         applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
+        saveTranscriptAudio = defaults.bool(forKey: Key.saveTranscriptAudio)
         language = defaults.string(forKey: Key.language) ?? "ru"
         soundsEnabled = defaults.bool(forKey: Key.soundsEnabled)
         soundVolume = defaults.double(forKey: Key.soundVolume)
@@ -449,7 +508,7 @@ final class SettingsStore: ObservableObject {
         typingSpeedWPM = defaults.double(forKey: Key.typingSpeedWPM)
         saveAudio = defaults.bool(forKey: Key.saveAudio)
         audioRetention = AudioRetention(rawValue: defaults.string(forKey: Key.audioRetention) ?? "") ?? .forever
-        transcriptRetention = TranscriptRetention(rawValue: defaults.string(forKey: Key.transcriptRetention) ?? "") ?? .hours12
+        transcriptRetention = TranscriptRetention.resolve(stored: defaults.string(forKey: Key.transcriptRetention))
         if let data = defaults.data(forKey: Key.replacements),
            let rules = try? JSONDecoder().decode([ReplacementRule].self, from: data) {
             replacements = rules
