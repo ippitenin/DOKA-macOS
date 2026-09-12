@@ -559,7 +559,14 @@ final class FileTranscriptionController: ObservableObject {
                 wavURL: wavURL,
                 numSpeakers: numSpeakers,
                 progress: { [weak self] fraction in
-                    self?.progressNote = L("transcribe.diarize.progress", Int(fraction * 100))
+                    // У FluidAudio в этой версии нет кооперативных точек
+                    // отмены: после «Отмена» он досчитывает до конца, а его
+                    // колбэк продолжает приходить. Без этой проверки он
+                    // перетирал бы `progressNote` уже на отменённой странице —
+                    // пользователь видел бы ползущий процент диаризации после
+                    // того, как сам всё остановил.
+                    guard let self, self.isTranscribing else { return }
+                    self.progressNote = L("transcribe.diarize.progress", Int(fraction * 100))
                 }
             )
             LocalEngineManager.shared.touch()

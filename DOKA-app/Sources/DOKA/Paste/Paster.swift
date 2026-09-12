@@ -76,7 +76,11 @@ enum Paster {
         keyUp?.flags = .maskCommand
 
         keyDown?.post(tap: .cghidEventTap)
-        try await Task.sleep(for: .milliseconds(10))
+        // Именно `try?`: отмена (Esc во время вставки) между keyDown и keyUp
+        // бросила бы CancellationError, keyUp не ушёл бы, и клавиша V осталась
+        // бы «зажатой» на уровне HID — для ВСЕЙ системы, а не только для DOKA.
+        // Отменённая вставка допустима, залипшая клавиша — нет.
+        try? await Task.sleep(for: .milliseconds(10))
         keyUp?.post(tap: .cghidEventTap)
         // Пауза, чтобы целевое приложение успело обработать вставку.
         try await Task.sleep(for: .milliseconds(50))
