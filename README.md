@@ -64,9 +64,15 @@ written in Russian.
   another speaker, fix the text of a line with a double click. Edits survive any timestamp
   detail level, reach copying and every export format, and can be undone line by line or
   all at once; the original recognition result is never overwritten.
-- **AI analysis** — meeting minutes, a summary, action items or your own prompt. The result
-  renders as formatted text with headings, lists and tables; copying puts both plain and
-  rich text on the clipboard, so tables paste as tables into Telegram, Notes or Word.
+- **AI analysis on your own Mac** — meeting minutes, a short summary, action items, lecture
+  notes, an interview breakdown, chapters, or your own prompt. The report is written by a
+  language model running right on the machine (llama.cpp + Qwen3.5 4B): no internet, no key,
+  no billing; the 2.7 GB model is downloaded once. A long recording is processed in parts
+  and combined into a single report. Template sections can be rewritten, or you can build
+  your own template. The result renders as formatted text with headings, lists and tables,
+  its timestamps are clickable and seek the player; copying puts both plain and rich text
+  on the clipboard, so tables paste as tables into Telegram, Notes or Word. A Nexara
+  analysis ordered together with transcription works exactly as before.
 - **History** — a journal of dictations with metadata, playback, export (CSV or plain text)
   and a performance analysis screen.
 - **Dashboard** — words dictated, time saved, and how much faster this is than your own
@@ -81,7 +87,7 @@ The three recognition modes differ in what leaves your Mac:
 
 | Mode | What leaves your Mac |
 |---|---|
-| Local models (Whisper, Parakeet) | **Nothing.** Audio never leaves the device, and no key is needed — speaker diarization included |
+| Local models (Whisper, Parakeet) | **Nothing.** Audio never leaves the device, and no key is needed — speaker diarization and AI analysis of the transcript included |
 | Built-in service (Nexara) | Audio is uploaded to `api.nexara.ru` for recognition |
 | Custom OpenAI-compatible service | Audio is uploaded to the endpoint you configure |
 
@@ -95,7 +101,10 @@ keys live in the macOS Keychain, never in config files.
 
 - macOS 14 (Sonoma) or newer.
 - Apple Silicon for the local models. Whisper runs on Intel too, but much slower; Parakeet
-  requires Apple Silicon.
+  and local AI analysis require Apple Silicon (the official llama.cpp build for x86_64 ships
+  without AVX2, and a 4B model there would take tens of minutes).
+- For local AI analysis — about 2.7 GB of disk space for the model and up to 5 GB of memory
+  while it runs.
 - **Xcode 26 or newer** to build from source. The package itself declares
   `swift-tools-version: 5.9` and targets macOS 14, but one of its dependencies
   requires Swift 6.2, and the Liquid Glass APIs need the macOS 26 SDK to compile.
@@ -151,7 +160,7 @@ Pick one on first launch, or later in the **Service** section:
 |---|---|---|
 | Whisper Large v3 Turbo (Local) | not needed | ~1.6 GB one-time download, runs through WhisperKit on the Neural Engine |
 | Parakeet TDT 0.6B v3 (Local) | not needed | ~700 MB, runs through FluidAudio, Apple Silicon only |
-| Built-in (Nexara) | required | adds recording-type presets, speaker roles, AI analysis and async jobs |
+| Built-in (Nexara) | required | adds recording-type presets, speaker roles, analysis ordered with transcription, and async jobs |
 | Custom service | required | any OpenAI-compatible `/audio/transcriptions` endpoint |
 
 Local models are downloaded once — from the third step of the first launch or from the
@@ -159,10 +168,16 @@ Service section — prepared for your chip on first use, and unloaded from memor
 minutes of inactivity.
 
 Speaker diarization works with every service: the built-in one does it server-side, everyone
-else gets the on-device diarizer. Two things stay exclusive to the built-in service and are
-shown greyed out elsewhere — the recording-type preset and automatic speaker roles (both
-server features), and AI analysis, because its `prompt` means something entirely different
+else gets the on-device diarizer. What stays exclusive to the built-in service — and is shown
+greyed out elsewhere — is the recording-type preset, automatic speaker roles, and analysis
+ordered together with transcription, because its `prompt` means something entirely different
 in a plain OpenAI-compatible API.
+
+AI analysis of a finished transcript does not depend on the service: it is written by a
+language model on this Mac and is equally available to recordings of any origin. The model
+(2.7 GB) is downloaded from the “AI analysis on this Mac” card in the Service section, or
+straight from the “AI analysis” card of a record, and is unloaded from memory after three
+minutes of inactivity.
 
 ## Repository layout
 
@@ -201,16 +216,20 @@ Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 Full list with versions and required notices: [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
 
 - [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) — MIT
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — MIT (prebuilt xcframework, bundled
+  in `DOKA.app/Contents/Frameworks`)
 - [WhisperKit / argmax-oss-swift](https://github.com/argmaxinc/argmax-oss-swift) — MIT
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) — Apache-2.0
 - [swift-transformers](https://github.com/huggingface/swift-transformers),
   [swift-jinja](https://github.com/huggingface/swift-jinja) and Apple’s `swift-*` packages — Apache-2.0
 - [yyjson](https://github.com/ibireme/yyjson) — MIT
 
-Speech models are downloaded by the user at runtime and are not part of this repository:
+Models are downloaded by the user at runtime and are not part of this repository:
 
 - [Whisper large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) by OpenAI — MIT
 - [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) by NVIDIA — CC-BY-4.0
+- [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) by Alibaba Cloud — Apache-2.0
+  (GGUF quantization by [lmstudio-community](https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF))
 
 ## License
 

@@ -803,7 +803,9 @@ extension TranscriptResult {
 }
 
 /// Элемент массива, который при ошибке декода пропускается, а не роняет весь массив.
-private struct Lossy<T: Decodable>: Decodable {
+/// Не `private`: тем же приёмом декодируются свои шаблоны анализа
+/// (`SettingsStore.analysisTemplates`).
+struct Lossy<T: Decodable>: Decodable {
     let value: T?
 
     init(from decoder: Decoder) throws {

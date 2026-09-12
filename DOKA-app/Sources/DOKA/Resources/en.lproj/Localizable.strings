@@ -335,6 +335,7 @@
 "common.done" = "Done";
 "common.cancel" = "Cancel";
 "common.ok" = "OK";
+"common.save" = "Save";
 "common.close" = "Close";
 
 /* Transcribe Audio section */
@@ -542,3 +543,159 @@
 "perf.group.avgAudio" = "Avg. audio";
 "perf.group.avgProcess" = "Avg. process time";
 "perf.empty" = "No analyzable records yet.";
+
+/* Local AI analysis */
+"analysis.error.diskSpace" = "Not enough disk space: about %@ required";
+"analysis.error.checksum" = "The model file downloaded incorrectly — please try again";
+"analysis.error.http" = "The server returned error %ld";
+"analysis.error.contextTooSmall" = "The recording is too long for the model window on this Mac";
+
+/* Analysis section formats */
+"analysis.format.list" = "List";
+"analysis.format.paragraph" = "Text";
+"analysis.format.table" = "Table";
+
+/* Analysis prompts */
+"analysis.prompt.system" = "You write structured reports based on transcripts of recordings. Write the answer in this language: %@ — section headings in it too. Use only facts from the transcript, invent nothing; if a section has no data, write “Not stated”. Write speaker names exactly as they appear in the transcript. Write timestamps in square brackets exactly as they appear at the start of transcript lines, for example [12:34]. Answer in Markdown, with no preamble and no closing remarks.";
+"analysis.prompt.transcriptHeader" = "Recording “%@”, duration %@, participants: %@.";
+"analysis.prompt.participantsUnknown" = "not labelled";
+"analysis.prompt.sectionsHeader" = "Write a report with exactly these sections, in this order:";
+"analysis.prompt.custom" = "Task: %@";
+"analysis.prompt.transcriptLabel" = "Transcript:";
+"analysis.prompt.notesHeader" = "Below are not the transcript but notes on its parts, in order. Write the report from them.";
+"analysis.prompt.notePart" = "Part %ld of %ld (%@–%@):";
+"analysis.prompt.map" = "This is part %ld of %ld of a transcript (%@–%@). Write detailed notes on THIS part as a bulleted list: topics, facts, numbers, decisions, tasks with owners and deadlines, open questions. Keep the speaker name and the timestamp from the transcript on every item.";
+"analysis.prompt.mapFocus" = "Pay particular attention to: %@.";
+"analysis.prompt.cite" = "Give every item the timestamp of its place in the transcript, in square brackets.";
+"analysis.prompt.noTimestamps" = "The transcript has no timestamps — do not give any.";
+"analysis.prompt.format.list" = "A bulleted list.";
+"analysis.prompt.format.paragraph" = "Flowing text, one or two paragraphs.";
+"analysis.prompt.format.table" = "A Markdown table with these columns: %@.";
+"analysis.prompt.format.tableDefaultColumns" = "Item · Details";
+
+/* Built-in analysis templates */
+"analysis.template.summary.name" = "Short summary";
+"analysis.template.summary.description" = "The gist of the recording in a minute";
+"analysis.template.summary.0.title" = "The gist";
+"analysis.template.summary.0.instruction" = "What the recording is about and how it ended.";
+"analysis.template.summary.1.title" = "Key points";
+"analysis.template.summary.1.instruction" = "The most important things said, 5–8 items.";
+"analysis.template.summary.2.title" = "Outcome";
+"analysis.template.summary.2.instruction" = "What was concluded and what happens next.";
+"analysis.template.meetingMinutes.name" = "Meeting minutes";
+"analysis.template.meetingMinutes.description" = "Participants, topics, decisions, tasks";
+"analysis.template.meetingMinutes.0.title" = "Participants";
+"analysis.template.meetingMinutes.0.instruction" = "Only those who spoke in the recording.";
+"analysis.template.meetingMinutes.1.title" = "Topics discussed";
+"analysis.template.meetingMinutes.1.instruction" = "One item per topic, with a brief summary.";
+"analysis.template.meetingMinutes.2.title" = "Decisions";
+"analysis.template.meetingMinutes.2.instruction" = "What was decided. If nothing was decided, say so.";
+"analysis.template.meetingMinutes.3.title" = "Tasks";
+"analysis.template.meetingMinutes.3.instruction" = "Who does what and by when. Give a deadline only if one was stated.";
+"analysis.template.meetingMinutes.3.columns" = "Owner|Task|Due|Timestamp";
+"analysis.template.meetingMinutes.4.title" = "Open questions";
+"analysis.template.meetingMinutes.4.instruction" = "What was left unanswered.";
+"analysis.template.actionItems.name" = "Tasks and agreements";
+"analysis.template.actionItems.description" = "Just what needs doing";
+"analysis.template.actionItems.0.title" = "Tasks";
+"analysis.template.actionItems.0.instruction" = "Who does what and by when. Give a deadline only if one was stated.";
+"analysis.template.actionItems.0.columns" = "Owner|Task|Due|Timestamp";
+"analysis.template.actionItems.1.title" = "Agreements";
+"analysis.template.actionItems.1.instruction" = "What was agreed without a specific owner.";
+"analysis.template.lectureNotes.name" = "Lecture notes";
+"analysis.template.lectureNotes.description" = "Outline, terms, key points, questions";
+"analysis.template.lectureNotes.0.title" = "Topic and goal";
+"analysis.template.lectureNotes.0.instruction" = "What the lecture is about and why.";
+"analysis.template.lectureNotes.1.title" = "Outline";
+"analysis.template.lectureNotes.1.instruction" = "The parts of the lecture in order.";
+"analysis.template.lectureNotes.2.title" = "Terms";
+"analysis.template.lectureNotes.2.instruction" = "Terms and definitions given in the lecture.";
+"analysis.template.lectureNotes.2.columns" = "Term|Definition|Timestamp";
+"analysis.template.lectureNotes.3.title" = "Key points";
+"analysis.template.lectureNotes.3.instruction" = "Statements worth remembering.";
+"analysis.template.lectureNotes.4.title" = "Examples";
+"analysis.template.lectureNotes.4.instruction" = "Examples and problems worked through.";
+"analysis.template.lectureNotes.5.title" = "Self-check questions";
+"analysis.template.lectureNotes.5.instruction" = "5–7 questions on the material.";
+"analysis.template.interview.name" = "Interview";
+"analysis.template.interview.description" = "Flow of the conversation, answers, quotes";
+"analysis.template.interview.0.title" = "Context";
+"analysis.template.interview.0.instruction" = "What the conversation is about and who takes part.";
+"analysis.template.interview.1.title" = "Flow of the conversation";
+"analysis.template.interview.1.instruction" = "Questions and topics in order.";
+"analysis.template.interview.2.title" = "Key answers and facts";
+"analysis.template.interview.2.instruction" = "Exactly what the interviewee said, with numbers and names.";
+"analysis.template.interview.3.title" = "Quotes";
+"analysis.template.interview.3.instruction" = "Verbatim phrases in quotation marks, with the speaker's name and a timestamp.";
+"analysis.template.interview.4.title" = "Next steps";
+"analysis.template.interview.4.instruction" = "What was agreed at the end.";
+"analysis.template.chapters.name" = "Chapters";
+"analysis.template.chapters.description" = "The recording split into topics with timestamps";
+"analysis.template.chapters.0.title" = "Chapters";
+"analysis.template.chapters.0.instruction" = "Each chapter is a line “[timestamp] Title — one sentence about its content”. As many chapters as there are distinct parts in the recording.";
+
+/* Analysis templates: editor */
+"analysis.templates.copyName" = "%@ (copy)";
+"analysis.templates.validation.name" = "A name is required, no longer than %ld characters";
+"analysis.templates.validation.sections" = "At least one section is required, no more than %ld";
+"analysis.templates.validation.sectionTitle" = "Every section needs a title";
+"analysis.templates.validation.instruction" = "A section instruction must be no longer than %ld characters";
+
+/* Analysis panel */
+"analysis.title" = "AI analysis";
+"analysis.run" = "Analyse";
+"analysis.language" = "Answer language";
+"analysis.language.record" = "As in the recording";
+"analysis.customPrompt" = "Custom request";
+"analysis.customPlaceholder" = "What to do with the transcript: for example, “list every number mentioned, with context”";
+"analysis.manageTemplates" = "Templates…";
+"analysis.regenerate" = "Run again";
+"analysis.delete" = "Delete analysis";
+"analysis.deleteConfirmTitle" = "Delete this analysis?";
+"analysis.deleteConfirmText" = "The report will be deleted permanently. The transcript stays where it is.";
+"analysis.stale" = "The transcript was edited after this analysis";
+"analysis.truncated" = "cut off at the length limit";
+"analysis.source.nexara" = "Nexara";
+"analysis.source.nexaraTitle" = "Nexara analysis";
+"analysis.source.local" = "%@ · on this Mac";
+"analysis.progress.loading" = "Preparing the model…";
+"analysis.progress.reading" = "Reading the transcript… %ld%%";
+"analysis.progress.part" = "Part %ld of %ld · %ld%%";
+"analysis.progress.combining" = "Combining the parts…";
+"analysis.progress.writing" = "Writing the report…";
+"analysis.busy.transcribing" = "Local transcription is running — wait for it to finish";
+"analysis.busy.other" = "An analysis is already running for another recording";
+"analysis.error.empty" = "The model wrote nothing — try another template";
+"analysis.error.tooLong" = "This recording is too long to analyse on this Mac";
+"analysis.model.status" = "Analysis model:";
+"analysis.model.help" = "Reports on transcripts are written by a language model right on this Mac: no internet, no key, no billing. The model is downloaded once.";
+"analysis.model.footer" = "Analysis runs offline on this Mac. The model takes about 2.7 GB on disk and up to 5 GB of memory while it works; Apple Silicon is required.";
+"analysis.model.intelUnsupported" = "AI analysis works only on Apple Silicon (M1 and newer) — it is unavailable on Intel.";
+"analysis.model.needed" = "To analyse recordings on this Mac, download the language model.";
+"analysis.model.templates" = "Analysis templates…";
+"analysis.auto" = "Analyse automatically";
+"analysis.auto.help" = "Right after a file is transcribed, DOKA writes a report using the selected template. Analysis takes a few minutes and loads the Mac noticeably.";
+"analysis.auto.template" = "Auto-analysis template";
+"analysis.interruptedByDictation" = "Analysis was interrupted by dictation — start it again";
+
+/* Analysis templates: list */
+"analysis.templates.title" = "Analysis templates";
+"analysis.templates.builtin" = "Built-in";
+"analysis.templates.mine" = "Mine";
+"analysis.templates.new" = "New template";
+"analysis.templates.newName" = "My template";
+"analysis.templates.duplicate" = "Duplicate";
+"analysis.templates.delete" = "Delete";
+"analysis.templates.deleteTitle" = "Delete this template?";
+"analysis.templates.deleteConfirm" = "The template will be deleted. Analyses already written stay where they are.";
+"analysis.templates.name" = "Name";
+"analysis.templates.description" = "Description";
+"analysis.templates.sections" = "Sections";
+"analysis.templates.addSection" = "Add section";
+"analysis.templates.sectionTitle" = "Section title";
+"analysis.templates.sectionInstruction" = "What goes in this section";
+"analysis.templates.sectionFormat" = "Format";
+"analysis.templates.columns" = "Columns, comma-separated";
+"analysis.templates.cite" = "Timestamps";
+"analysis.templates.builtinReadonly" = "A built-in template cannot be changed — make a copy.";
+"analysis.templates.empty" = "Select a template on the left";

@@ -39,12 +39,16 @@ jobs:
           fi
 
       - name: Кеш зависимостей SwiftPM
-        # Кешируются git-зеркала зависимостей (~450 МБ, из них FluidAudio 347 МБ).
+        # Кешируются git-зеркала зависимостей (~450 МБ, из них FluidAudio 347 МБ)
+        # и бинарные артефакты (llama.cpp xcframework, 87 МБ).
         # .build кешировать нельзя: 1–2 ГБ и абсолютные пути внутри.
+        # Ключ включает и Package.swift: пин binaryTarget (url + checksum)
+        # живёт ТОЛЬКО там — Package.resolved бинарные таргеты не хранит,
+        # и по одному Package.resolved смена пина не меняла бы ключ кеша.
         uses: actions/cache@v4
         with:
           path: ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ hashFiles('DOKA-app/Package.resolved') }}
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('DOKA-app/Package.resolved', 'DOKA-app/Package.swift') }}
           restore-keys: swiftpm-${{ runner.os }}-
 
       - name: Резолв зависимостей

@@ -32,13 +32,34 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-${{ runner.os }}-${{ hashFiles('DOKA-app/Package.resolved') }}
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('DOKA-app/Package.resolved', 'DOKA-app/Package.swift') }}
           restore-keys: swiftpm-${{ runner.os }}-
 
       - name: Сборка приложения и образа
         # DOKA_INSTALL_DIR уводит установку из ~/Applications во временный каталог.
         # Сам DMG build.sh кладёт в КОРЕНЬ репозитория, а не в DOKA-app.
         run: DOKA_INSTALL_DIR="$RUNNER_TEMP/out" ./build.sh --dmg
+
+      - name: Проверка встраивания llama.framework
+        # Движок локального ИИ-анализа — динамический фреймворк в
+        # Contents/Frameworks. Три вещи, которые ломаются молча и всплывают
+        # только при запуске у пользователя: срез не universal, потерянный
+        # rpath и неподписанный (или «мусорный») вложенный бандл.
+        run: |
+          APP="$RUNNER_TEMP/out/DOKA.app"
+          FW="$APP/Contents/Frameworks/llama.framework"
+          test -d "$FW" || { echo "::error::llama.framework не попал в бандл"; exit 1; }
+          archs="$(lipo -archs "$FW/Versions/A/llama")"
+          echo "llama.framework: $archs"
+          [[ "$archs" == *arm64* && "$archs" == *x86_64* ]] \
+            || { echo "::error::llama.framework не universal: $archs"; exit 1; }
+          otool -L "$APP/Contents/MacOS/DOKA" | grep "llama.framework" >/dev/null \
+            || { echo "::error::бинарник не слинкован с llama.framework"; exit 1; }
+          # `grep >/dev/null`, а не `grep -q`: с -q otool получает SIGPIPE,
+          # и pipefail объявляет успешный поиск неудачей.
+          otool -l "$APP/Contents/MacOS/DOKA" | grep "@executable_path/../Frameworks" >/dev/null \
+            || { echo "::error::потерян rpath @executable_path/../Frameworks"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Проверка образа
         working-directory: ${{ github.workspace }}

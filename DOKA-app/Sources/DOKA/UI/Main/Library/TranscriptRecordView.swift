@@ -34,6 +34,9 @@ struct TranscriptRecordView: View {
     /// Строки, где открыт редактор реплики или поповер спикера: пока они есть,
     /// клавиши плеера и Esc «назад» молчат, а лента не следует за плеером.
     @State private var segmentInteractions: Set<SegmentInteractionKey> = []
+    /// Курсор в поле «Свой запрос» карточки анализа — клавиши записи молчат,
+    /// как и при открытом редакторе реплики.
+    @State private var isEditingAnalysisPrompt = false
 
     private struct SegmentInteractionKey: Hashable {
         let index: Int
@@ -152,7 +155,8 @@ struct TranscriptRecordView: View {
         .onKeyPress(.leftArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: -5) } }
         .onKeyPress(.rightArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: 5) } }
         .onKeyPress(.escape) {
-            guard !isRenaming, segmentInteractions.isEmpty, onBack != nil else { return .ignored }
+            guard !isRenaming, segmentInteractions.isEmpty, !isEditingAnalysisPrompt,
+                  onBack != nil else { return .ignored }
             goBack()
             return .handled
         }
@@ -185,7 +189,8 @@ struct TranscriptRecordView: View {
     }
 
     private func playbackKey(_ action: (URL) -> Void) -> KeyPress.Result {
-        guard !isRenaming, segmentInteractions.isEmpty, let url = audioURL else { return .ignored }
+        guard !isRenaming, segmentInteractions.isEmpty, !isEditingAnalysisPrompt,
+              let url = audioURL else { return .ignored }
         action(url)
         return .handled
     }
@@ -319,46 +324,25 @@ struct TranscriptRecordView: View {
         case .missing:
             noticeCard(icon: "questionmark.folder", tint: .secondary, text: L("transcribe.recordMissing"))
         case .ready:
-            if let result = output, let record = document.record {
-                ForEach(document.body?.analyses ?? []) { analysis in
-                    analysisCard(analysis, record: record)
-                }
+            if let result = output {
+                // Карточка «Анализ» — и список готовых отчётов, и запуск
+                // нового; тайм-коды в ответе кликабельны, только если есть
+                // что перематывать.
+                AnalysisPanelView(document: document,
+                                  seekDuration: audioURL == nil ? nil : seekLimit(result),
+                                  allowsTemplateEditor: layout == .full,
+                                  onPromptFocusChange: { isEditingAnalysisPrompt = $0 })
                 transcriptCard(result, proxy: proxy)
             }
         }
     }
 
-    /// Карточка анализа ИИ: Markdown рендерится нативно; «Скопировать» кладёт
-    /// и обычный текст, и HTML — таблицы вставляются таблицами.
-    private func analysisCard(_ analysis: StoredAnalysis, record: FileTranscriptRecord) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 16) {
-                    Text(analysis.title.isEmpty ? L("transcribe.llm.result.title") : analysis.title)
-                        .font(.headline)
-                    Spacer()
-                    CopyButton(text: LightMarkdown.plainText(analysis.markdown),
-                               html: LightMarkdown.html(analysis.markdown))
-                    SaveAsMenu {
-                        ForEach(AnalysisSaveFormat.allCases) { format in
-                            Button(format.title) {
-                                TextFileSaver.save(
-                                    format.text(for: analysis.markdown),
-                                    suggestedName: "\(record.exportBaseName)-analysis.\(format.fileExtension)")
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, DS.Spacing.cardPadding)
-                .padding(.vertical, 10)
-
-                CardDivider()
-
-                CollapsibleReveal {
-                    MarkdownView(analysis.markdown)
-                }
-            }
-        }
+    /// Предел для ссылок на тайм-коды: длительность записи. Именно так, а не
+    /// `record?.duration ?? result.duration`: у последнего тип `Double??`, и
+    /// при записи без длительности `??` не сработал бы — ссылки молча пропали.
+    private func seekLimit(_ result: TranscriptResult) -> Double? {
+        guard let record = document.record else { return result.duration }
+        return record.duration ?? result.duration
     }
 
     /// Карточка «Транскрибация»: детализация тайм-кодов — здесь, в шапке:

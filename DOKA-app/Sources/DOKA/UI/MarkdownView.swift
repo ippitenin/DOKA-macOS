@@ -8,8 +8,15 @@ import SwiftUI
 struct MarkdownView: View {
     private let blocks: [LightMarkdown.Block]
 
-    init(_ markdown: String) {
-        self.blocks = LightMarkdown.parse(markdown)
+    /// `duration` — длительность записи: с ней тайм-коды ответа («[12:34]»)
+    /// становятся ссылками `doka-seek:<сек>`, которые ловит `OpenURLAction`
+    /// записи и перематывает плеер. В ХРАНИМЫЙ markdown ссылки не попадают:
+    /// они добавляются только здесь, при рендере, иначе «Скопировать» и
+    /// «Сохранить как…» отдали бы пользователю служебные скобки.
+    /// nil — ссылки не нужны (звука у записи нет).
+    init(_ markdown: String, seekDuration duration: Double? = nil) {
+        let source = duration == nil ? markdown : TimestampLinker.linkify(markdown, duration: duration)
+        self.blocks = LightMarkdown.parse(source)
     }
 
     var body: some View {

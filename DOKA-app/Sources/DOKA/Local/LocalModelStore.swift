@@ -2,7 +2,8 @@ import Foundation
 import WhisperKit
 import FluidAudio
 
-/// Скачивание и состояние локальных ресурсов (речевые модели + диаризатор).
+/// Скачивание и состояние локальных ресурсов (речевые модели, диаризатор,
+/// языковая модель ИИ-анализа).
 /// Всё живёт в ФИКСИРОВАННОЙ папке `Application Support/DOKA/Models`
 /// (`AppDataFolder.modelsURL`) и НЕ переезжает вместе с «Папкой данных»:
 /// это перекачиваемый кеш, а не данные пользователя — перенос 1.5+ ГБ сделал
@@ -37,8 +38,13 @@ final class LocalModelStore: ObservableObject {
             }
         }
         // Осиротевшие папки незавершённого фонового удаления (kill приложения
-        // во время стирания модели) — подчищаем, они только занимают диск.
-        Task.detached(priority: .utility) { Self.sweepDeleteLeftovers() }
+        // во время стирания модели) и огрызки прерванной закачки языковой
+        // модели — подчищаем, они только занимают диск. Заодно удаляется файл
+        // ПРОШЛОЙ языковой модели, если `LLMModelSpec.current` сменилась.
+        Task.detached(priority: .utility) {
+            Self.sweepDeleteLeftovers()
+            Self.sweepLLMFolder()
+        }
     }
 
     // MARK: - Пути
@@ -72,11 +78,21 @@ final class LocalModelStore: ObservableObject {
     nonisolated static let diarizerModelFolder = diarizerFolder
         .appendingPathComponent("speaker-diarization", isDirectory: true)
 
+    /// Папка языковой модели анализа. Скачиваем её сами (`HTTPModelDownloader`),
+    /// поэтому раскладка простая: один GGUF-файл по имени из спеки.
+    nonisolated static let llmFolder = AppDataFolder.modelsURL
+        .appendingPathComponent("llm", isDirectory: true)
+
+    nonisolated static var llmFile: URL {
+        llmFolder.appendingPathComponent(LLMModelSpec.current.fileName)
+    }
+
     private nonisolated static func rootFolder(for asset: LocalAsset) -> URL {
         switch asset {
         case .speech(.whisper): return whisperBase
         case .speech(.parakeet): return parakeetFolder
         case .diarizer: return diarizerFolder
+        case .llm: return llmFolder
         }
     }
 
@@ -113,6 +129,11 @@ final class LocalModelStore: ObservableObject {
             return diarizerRequiredFiles.allSatisfy {
                 fm.fileExists(atPath: diarizerModelFolder.appendingPathComponent($0).path)
             }
+        case .llm:
+            // Дешёвый stat: хэш проверен при установке, пересчитывать 2.5 ГБ
+            // на каждом запуске нельзя. Размер отсекает огрызок с чужим именем.
+            let size = ((try? fm.attributesOfItem(atPath: llmFile.path)[.size]) as? NSNumber)?.int64Value
+            return size == LLMModelSpec.current.bytes
         }
     }
 
@@ -228,6 +249,14 @@ final class LocalModelStore: ObservableObject {
                         from: Self.diarizerFolder,
                         progressHandler: { sink.report(fraction: $0.fractionCompleted) }
                     )
+                case .llm:
+                    let spec = LLMModelSpec.current
+                    try Self.checkFreeSpace(for: spec.bytes)
+                    try await HTTPModelDownloader.download(
+                        .init(url: spec.url, expectedBytes: spec.bytes,
+                              sha256: spec.sha256, destination: Self.llmFile),
+                        progress: { sink.report(fraction: $0) }
+                    )
                 }
                 try Task.checkCancellation()
                 self?.finishDownload(asset)
@@ -274,6 +303,11 @@ final class LocalModelStore: ObservableObject {
             Task { await LocalEngineManager.shared.prewarm(model) }
         case .diarizer:
             Task { await LocalEngineManager.shared.prewarmDiarizer() }
+        case .llm:
+            // Без прогрева: тащить 2.5 ГБ в ОЗУ сразу после скачивания незачем,
+            // Metal-кернелы компилируются при первой загрузке за секунды —
+            // они уйдут в статус «Подготовка…» первого анализа.
+            break
         }
     }
 
@@ -303,6 +337,47 @@ final class LocalModelStore: ObservableObject {
             try? fm.removeItem(at: folder)
         }
     }
+
+    /// Свободного места должно хватить на файл плюс запас: скачивание
+    /// «под завязку» оставило бы систему без места под своп и кэши.
+    private static func checkFreeSpace(for bytes: Int64) throws {
+        let folder = AppDataFolder.modelsURL
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let free = (try? folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage
+        // Тома, не отдающие ёмкость, не блокируем — закачка упадёт сама.
+        guard let free else { return }
+        let needed = bytes + 1_000_000_000
+        guard free < needed else { return }
+        throw LocalAssetError.notEnoughSpace(
+            needed: ByteCountFormatter.string(fromByteCount: needed, countStyle: .file))
+    }
+
+    /// В папке языковой модели остаётся ровно текущая модель: огрызки
+    /// прерванной закачки и файл прошлой `LLMModelSpec.current` — мусор
+    /// на гигабайты.
+    private nonisolated static func sweepLLMFolder() {
+        let fm = FileManager.default
+        // Порог — момент запуска: то, что появилось уже в этой сессии, трогать
+        // нельзя (пользователь мог нажать «Скачать» раньше, чем дошла очередь
+        // до фонового sweep).
+        let launched = Date(timeIntervalSinceNow: -ProcessInfo.processInfo.systemUptime)
+        let cutoff = max(launched, Date(timeIntervalSinceNow: -Self.sweepGrace))
+        HTTPModelDownloader.sweepLeftovers(in: llmFolder, newerThan: cutoff)
+        guard let items = try? fm.contentsOfDirectory(atPath: llmFolder.path) else { return }
+        let keep = LLMModelSpec.current.fileName
+        for name in items where name != keep && !name.hasPrefix(".") {
+            let url = llmFolder.appendingPathComponent(name)
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+            guard let modified, modified < cutoff else { continue }
+            try? fm.removeItem(at: url)
+        }
+    }
+
+    /// Сколько времени от старта считаем «своей» сессией, если аптайм системы
+    /// меньше (Mac только что загрузился): файл свежее этого порога не трогаем.
+    private nonisolated static let sweepGrace: TimeInterval = 5 * 60
 
     /// Осиротевшие папки `*.deleting-*` после kill во время фонового удаления.
     private nonisolated static func sweepDeleteLeftovers() {
@@ -338,6 +413,12 @@ final class LocalModelStore: ObservableObject {
         switch asset {
         case .speech(let model): LocalEngineManager.shared.unloadIfCurrent(model)
         case .diarizer: LocalEngineManager.shared.unloadDiarizer()
+        case .llm:
+            // Сначала остановить анализ: он держит модель в памяти, а
+            // переименование папки из-под живого mmap оставило бы его без
+            // файла на следующем обращении.
+            AnalysisController.shared.cancelIfRunning()
+            LocalEngineManager.shared.unloadLLM()
         }
         Self.removePartial(asset)
         knownSizes[asset] = nil

@@ -335,6 +335,7 @@
 "common.done" = "Готово";
 "common.cancel" = "Отмена";
 "common.ok" = "ОК";
+"common.save" = "Сохранить";
 "common.close" = "Закрыть";
 
 /* Секция «Транскрибация» */
@@ -542,3 +543,159 @@
 "perf.group.avgAudio" = "Ср. аудио";
 "perf.group.avgProcess" = "Ср. обработка";
 "perf.empty" = "Пока нет анализируемых записей.";
+
+/* Локальный ИИ-анализ */
+"analysis.error.diskSpace" = "Не хватает места на диске: нужно около %@";
+"analysis.error.checksum" = "Файл модели скачался с ошибкой — попробуйте ещё раз";
+"analysis.error.http" = "Сервер ответил ошибкой %ld";
+"analysis.error.contextTooSmall" = "Запись слишком длинная для окна модели на этом Mac";
+
+/* Форматы разделов анализа */
+"analysis.format.list" = "Список";
+"analysis.format.paragraph" = "Текст";
+"analysis.format.table" = "Таблица";
+
+/* Промпты анализа */
+"analysis.prompt.system" = "Ты составляешь структурированные отчёты по расшифровкам записей. Пиши ответ на языке: %@ — заголовки разделов тоже на нём. Используй только факты из расшифровки, ничего не выдумывай; если данных для раздела нет, напиши «Не указано». Имена говорящих пиши ровно так, как они стоят в расшифровке. Тайм-коды пиши в квадратных скобках ровно в том виде, в каком они стоят в начале строк расшифровки, например [12:34]. Ответ — Markdown, без вступлений и заключений.";
+"analysis.prompt.transcriptHeader" = "Запись «%@», длительность %@, участники: %@.";
+"analysis.prompt.participantsUnknown" = "не размечены";
+"analysis.prompt.sectionsHeader" = "Составь отчёт ровно из этих разделов, в этом же порядке:";
+"analysis.prompt.custom" = "Задание: %@";
+"analysis.prompt.transcriptLabel" = "Расшифровка:";
+"analysis.prompt.notesHeader" = "Ниже не расшифровка, а конспекты её частей по порядку. Составь отчёт по ним.";
+"analysis.prompt.notePart" = "Часть %ld из %ld (%@–%@):";
+"analysis.prompt.map" = "Это часть %ld из %ld расшифровки (%@–%@). Составь подробный конспект ЭТОЙ части маркированным списком: темы, факты, числа, решения, задачи с ответственными и сроками, открытые вопросы. У каждого пункта сохрани имя говорящего и тайм-код из расшифровки.";
+"analysis.prompt.mapFocus" = "Особое внимание обрати на: %@.";
+"analysis.prompt.cite" = "У каждого пункта укажи тайм-код места в расшифровке в квадратных скобках.";
+"analysis.prompt.noTimestamps" = "В расшифровке нет тайм-кодов — не указывай их.";
+"analysis.prompt.format.list" = "Маркированный список.";
+"analysis.prompt.format.paragraph" = "Связный текст, один-два абзаца.";
+"analysis.prompt.format.table" = "Таблица Markdown с колонками: %@.";
+"analysis.prompt.format.tableDefaultColumns" = "Пункт · Пояснение";
+
+/* Встроенные шаблоны анализа */
+"analysis.template.summary.name" = "Краткое резюме";
+"analysis.template.summary.description" = "Суть записи за минуту чтения";
+"analysis.template.summary.0.title" = "Суть";
+"analysis.template.summary.0.instruction" = "О чём запись и чем она закончилась.";
+"analysis.template.summary.1.title" = "Ключевые моменты";
+"analysis.template.summary.1.instruction" = "Самое важное из сказанного, 5–8 пунктов.";
+"analysis.template.summary.2.title" = "Итог";
+"analysis.template.summary.2.instruction" = "К чему пришли и что дальше.";
+"analysis.template.meetingMinutes.name" = "Протокол встречи";
+"analysis.template.meetingMinutes.description" = "Участники, темы, решения, задачи";
+"analysis.template.meetingMinutes.0.title" = "Участники";
+"analysis.template.meetingMinutes.0.instruction" = "Только те, кто говорил в записи.";
+"analysis.template.meetingMinutes.1.title" = "Обсуждённые темы";
+"analysis.template.meetingMinutes.1.instruction" = "Каждая тема — одним пунктом с кратким содержанием.";
+"analysis.template.meetingMinutes.2.title" = "Решения";
+"analysis.template.meetingMinutes.2.instruction" = "Что решили. Если решения не приняли, так и напиши.";
+"analysis.template.meetingMinutes.3.title" = "Задачи";
+"analysis.template.meetingMinutes.3.instruction" = "Кто что делает и к какому сроку. Срок — только если он назван.";
+"analysis.template.meetingMinutes.3.columns" = "Ответственный|Задача|Срок|Тайм-код";
+"analysis.template.meetingMinutes.4.title" = "Открытые вопросы";
+"analysis.template.meetingMinutes.4.instruction" = "Что осталось без ответа.";
+"analysis.template.actionItems.name" = "Задачи и договорённости";
+"analysis.template.actionItems.description" = "Только то, что надо сделать";
+"analysis.template.actionItems.0.title" = "Задачи";
+"analysis.template.actionItems.0.instruction" = "Кто что делает и к какому сроку. Срок — только если он назван.";
+"analysis.template.actionItems.0.columns" = "Ответственный|Задача|Срок|Тайм-код";
+"analysis.template.actionItems.1.title" = "Договорённости";
+"analysis.template.actionItems.1.instruction" = "О чём договорились без конкретного исполнителя.";
+"analysis.template.lectureNotes.name" = "Конспект лекции";
+"analysis.template.lectureNotes.description" = "План, понятия, тезисы, вопросы";
+"analysis.template.lectureNotes.0.title" = "Тема и цель";
+"analysis.template.lectureNotes.0.instruction" = "Чему посвящена лекция и зачем.";
+"analysis.template.lectureNotes.1.title" = "План";
+"analysis.template.lectureNotes.1.instruction" = "Части лекции по порядку.";
+"analysis.template.lectureNotes.2.title" = "Понятия";
+"analysis.template.lectureNotes.2.instruction" = "Термины и определения, прозвучавшие в лекции.";
+"analysis.template.lectureNotes.2.columns" = "Понятие|Определение|Тайм-код";
+"analysis.template.lectureNotes.3.title" = "Главные тезисы";
+"analysis.template.lectureNotes.3.instruction" = "Утверждения, которые надо запомнить.";
+"analysis.template.lectureNotes.4.title" = "Примеры";
+"analysis.template.lectureNotes.4.instruction" = "Разобранные примеры и задачи.";
+"analysis.template.lectureNotes.5.title" = "Вопросы для самопроверки";
+"analysis.template.lectureNotes.5.instruction" = "5–7 вопросов по материалу лекции.";
+"analysis.template.interview.name" = "Интервью";
+"analysis.template.interview.description" = "Ход беседы, ответы, цитаты";
+"analysis.template.interview.0.title" = "Контекст";
+"analysis.template.interview.0.instruction" = "О чём беседа и кто в ней участвует.";
+"analysis.template.interview.1.title" = "Ход беседы";
+"analysis.template.interview.1.instruction" = "Вопросы и темы по порядку.";
+"analysis.template.interview.2.title" = "Ключевые ответы и факты";
+"analysis.template.interview.2.instruction" = "Что именно сказал собеседник, с числами и именами.";
+"analysis.template.interview.3.title" = "Цитаты";
+"analysis.template.interview.3.instruction" = "Дословные фразы в кавычках, с именем говорящего и тайм-кодом.";
+"analysis.template.interview.4.title" = "Следующие шаги";
+"analysis.template.interview.4.instruction" = "О чём договорились в конце.";
+"analysis.template.chapters.name" = "Главы";
+"analysis.template.chapters.description" = "Разбивка записи по темам с тайм-кодами";
+"analysis.template.chapters.0.title" = "Главы";
+"analysis.template.chapters.0.instruction" = "Каждая глава — строка «[тайм-код] Название — одно предложение о содержании». Глав столько, сколько смысловых частей в записи.";
+
+/* Шаблоны анализа: редактор */
+"analysis.templates.copyName" = "%@ (копия)";
+"analysis.templates.validation.name" = "Название обязательно, не длиннее %ld символов";
+"analysis.templates.validation.sections" = "Нужен хотя бы один раздел, не больше %ld";
+"analysis.templates.validation.sectionTitle" = "У каждого раздела должно быть название";
+"analysis.templates.validation.instruction" = "Инструкция раздела не длиннее %ld символов";
+
+/* Панель анализа */
+"analysis.title" = "Анализ ИИ";
+"analysis.run" = "Проанализировать";
+"analysis.language" = "Язык ответа";
+"analysis.language.record" = "Как в записи";
+"analysis.customPrompt" = "Свой запрос";
+"analysis.customPlaceholder" = "Что сделать с расшифровкой: например, «выпиши все названные цифры с пояснениями»";
+"analysis.manageTemplates" = "Шаблоны…";
+"analysis.regenerate" = "Повторить";
+"analysis.delete" = "Удалить анализ";
+"analysis.deleteConfirmTitle" = "Удалить анализ?";
+"analysis.deleteConfirmText" = "Отчёт будет удалён без возможности восстановления. Расшифровка останется на месте.";
+"analysis.stale" = "Расшифровку изменили после этого анализа";
+"analysis.truncated" = "оборван по длине";
+"analysis.source.nexara" = "Nexara";
+"analysis.source.nexaraTitle" = "Анализ Nexara";
+"analysis.source.local" = "%@ · на этом Mac";
+"analysis.progress.loading" = "Подготовка модели…";
+"analysis.progress.reading" = "Читаю расшифровку… %ld %%";
+"analysis.progress.part" = "Часть %ld из %ld · %ld %%";
+"analysis.progress.combining" = "Свожу итог…";
+"analysis.progress.writing" = "Пишу отчёт…";
+"analysis.busy.transcribing" = "Идёт локальное распознавание — дождитесь его окончания";
+"analysis.busy.other" = "Анализ уже идёт у другой записи";
+"analysis.error.empty" = "Модель ничего не написала — попробуйте другой шаблон";
+"analysis.error.tooLong" = "Запись слишком длинная для анализа на этом Mac";
+"analysis.model.status" = "Модель анализа:";
+"analysis.model.help" = "Отчёты по расшифровкам составляет языковая модель прямо на этом Mac: без интернета, без ключа и без оплаты. Модель скачивается один раз.";
+"analysis.model.footer" = "Анализ идёт офлайн на этом Mac. Модель занимает около 2,7 ГБ на диске и до 5 ГБ оперативной памяти во время работы; нужен Apple Silicon.";
+"analysis.model.intelUnsupported" = "Анализ ИИ работает только на Apple Silicon (M1 и новее) — на Intel он недоступен.";
+"analysis.model.needed" = "Чтобы анализировать записи на этом Mac, скачайте языковую модель.";
+"analysis.model.templates" = "Шаблоны анализа…";
+"analysis.auto" = "Анализировать автоматически";
+"analysis.auto.help" = "Сразу после распознавания файла DOKA составит отчёт выбранным шаблоном. Анализ идёт несколько минут и заметно нагружает Mac.";
+"analysis.auto.template" = "Шаблон автоанализа";
+"analysis.interruptedByDictation" = "Анализ прерван диктовкой — запустите его заново";
+
+/* Шаблоны анализа: список */
+"analysis.templates.title" = "Шаблоны анализа";
+"analysis.templates.builtin" = "Встроенные";
+"analysis.templates.mine" = "Мои";
+"analysis.templates.new" = "Новый шаблон";
+"analysis.templates.newName" = "Мой шаблон";
+"analysis.templates.duplicate" = "Сделать копию";
+"analysis.templates.delete" = "Удалить";
+"analysis.templates.deleteTitle" = "Удалить шаблон?";
+"analysis.templates.deleteConfirm" = "Шаблон будет удалён. Уже готовые анализы останутся на месте.";
+"analysis.templates.name" = "Название";
+"analysis.templates.description" = "Описание";
+"analysis.templates.sections" = "Разделы";
+"analysis.templates.addSection" = "Добавить раздел";
+"analysis.templates.sectionTitle" = "Название раздела";
+"analysis.templates.sectionInstruction" = "Что писать в этом разделе";
+"analysis.templates.sectionFormat" = "Формат";
+"analysis.templates.columns" = "Колонки через запятую";
+"analysis.templates.cite" = "Тайм-коды";
+"analysis.templates.builtinReadonly" = "Встроенный шаблон нельзя изменить — сделайте копию.";
+"analysis.templates.empty" = "Выберите шаблон слева";
