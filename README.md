@@ -19,7 +19,7 @@
 
 <p align="center">
   <a href="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml"><img alt="Build" src="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml/badge.svg"></a>
-  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey">
   <img alt="Swift" src="https://img.shields.io/badge/Swift-5.9%2B-orange">
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue">
 </p>
@@ -59,6 +59,13 @@ written in Russian.
   timestamp to jump there, the segment being played is highlighted and followed; space,
   ←/→ and playback speed. Running jobs show their progress; records are kept forever
   unless you choose a retention period.
+- **Retry and re-transcribe** — a job that failed or was cancelled is resumed from the record
+  itself: when the server has already finished (and charged for) the result, it is collected
+  without uploading anything again; otherwise the file is sent once more, and a paid service
+  asks for confirmation first. Any record can also be re-transcribed by another service — the
+  new result appears next to the original, which stays untouched. A failed dictation gets its
+  own menu-bar entry, so fixing the network still lands the text in the app you were in. If a
+  transcription finishes while you are looking elsewhere, a notification opens the record.
 - **Speakers and text editing** — rename speakers ("Speaker 1" → "Anna"), merge two
   speakers into one and split them back, reassign a line (or part of a long one) to
   another speaker, fix the text of a line with a double click. Edits survive any timestamp
@@ -196,7 +203,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs about 140 checks in under a second, and
+Pure logic is covered by tests — `swift test` runs 531 checks in under a second, and
 CI runs them on every pull request along with the build and a localisation check. Audio
 capture, pasting, Keychain and the recorder panels need a real Mac with real permissions,
 so those are verified by a manual smoke pass; `CLAUDE.md` lists what to check per area.
