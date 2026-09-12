@@ -4,7 +4,9 @@ import PackageDescription
 let package = Package(
     name: "DOKA",
     defaultLocalization: "en",   // язык отката для неподдерживаемых языков системы
-    platforms: [.macOS(.v14)],
+    // Строковая форма, а не `.v15`: тот кейс появился только в
+    // swift-tools-version 6.0, а манифест объявлен как 5.9.
+    platforms: [.macOS("15.0")],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
         // Локальные модели распознавания: Whisper через WhisperKit (Argmax OSS SDK)

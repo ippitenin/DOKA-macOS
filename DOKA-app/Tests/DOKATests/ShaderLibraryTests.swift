@@ -27,8 +27,8 @@ final class ShaderLibraryTests: XCTestCase {
         XCTAssertTrue(names.contains("dokaDropGlass"), "функции стекла нет: \(names)")
     }
 
-    /// Минимальная версия macOS, объявленная пакетом (`platforms: [.macOS(.v14)]`).
-    private static let deploymentTarget: UInt8 = 14
+    /// Минимальная версия macOS, объявленная пакетом (`platforms: [.macOS(.v15)]`).
+    private static let deploymentTarget: UInt8 = 15
 
     /// Компилятор Metal ЗАШИВАЕТ минимальную версию macOS в заголовок metallib,
     /// и без `-mmacosx-version-min` берёт её из SDK сборочной машины. На Xcode 26

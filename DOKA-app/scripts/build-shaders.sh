@@ -26,9 +26,9 @@ SRC=(Shaders/*.metal)
 # только предупреждение — то есть фича молча мертва у всех, кто не на 26.
 #
 # Ни один гейт этого не ловил: CI работает на macos-26, где библиотека грузится.
-# Значение обязано совпадать с `platforms: [.macOS(.v14)]` в Package.swift;
+# Значение обязано совпадать с `platforms: [.macOS(.v15)]` в Package.swift;
 # ShaderLibraryTests сверяет зашитую версию с этой константой.
-MIN_MACOS=14.0
+MIN_MACOS=15.0
 
 echo "==> Компиляция шейдеров: ${SRC[*]} → $OUT (min macOS $MIN_MACOS)"
 xcrun -sdk macosx metal -O -mmacosx-version-min="$MIN_MACOS" -o "$OUT" "${SRC[@]}"

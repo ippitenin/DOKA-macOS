@@ -164,7 +164,7 @@ struct IconTile: View {
                 )
             )
             .symbolEffect(.bounce, value: bounce)
-        if breathe, #available(macOS 15.0, *) {
+        if breathe {
             base.symbolEffect(.breathe)
         } else {
             base

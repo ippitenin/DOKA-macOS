@@ -828,18 +828,15 @@ private struct RecordRetryRow: View {
     }
 }
 
-/// Ручная прокрутка ленты выключает автоследование (macOS 15+: фаза скролла;
-/// на 14 для этого есть тумблер «Следовать» в плеере).
+/// Ручная прокрутка ленты выключает автоследование. `onScrollPhaseChange`
+/// доступен с macOS 15 — минимальной версии приложения; тумблер «Следовать»
+/// в плеере остаётся как явное управление.
 private struct ManualScrollStopsFollow: ViewModifier {
     let onManualScroll: () -> Void
 
     func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.onScrollPhaseChange { _, newPhase in
-                if newPhase == .interacting { onManualScroll() }
-            }
-        } else {
-            content
+        content.onScrollPhaseChange { _, newPhase in
+            if newPhase == .interacting { onManualScroll() }
         }
     }
 }
