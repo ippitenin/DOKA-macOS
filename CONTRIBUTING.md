@@ -7,6 +7,11 @@ of them exist because something broke once. Please read this before opening a pu
 
 ## Getting set up
 
+You need **macOS 15 or newer and Xcode 26 or newer**. The package declares
+`swift-tools-version: 5.9`, but one of its dependencies requires Swift 6.2 and the Liquid
+Glass APIs need the macOS 26 SDK — on an older toolchain the build fails while resolving
+dependencies, before a single file is compiled.
+
 ```bash
 git clone https://github.com/ippitenin/DOKA-macOS.git
 cd DOKA-macOS/DOKA-app
@@ -26,7 +31,7 @@ Architecture, invariants and the reasoning behind the odd-looking bits are docum
 
 ## Verification gates
 
-The pure logic is covered by tests in `Tests/DOKATests` — around 140 checks that run in
+The pure logic is covered by tests in `Tests/DOKATests` — 531 checks that run in
 under a second. Everything else (audio capture, pasting, Keychain, the recorder panels)
 needs a real Mac with real permissions, so it is verified by hand. Five gates:
 
@@ -70,9 +75,22 @@ not on a particular translation.
 - **The design system is the source of truth.** Colours, radii, spacing and animations come
   from the `DS` tokens in `UI/DesignSystem/`; glass surfaces go through `glassSurface()`.
   Do not hardcode colours or magic numbers in new UI.
-- **Do not move WhisperKit past the 0.18.x line.** In 1.x two executable products share a
-  target and the universal build fails with “duplicate key found”. If you update the pin,
-  verify a full `./build.sh` first, not just `swift build`.
+- **Dependency pins are deliberate — do not loosen them, and never commit the result of a
+  blind `swift package update`.** Each of the three pins guards the universal (arm64 +
+  x86_64) release, which only `./build.sh` exercises — `swift build` alone will not catch a
+  regression here.
+  - **WhisperKit stays on the 0.18.x line.** In 1.x two executable products share a target
+    and the universal build fails with “duplicate key found”.
+  - **FluidAudio is pinned `exact: "0.15.5"`.** Its “patch” releases are not patches: 0.15.7
+    adds a binary `NemoTextProcessing.xcframework` on which the universal build dies with
+    `ld: library not found for -ltext_processing_rs`. A version range does not protect you
+    here — that is why the pin is exact.
+  - **llama.cpp is a `binaryTarget` pinned to one release (`b10909`) by url + checksum.**
+    Upstream ships several releases a day and changes the C API without semver, and the
+    macOS slice must be `macos-arm64_x86_64`. Moving it means a new checksum, a full
+    `./build.sh` and a smoke pass over AI analysis.
+
+  `Package.swift` carries the full reasoning next to each pin — read it before changing one.
 - Commits follow conventional commits with a Russian description: `feat:`, `fix:`, `docs:`,
   `chore:`.
 
