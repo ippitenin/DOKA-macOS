@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Слот повтора диктовки живёт только в памяти — его WAV не должен
     /// пережить процесс (при крэше/kill подчистит sweep на следующем старте).
     func applicationWillTerminate(_ notification: Notification) {
+        // Выход во время записи: смены состояния не будет, а громкость входа
+        // выкручена на максимум — она системная и переживёт выход приложения.
+        dictationController?.restoreMicrophoneVolume()
         dictationController?.discardFailedDictation()
         // Записи библиотеки идут фоновой очередью, а exit() её не ждёт:
         // без flush готовая запись после перезапуска оказалась бы «прерванной».

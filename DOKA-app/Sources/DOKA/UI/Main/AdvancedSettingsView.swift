@@ -320,7 +320,13 @@ struct AdvancedSettingsView: View {
         let store = TranscriptHistoryStore.shared
         // Идущая транскрибация или архивация/добор допишут файлы уже после
         // копирования — в папку, которую перенос удалит. Переносим в покое.
-        guard !FileTranscriptionController.shared.isTranscribing, !store.hasBackgroundWork else {
+        // Диктовка — по той же причине: её история, статистика и m4a пишутся
+        // в старый путь. Анализ ИИ — тоже: он идёт минутами, а заморозка
+        // библиотеки после переноса молча выбросит готовый отчёт.
+        guard !FileTranscriptionController.shared.isTranscribing,
+              !DictationController.isActive,
+              !AnalysisController.shared.isRunning,
+              !store.hasBackgroundWork else {
             migrationAlert = .failed(message: L("advanced.migrate.error.busy"))
             return
         }
@@ -334,6 +340,9 @@ struct AdvancedSettingsView: View {
             // До перезапуска библиотека больше ничего не пишет: сторы держат
             // старый путь, а старая папка уже удалена.
             store.freeze()
+            // История, статистика и аудио своей заморозки не имеют — их
+            // закрывает общий флаг: новые диктовки до перезапуска не идут.
+            AppDataFolder.markNeedsRestart()
             folderPath = target.path
             isCustomFolder = AppDataFolder.isCustom
             migrationAlert = .done(path: target.path)

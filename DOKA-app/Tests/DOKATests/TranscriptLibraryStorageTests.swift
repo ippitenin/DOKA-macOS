@@ -323,4 +323,66 @@ final class TranscriptLibraryStorageTests: XCTestCase {
         XCTAssertEqual(body.transcript, transcript)
         XCTAssertTrue(body.analyses.isEmpty)
     }
+
+    // MARK: - Заморозка после переноса «Папки данных»
+
+    /// После переноса папки стор пишет по СТАРОМУ пути, поэтому любая правка
+    /// обязана быть no-op, а не «поменялось в памяти, на диск не доехало».
+    /// Переименование было единственным мутатором индекса без этого гейта:
+    /// пользователь переименовывал записи, видел новые имена, а после
+    /// перезапуска получал старые.
+    func testRenameIsIgnoredWhenFrozen() throws {
+        let store = makeStore()
+        let id = makeDoneRecord(in: store)
+        store.rename(id, title: "Планёрка")
+        store.flush()
+
+        store.freeze()
+        store.rename(id, title: "Другое имя")
+        store.flush()
+
+        XCTAssertEqual(store.record(id)?.title, "Планёрка", "имя не должно меняться даже в памяти")
+        // Главное: то же самое видит следующий запуск приложения.
+        XCTAssertEqual(makeStore().record(id)?.title, "Планёрка")
+    }
+
+    /// «Стереть всё аудио транскрибаций» после переноса стирало бы файлы по
+    /// старому пути (где их уже нет), обнуляло `audioFileName` в памяти и не
+    /// записывало meta: пользователь видел исчезнувшие плееры и нулевое
+    /// занятое место, а после перезапуска аудио возвращалось.
+    func testRemoveAllAudioIsIgnoredWhenFrozen() async throws {
+        let store = makeStore()
+        let parent = makeDoneRecord(in: store)
+        try Data("m4a".utf8).write(to: store.files.audioURL(parent))
+        let child = store.addPending(.init(fileName: "lecture.mp3", provider: "builtin",
+                                           parentID: parent))
+        store.inheritAudio(child, from: parent)
+        for _ in 0..<200 where store.record(child)?.audioFileName == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNotNil(store.record(child)?.audioFileName, "подготовка: архив не создан")
+
+        store.freeze()
+        store.removeAllAudio()
+        store.flush()
+
+        XCTAssertNotNil(store.record(child)?.audioFileName, "метка аудио не должна обнуляться")
+        XCTAssertTrue(exists(store.files.audioURL(child)), "файл не должен стираться")
+        XCTAssertEqual(makeStore().record(child)?.audioFileName,
+                       TranscriptLibraryFiles.audioFileName)
+    }
+
+    /// Удаление одной записи уже было под гейтом — фиксируем, чтобы
+    /// симметрия с `removeAllAudio` не разъехалась снова.
+    func testRemoveAudioIsIgnoredWhenFrozen() async throws {
+        let store = makeStore()
+        let id = makeDoneRecord(in: store)
+        try Data("m4a".utf8).write(to: store.files.audioURL(id))
+
+        store.freeze()
+        store.removeAudio(id)
+        store.flush()
+
+        XCTAssertTrue(exists(store.files.audioURL(id)))
+    }
 }

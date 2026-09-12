@@ -188,6 +188,10 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
 
     func removeAudio(_ ids: [UUID]) {
         queue.async { [self] in
+            // Единообразие с trash/emptyTrash/commitAudio/cloneAudio: после
+            // переноса папки `root` указывает на старое место, и удалять там
+            // нечего — а meta об этом удалении всё равно не записалась бы.
+            guard !frozen else { return }
             for id in ids {
                 try? FileManager.default.removeItem(at: audioURL(id))
                 try? FileManager.default.removeItem(at: audioPartURL(id))

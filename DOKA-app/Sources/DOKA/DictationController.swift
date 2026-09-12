@@ -42,6 +42,12 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// Идёт ли диктовка прямо сейчас — для гейтов, у которых нет ссылки на
+    /// контроллер (перенос «Папки данных» в «Расширенных»). Экземпляр один,
+    /// им владеет `AppDelegate`, поэтому статическое зеркало состояния
+    /// корректно и не требует протаскивать ссылку через полпроекта.
+    private(set) static var isActive = false
+
     @Published private(set) var state: State = .idle
     @Published var audioLevel: Float = 0
     /// Слот повтора: запись, которую не удалось распознать (или которую гейт
@@ -187,6 +193,16 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// Выход из приложения во время записи: `transition(to:)` уже не случится,
+    /// а громкость системного входа осталась выкрученной на максимум — вернём
+    /// её вручную. Идемпотентно: без буста это no-op.
+    ///
+    /// Буст затрагивает устройство ВСЕЙ системы, поэтому забытый максимум
+    /// переживает выход из DOKA и достаётся всем остальным приложениям.
+    func restoreMicrophoneVolume() {
+        micBooster.endBoost()
+    }
+
     /// Забыть слот повтора вместе с его WAV (выход из приложения).
     func discardFailedDictation() {
         guard let failed = lastFailedDictation else { return }
@@ -201,6 +217,14 @@ final class DictationController: ObservableObject {
         permissions.refresh()
         guard permissions.micAuthorized, permissions.axTrusted else {
             onNeedsOnboarding?()
+            return
+        }
+        // Папку данных перенесли, но приложение не перезапускали: сторы истории,
+        // статистики и аудио держат СТАРЫЙ путь, и всё надиктованное ушло бы в
+        // папку, которой уже нет. Библиотека для этого замораживается, у
+        // диктовки своей заморозки нет — отказываем здесь.
+        guard !AppDataFolder.needsRestart else {
+            showError(L("transcribe.error.restartRequired"))
             return
         }
         guard settings.isServiceReady else {
@@ -475,6 +499,7 @@ final class DictationController: ObservableObject {
             micBooster.endBoost()
         }
         state = newState
+        Self.isActive = newState.isRecording || newState == .transcribing
         audioLevel = 0
         // Esc активен при записи и при распознавании (отмена запроса).
         hotkeys?.setEscapeEnabled(newState.isRecording || newState == .transcribing)
