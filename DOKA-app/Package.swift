@@ -13,10 +13,29 @@ let package = Package(
         // (в 1.x два executable-продукта argmax-cli/whisperkit-cli делят один
         // таргет ArgmaxCLI → «duplicate key found» при --arch arm64 --arch x86_64).
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", .upToNextMinor(from: "0.18.0")),
-        // Линия пинится минорной по той же причине, что и WhisperKit: 0.x меняет
-        // требования к тулчейну и состав таргетов между минорами, а ломается это
-        // только на release-сборке. Смена линии — осознанная, с прогоном ./build.sh.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", .upToNextMinor(from: "0.15.5"))
+        // ТОЧНЫЙ пин, а не линия: у FluidAudio «патч» не означает патч. Между
+        // 0.15.5 и 0.15.7 — 237 файлов и +28 000 строк, включая новые бэкенды
+        // TTS/VAD/ASR и бинарный артефакт NemoTextProcessing.xcframework.
+        //
+        // Проверено на 0.15.7 (12.09.2026): debug собирается, 531 тест зелёный,
+        // `swift build -c release --arch arm64` собирается, а
+        // `swift build -c release --arch arm64 --arch x86_64` ПАДАЕТ:
+        //     ld: library not found for -ltext_processing_rs
+        // Срез `macos-arm64_x86_64` в самом xcframework есть — ломается
+        // мультиарх-путь SwiftPM, ровно как у WhisperKit 1.x выше. А DOKA
+        // раздаётся universal, то есть 0.15.7 для нас нерабочая.
+        //
+        // Прежний `.upToNextMinor(from: "0.15.5")` от этого не защищал: он
+        // разрешает 0.15.7, и любой `swift package update` или резолв без
+        // Package.resolved ломал бы релиз. Поднимать версию — только после
+        // повторной проверки ИМЕННО universal-сборкой.
+        //
+        // Чего мы при этом не берём (полезное в 0.15.6/0.15.7):
+        //   ce9f85e — проброс отмены в воркеры офлайнового диаризатора;
+        //   df1417c, 3ebb285 — кластеризация и учёт лимита спикеров (у нас
+        //                      используется `withSpeakers(exactly:)`);
+        //   4dbf4f9 — отменённая закачка больше не стартует.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5")
     ],
     targets: [
         .executableTarget(
