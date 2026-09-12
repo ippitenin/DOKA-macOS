@@ -53,7 +53,7 @@ enum HTTPModelDownloader {
 
         // Отдельное имя на попытку: параллельная (ошибочно запущенная) закачка
         // не должна писать в тот же файл. Огрызки подчищает sweep на старте.
-        let staging = folder.appendingPathComponent(".incoming-\(UUID().uuidString).part")
+        let staging = folder.appendingPathComponent("\(stagingPrefix)\(UUID().uuidString).part")
         defer { try? fm.removeItem(at: staging) }
 
         var resumeData: Data?
@@ -92,12 +92,23 @@ enum HTTPModelDownloader {
         }
     }
 
+    /// Префикс временного файла закачки. Публичный: sweep на старте ищет
+    /// огрызки по нему же.
+    static let stagingPrefix = ".incoming-"
+
     /// Огрызки прошлых закачек (kill приложения посреди скачивания).
-    static func sweepLeftovers(in folder: URL) {
+    /// `newerThan` отсекает файл, который качается ПРЯМО СЕЙЧАС: sweep идёт
+    /// фоновой задачей со старта, а пользователь может нажать «Скачать»
+    /// раньше, чем она доберётся до папки.
+    static func sweepLeftovers(in folder: URL, newerThan cutoff: Date) {
         let fm = FileManager.default
         guard let items = try? fm.contentsOfDirectory(atPath: folder.path) else { return }
-        for name in items where name.hasPrefix(".incoming-") {
-            try? fm.removeItem(at: folder.appendingPathComponent(name))
+        for name in items where name.hasPrefix(stagingPrefix) {
+            let url = folder.appendingPathComponent(name)
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+            guard let modified, modified < cutoff else { continue }
+            try? fm.removeItem(at: url)
         }
     }
 

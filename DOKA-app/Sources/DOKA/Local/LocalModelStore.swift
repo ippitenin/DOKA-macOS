@@ -358,13 +358,26 @@ final class LocalModelStore: ObservableObject {
     /// на гигабайты.
     private nonisolated static func sweepLLMFolder() {
         let fm = FileManager.default
-        HTTPModelDownloader.sweepLeftovers(in: llmFolder)
+        // Порог — момент запуска: то, что появилось уже в этой сессии, трогать
+        // нельзя (пользователь мог нажать «Скачать» раньше, чем дошла очередь
+        // до фонового sweep).
+        let launched = Date(timeIntervalSinceNow: -ProcessInfo.processInfo.systemUptime)
+        let cutoff = max(launched, Date(timeIntervalSinceNow: -Self.sweepGrace))
+        HTTPModelDownloader.sweepLeftovers(in: llmFolder, newerThan: cutoff)
         guard let items = try? fm.contentsOfDirectory(atPath: llmFolder.path) else { return }
         let keep = LLMModelSpec.current.fileName
         for name in items where name != keep && !name.hasPrefix(".") {
-            try? fm.removeItem(at: llmFolder.appendingPathComponent(name))
+            let url = llmFolder.appendingPathComponent(name)
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+            guard let modified, modified < cutoff else { continue }
+            try? fm.removeItem(at: url)
         }
     }
+
+    /// Сколько времени от старта считаем «своей» сессией, если аптайм системы
+    /// меньше (Mac только что загрузился): файл свежее этого порога не трогаем.
+    private nonisolated static let sweepGrace: TimeInterval = 5 * 60
 
     /// Осиротевшие папки `*.deleting-*` после kill во время фонового удаления.
     private nonisolated static func sweepDeleteLeftovers() {

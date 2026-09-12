@@ -30,6 +30,9 @@ final class TranscriptDocument: ObservableObject {
     /// вычисления body вью.
     private var cachedOutput: (key: OutputKey, result: TranscriptResult)?
     private var cachedSource: (key: SourceKey, result: TranscriptResult)?
+    /// Отпечаток входа анализа — считается по фиксированной детализации,
+    /// мемоизируется по версии тела.
+    private var cachedFingerprint: (revision: Int, value: String)?
 
     private struct OutputKey: Equatable {
         let detail: TimestampDetail
@@ -174,6 +177,43 @@ final class TranscriptDocument: ObservableObject {
         revision += 1
         cachedOutput = nil
         cachedSource = nil
+        cachedFingerprint = nil
+    }
+
+    // MARK: - Анализы
+
+    var analyses: [StoredAnalysis] { body?.analyses ?? [] }
+
+    /// Отпечаток текущей расшифровки (правки применены, словарь — нет).
+    /// Считается мимо кэшей вывода: у них ключ — пользовательская
+    /// детализация, а вход анализа берётся на фиксированной.
+    var analysisFingerprint: String? {
+        guard let body else { return nil }
+        if let cachedFingerprint, cachedFingerprint.revision == revision {
+            return cachedFingerprint.value
+        }
+        let input = TranscriptLLMInput.build(
+            title: record?.displayTitle ?? "",
+            result: body.makeResult(detail: TranscriptLLMInput.detail))
+        cachedFingerprint = (revision, input.fingerprint)
+        return input.fingerprint
+    }
+
+    /// Расшифровку правили после этого анализа. У анализа Nexara отпечатка
+    /// нет (он пришёл из того же запроса, что и расшифровка) — такой анализ
+    /// устаревшим не помечаем.
+    func isStale(_ analysis: StoredAnalysis) -> Bool {
+        guard let printed = analysis.inputFingerprint, let current = analysisFingerprint else {
+            return false
+        }
+        return printed != current
+    }
+
+    /// Удалить анализ. Тело перечитает `bodyChanged` — своей копии документ
+    /// не правит, чтобы не разойтись со стором.
+    func deleteAnalysis(_ analysisID: UUID) {
+        guard canEdit else { return }
+        Task { await store.deleteAnalysis(analysisID, from: recordID) }
     }
 
     /// То, что пользователь видит и забирает: нарезка под детализацию плюс

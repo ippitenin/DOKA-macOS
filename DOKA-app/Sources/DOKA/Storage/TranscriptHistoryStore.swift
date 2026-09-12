@@ -242,6 +242,28 @@ final class TranscriptHistoryStore: ObservableObject {
         bodyChanged.send(id)
     }
 
+    /// Добавить анализ к записи. Тело перечитывается из стора (не из
+    /// документа): анализ мог считаться минутами, и за это время правки
+    /// пользователя успели сохраниться — брать устаревшую копию значит их
+    /// потерять. Возвращает false, если записи или тела уже нет.
+    @discardableResult
+    func addAnalysis(_ analysis: StoredAnalysis, to id: UUID) async -> Bool {
+        guard !isFrozen, record(id) != nil, var body = await loadBody(id) else { return false }
+        body.analyses.append(analysis)
+        saveBody(id, body)
+        return true
+    }
+
+    /// Удалить анализ. Анализ Nexara удаляется так же, как локальный: в теле
+    /// v2 он обычный элемент `analyses`, а `llmOutput` машинного результата
+    /// обнулён — воскреснуть ему неоткуда.
+    func deleteAnalysis(_ analysisID: UUID, from id: UUID) async {
+        guard !isFrozen, record(id) != nil, var body = await loadBody(id),
+              body.analyses.contains(where: { $0.id == analysisID }) else { return }
+        body.analyses.removeAll { $0.id == analysisID }
+        saveBody(id, body)
+    }
+
     func delete(_ id: UUID) { delete([id]) }
 
     func delete(_ ids: Set<UUID>) {

@@ -189,6 +189,10 @@ final class SettingsStore: ObservableObject {
         static let libraryRetentionNoticeDismissed = "libraryRetentionNoticeDismissed"
         static let saveTranscriptAudio = "saveTranscriptAudio"
         static let notifyFileTranscription = "notifyFileTranscription"
+        static let analysisTemplates = "analysisTemplates"
+        static let analysisTemplateID = "analysisTemplateID"
+        static let analysisLanguage = "analysisLanguage"
+        static let autoAnalysis = "autoAnalysis"
     }
 
     @Published var language: String {
@@ -240,6 +244,44 @@ final class SettingsStore: ObservableObject {
     /// Сохранённые пользовательские сервисы (пресеты «Сервиса»).
     @Published var customServices: [CustomService] {
         didSet { persistCustomServices() }
+    }
+
+    /// Свои шаблоны ИИ-анализа. Встроенные здесь НЕ хранятся: они строятся
+    /// на лету на языке интерфейса (`BuiltinAnalysisTemplate`).
+    @Published var analysisTemplates: [AnalysisTemplate] {
+        didSet {
+            if let data = try? JSONEncoder().encode(analysisTemplates) {
+                defaults.set(data, forKey: Key.analysisTemplates)
+            }
+        }
+    }
+
+    /// Последний выбранный шаблон анализа (id встроенного или своего);
+    /// он же шаблон автоанализа.
+    @Published var analysisTemplateID: String {
+        didSet { defaults.set(analysisTemplateID, forKey: Key.analysisTemplateID) }
+    }
+
+    /// Язык ответа анализа: пустая строка — «как в записи».
+    @Published var analysisLanguage: String {
+        didSet { defaults.set(analysisLanguage, forKey: Key.analysisLanguage) }
+    }
+
+    /// Запускать анализ сразу после распознавания файла. По умолчанию ВЫКЛ:
+    /// анализ занимает минуты и греет Mac — пользователь должен согласиться.
+    @Published var autoAnalysis: Bool {
+        didSet { defaults.set(autoAnalysis, forKey: Key.autoAnalysis) }
+    }
+
+    /// Шаблон для запуска: выбранный, если он ещё существует, иначе первый
+    /// встроенный (свой шаблон могли удалить).
+    var selectedAnalysisTemplate: AnalysisTemplate {
+        if let mine = analysisTemplates.first(where: { $0.id == analysisTemplateID }) { return mine }
+        if let builtin = BuiltinAnalysisTemplate.allCases
+            .first(where: { $0.templateID == analysisTemplateID }) {
+            return builtin.template
+        }
+        return BuiltinAnalysisTemplate.summary.template
     }
 
     /// Стиль панели записи.
@@ -535,6 +577,16 @@ final class SettingsStore: ObservableObject {
         } else {
             replacements = []
         }
+        if let data = defaults.data(forKey: Key.analysisTemplates),
+           let templates = try? JSONDecoder().decode([AnalysisTemplate].self, from: data) {
+            analysisTemplates = templates
+        } else {
+            analysisTemplates = []
+        }
+        analysisTemplateID = defaults.string(forKey: Key.analysisTemplateID)
+            ?? BuiltinAnalysisTemplate.summary.templateID
+        analysisLanguage = defaults.string(forKey: Key.analysisLanguage) ?? ""
+        autoAnalysis = defaults.bool(forKey: Key.autoAnalysis)
         launchAtLogin = SMAppService.mainApp.status == .enabled
         migrateLegacyServices()
     }

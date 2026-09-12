@@ -25,6 +25,9 @@ DYNAMIC_PREFIXES=(
     "transcribe.diarizeSetting."
     "transcriptRetention."
     "sidebar.group."
+    "analysis.template."
+    "analysis.format."
+    "analysis.prompt.format."
 )
 
 FAILED=0
