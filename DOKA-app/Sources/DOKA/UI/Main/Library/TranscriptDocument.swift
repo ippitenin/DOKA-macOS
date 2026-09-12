@@ -26,12 +26,19 @@ final class TranscriptDocument: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     /// Счётчик версий тела — ключ кэша вывода.
     private var revision = 0
-    /// Мемо вывода. Не @Published: пишется во время вычисления body вью.
+    /// Мемо вывода и результата до словаря. Не @Published: пишутся во время
+    /// вычисления body вью.
     private var cachedOutput: (key: OutputKey, result: TranscriptResult)?
+    private var cachedSource: (key: SourceKey, result: TranscriptResult)?
 
     private struct OutputKey: Equatable {
         let detail: TimestampDetail
         let dictionary: [ReplacementRule]?
+        let revision: Int
+    }
+
+    private struct SourceKey: Equatable {
+        let detail: TimestampDetail
         let revision: Int
     }
 
@@ -65,28 +72,132 @@ final class TranscriptDocument: ObservableObject {
             .filter { $0 == recordID }
             .sink { [weak self] _ in Task { await self?.reload() } }
             .store(in: &cancellables)
+        // Заморозка после переноса «Папки данных» выключает правку — вью
+        // должна перерисоваться (`canEdit` читает стор).
+        store.$isFrozen
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     func reload() async {
         let loaded = await store.loadBody(recordID)
-        body = loaded
+        // Своё же сохранение правки возвращается сюда через `bodyChanged` —
+        // то же тело, пересобирать вывод незачем.
+        if loaded != body { apply(loaded) }
+        loadState = loaded == nil ? .missing : .ready
+    }
+
+    // MARK: - Правки
+
+    /// Правки записи; пустые, если не правили.
+    var edits: TranscriptEdits { body?.edits ?? TranscriptEdits() }
+
+    /// Можно ли править: тело загружено и библиотека не заморожена переносом
+    /// «Папки данных» (запись на диск до перезапуска молча не дошла бы).
+    var canEdit: Bool { body != nil && !store.isFrozen }
+
+    func renameSpeaker(_ id: String, to name: String) {
+        mutateEdits { $0.rename(id, to: name) }
+    }
+
+    func mergeSpeaker(_ id: String, into target: String) {
+        mutateEdits { $0.merge(id, into: target) }
+    }
+
+    func unmergeSpeaker(_ id: String) {
+        mutateEdits { $0.unmerge(id) }
+    }
+
+    /// Итог правки. `stale` — адрес устарел (реплику успели поправить иначе):
+    /// редактор не должен терять черновик.
+    enum EditOutcome {
+        case applied, unchanged, stale, unavailable
+    }
+
+    /// Новый текст реплики (до словаря). Пустой не сохраняется.
+    @discardableResult
+    func setSegmentText(_ text: String, at target: EditTarget) -> EditOutcome {
+        mutateEdits(validating: target) { $0.setText(text, at: target) }
+    }
+
+    func revertSegmentText(at target: EditTarget) {
+        mutateEdits { $0.revertText(at: target) }
+    }
+
+    /// «Назначить реплику»: `speaker == nil` — новый спикер со свободным id.
+    func reassignSegment(at target: EditTarget, to speaker: String?) {
+        guard let rawSegments = body?.transcript.rawSegments else { return }
+        mutateEdits(validating: target) { edits in
+            let id = speaker ?? SpeakerName.nextID(existing: edits.knownSpeakerIDs(rawSegments: rawSegments))
+            edits.setSpeaker(id, at: target)
+        }
+    }
+
+    func revertSegmentSpeaker(at target: EditTarget) {
+        mutateEdits { $0.revertSpeaker(at: target) }
+    }
+
+    /// «Сбросить правки»: всё возвращается к результату распознавания,
+    /// счётчик правок продолжает расти.
+    func resetAllEdits() {
+        mutateEdits { $0 = TranscriptEdits() }
+    }
+
+    /// Единая точка правок: изменение → счётчик → вывод → сохранение.
+    /// Сохраняется по завершённому действию (Return, выбор в меню), а не на
+    /// каждое нажатие клавиши. `saveBody` обновляет и текст для поиска, и сводку.
+    /// Адрес `validating` проверяется на свежесть: устаревший (реплику успели
+    /// поправить иначе) отвергается, а не портит правки.
+    @discardableResult
+    private func mutateEdits(validating target: EditTarget? = nil,
+                             _ change: (inout TranscriptEdits) -> Void) -> EditOutcome {
+        guard var body, canEdit, store.record(recordID) != nil else { return .unavailable }
+        // Неприменимые к исходникам правки (битые данные) отбрасываются: иначе
+        // `isValid` навсегда блокировал бы соседние реплики.
+        let before = (body.edits ?? TranscriptEdits())
+            .sanitized(rawSegments: body.transcript.rawSegments, words: body.transcript.words)
+        if let target, !before.isValid(target) { return .stale }
+        var edits = before
+        change(&edits)
+        guard !edits.hasSameContent(as: before) else { return .unchanged }
+        edits.revision = before.revision &+ 1
+        body.edits = edits
+        apply(body)
+        store.saveBody(recordID, body)
+        return .applied
+    }
+
+    private func apply(_ newBody: TranscriptBody?) {
+        body = newBody
         revision += 1
         cachedOutput = nil
-        loadState = loaded == nil ? .missing : .ready
+        cachedSource = nil
     }
 
     /// То, что пользователь видит и забирает: нарезка под детализацию плюс
     /// словарь для файлов, если он включён (выходной слой, см.
     /// `TranscriptOutput`). Сырой результат при этом не меняется.
     func output(detail: TimestampDetail) -> TranscriptResult? {
-        guard let body else { return nil }
         let settings = SettingsStore.shared
         let rules = settings.applyDictionaryToFiles ? settings.replacements : nil
         let key = OutputKey(detail: detail, dictionary: rules, revision: revision)
         if let cachedOutput, cachedOutput.key == key { return cachedOutput.result }
-        let raw = body.makeResult(detail: detail)
-        let result = rules.map { TranscriptOutput.applyingDictionary(raw, rules: $0) } ?? raw
+        guard let source = source(detail: detail) else { return nil }
+        let result = rules.map { TranscriptOutput.applyingDictionary(source, rules: $0) } ?? source
         cachedOutput = (key, result)
+        return result
+    }
+
+    /// Результат с правками, но ДО словаря — текст для редактора реплики:
+    /// пользователь правит исходник, а словарь остаётся линзой поверх.
+    func source(detail: TimestampDetail) -> TranscriptResult? {
+        guard let body else { return nil }
+        let key = SourceKey(detail: detail, revision: revision)
+        if let cachedSource, cachedSource.key == key { return cachedSource.result }
+        let result = body.makeResult(detail: detail)
+        cachedSource = (key, result)
         return result
     }
 

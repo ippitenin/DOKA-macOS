@@ -31,10 +31,18 @@ struct TranscriptRecordView: View {
     @State private var isPlanningRetry = false
     /// Почему «Повторить» не запустился — у кнопки, а не фазой страницы.
     @State private var retryNote: String?
+    /// Строки, где открыт редактор реплики или поповер спикера: пока они есть,
+    /// клавиши плеера и Esc «назад» молчат, а лента не следует за плеером.
+    @State private var segmentInteractions: Set<SegmentInteractionKey> = []
+
+    private struct SegmentInteractionKey: Hashable {
+        let index: Int
+        let isEditor: Bool
+    }
     @FocusState private var focus: FocusTarget?
 
     private enum FocusTarget: Hashable { case root, rename }
-    private enum RecordAlert { case deleteRecord, deleteAudio, retryBilled(RetryRun) }
+    private enum RecordAlert { case deleteRecord, deleteAudio, retryBilled(RetryRun), resetEdits }
 
     init(document: TranscriptDocument, layout: Layout, onBack: (() -> Void)? = nil) {
         _document = ObservedObject(wrappedValue: document)
@@ -81,12 +89,17 @@ struct TranscriptRecordView: View {
                     }
                 case .retryBilled(let run):
                     Button(L("library.retranscribe.run")) { runRetry(run) }
+                case .resetEdits:
+                    Button(L("transcribe.edits.resetAll.confirm"), role: .destructive) {
+                        document.resetAllEdits()
+                    }
                 }
                 Button(L("common.cancel"), role: .cancel) {}
             } message: { alert in
                 switch alert {
                 case .deleteRecord: Text(L("library.delete.message"))
                 case .deleteAudio: Text(L("library.deleteAudio.message"))
+                case .resetEdits: Text(L("transcribe.edits.resetAll.message"))
                 case .retryBilled(let run):
                     // Повтор идёт по сохранённым параметрам — с анализом Nexara,
                     // если он был заказан: оплачивается и он.
@@ -139,7 +152,7 @@ struct TranscriptRecordView: View {
         .onKeyPress(.leftArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: -5) } }
         .onKeyPress(.rightArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: 5) } }
         .onKeyPress(.escape) {
-            guard !isRenaming, onBack != nil else { return .ignored }
+            guard !isRenaming, segmentInteractions.isEmpty, onBack != nil else { return .ignored }
             goBack()
             return .handled
         }
@@ -172,7 +185,7 @@ struct TranscriptRecordView: View {
     }
 
     private func playbackKey(_ action: (URL) -> Void) -> KeyPress.Result {
-        guard !isRenaming, let url = audioURL else { return .ignored }
+        guard !isRenaming, segmentInteractions.isEmpty, let url = audioURL else { return .ignored }
         action(url)
         return .handled
     }
@@ -349,9 +362,12 @@ struct TranscriptRecordView: View {
     }
 
     /// Карточка «Транскрибация»: детализация тайм-кодов — здесь, в шапке:
-    /// нарезка локальная и имеет смысл только у готового результата.
+    /// нарезка локальная и имеет смысл только у готового результата. Полоса
+    /// спикеров — над свёрнутым списком, чтобы быть видимой всегда.
     private func transcriptCard(_ result: TranscriptResult, proxy: ScrollViewProxy?) -> some View {
-        SectionCard {
+        let roster = result.speakerRoster
+        let hasEdits = !document.edits.isEmpty
+        return SectionCard {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
                     Text(L("transcribe.result.title"))
@@ -380,27 +396,66 @@ struct TranscriptRecordView: View {
                         .padding(.bottom, 8)
                 }
 
+                // Без спикеров полоса нужна только ради «Сбросить правки».
+                if !roster.isEmpty || hasEdits {
+                    SpeakerStrip(roster: roster, document: document, canEdit: document.canEdit,
+                                 showsReset: hasEdits && document.canEdit,
+                                 onReset: { alert = .resetEdits })
+                        .padding(.horizontal, DS.Spacing.cardPadding)
+                        .padding(.bottom, 10)
+                }
+
                 CardDivider()
 
                 switch layout {
                 case .full:
-                    segments(result, lazy: true, proxy: proxy)
+                    segments(result, roster: roster, lazy: true, proxy: proxy)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 10)
                 case .inline:
                     CollapsibleReveal {
-                        segments(result, lazy: false, proxy: nil)
+                        segments(result, roster: roster, lazy: false, proxy: nil)
                     }
                 }
             }
         }
     }
 
-    private func segments(_ result: TranscriptResult, lazy: Bool, proxy: ScrollViewProxy?) -> some View {
+    private func segments(_ result: TranscriptResult, roster: [SpeakerInfo], lazy: Bool,
+                          proxy: ScrollViewProxy?) -> some View {
         TranscriptSegmentsView(result: result, recordID: recordID,
                                canSeek: audioURL != nil, lazy: lazy,
                                scrollProxy: proxy, follower: follower,
+                               editContext: document.canEdit
+                                   ? SegmentEditContext(document: document, roster: roster)
+                                   : nil,
+                               // Редактор правит текст ДО словаря: словарь — линза поверх.
+                               sourceTexts: settings.applyDictionaryToFiles
+                                   ? document.source(detail: model.detail)?.segments.map(\.text)
+                                   : nil,
+                               suspendsFollow: !segmentInteractions.isEmpty,
+                               onInteraction: { index, event in handleSegmentInteraction(index, event) },
                                onSeek: { seek(to: $0) })
+    }
+
+    /// Редактор и поповеры строк. Ключ — строка и вид: редактор строки B
+    /// открывается раньше, чем закрывается редактор строки A.
+    private func handleSegmentInteraction(_ index: Int, _ event: SegmentInteraction) {
+        switch event {
+        case .editorOpened:
+            segmentInteractions.insert(SegmentInteractionKey(index: index, isEditor: true))
+        case .editorClosed(let returnFocus):
+            segmentInteractions.remove(SegmentInteractionKey(index: index, isEditor: true))
+            // Закрыли явно — клавиши плеера и Esc «назад» снова работают сразу,
+            // без клика по записи. Со следующего цикла: поле ещё в иерархии.
+            if returnFocus, layout == .full {
+                DispatchQueue.main.async { focus = .root }
+            }
+        case .popoverOpened:
+            segmentInteractions.insert(SegmentInteractionKey(index: index, isEditor: false))
+        case .popoverClosed:
+            segmentInteractions.remove(SegmentInteractionKey(index: index, isEditor: false))
+        }
     }
 
     private func noticeCard(icon: String, tint: Color, text: String) -> some View {
@@ -656,6 +711,7 @@ struct TranscriptRecordView: View {
         switch alert {
         case .deleteAudio: return L("library.deleteAudio.title")
         case .retryBilled: return L("library.retry.billed.title")
+        case .resetEdits: return L("transcribe.edits.resetAll.title")
         case .deleteRecord, .none: return L("library.delete.title")
         }
     }

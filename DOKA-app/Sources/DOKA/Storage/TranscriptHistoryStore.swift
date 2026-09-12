@@ -39,7 +39,7 @@ final class TranscriptHistoryStore: ObservableObject {
     private var bodyCacheOrder: [UUID] = []
     /// После переноса «Папки данных» до перезапуска библиотека ничего не
     /// меняет: стор держит старый путь, а старая папка уже удалена.
-    private(set) var isFrozen = false
+    @Published private(set) var isFrozen = false
     private static let bodyCacheLimit = 3
 
     /// Полнотекстовый поиск: тексты читаются лениво из `text.txt`.
@@ -76,6 +76,12 @@ final class TranscriptHistoryStore: ObservableObject {
         guard let body = await files.readBody(id) else { return nil }
         // Запись могли удалить, пока тело читалось.
         guard record(id) != nil else { return nil }
+        // …или сохранить правку: свежее тело в кэше побеждает прочитанное с
+        // диска (чтение стояло в очереди раньше записи и вернуло старое).
+        if let fresh = bodyCache[id] {
+            touchCache(id)
+            return fresh
+        }
         cache(body, for: id)
         return body
     }
@@ -175,14 +181,15 @@ final class TranscriptHistoryStore: ObservableObject {
         }
         let body = TranscriptBody(transcript: StoredTranscript(result).withoutLLMOutput,
                                   analyses: analyses)
-        writeBody(body, for: id)
+        let server = body.makeResult(detail: .server)
+        writeBody(body, for: id, text: TranscriptFormatter.plainText(server))
         update(id) {
             $0.status = .done
             $0.result = nil
             $0.language = result.language
             $0.duration = result.duration
             $0.failure = nil
-            $0.summary = RecordSummary.make(from: body)
+            $0.summary = RecordSummary.make(from: body, serverResult: server)
         }
         if let done = self.record(id) { finished.send(done) }
         return body
@@ -224,9 +231,12 @@ final class TranscriptHistoryStore: ObservableObject {
     /// а не на каждое нажатие клавиши.
     func saveBody(_ id: UUID, _ body: TranscriptBody) {
         guard record(id) != nil else { return }
-        writeBody(body, for: id)
+        // Результат «как сервер» строится один раз — и на текст для поиска,
+        // и на сводку: на часовой записи с правками это заметные миллисекунды.
+        let server = body.makeResult(detail: .server)
+        writeBody(body, for: id, text: TranscriptFormatter.plainText(server))
         update(id) {
-            $0.summary = RecordSummary.make(from: body)
+            $0.summary = RecordSummary.make(from: body, serverResult: server)
             $0.updatedAt = Date()
         }
         bodyChanged.send(id)
@@ -502,10 +512,10 @@ final class TranscriptHistoryStore: ObservableObject {
         files.writeIndex(records, migratedFromV1: migratedFromV1)
     }
 
-    private func writeBody(_ body: TranscriptBody, for id: UUID) {
+    private func writeBody(_ body: TranscriptBody, for id: UUID, text: String? = nil) {
         cache(body, for: id)
         files.writeBody(body, id: id)
-        let text = body.plainText
+        let text = text ?? body.plainText
         files.writeText(text, id: id)
         let index = textIndex
         Task { await index.update(id, text: text) }

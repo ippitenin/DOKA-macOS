@@ -138,6 +138,60 @@ final class TranscriptSegmentSplitterTests: XCTestCase {
         XCTAssertEqual(buckets[0].map(\.text), ["хвост"])
     }
 
+    // MARK: - Нарезка с происхождением
+
+    /// `split` идёт через `splitWithSources` — и обязан давать то же, что раньше.
+    func testSplitWithSourcesMatchesSplit() {
+        let fixtures: [([TranscriptSegment], [TranscriptWord])] = [
+            ([segment("речь", 0, 120, speaker: "speaker_1")], longWords(count: 120)),
+            ([segment("Короткая фраза.", 0, 5), segment("длинная", 5, 125)],
+             [word("Короткая", 0, 1), word("фраза.", 1, 2)] + longWords(count: 120, from: 5)),
+            ([segment("без слов", 0, 300)], [])
+        ]
+        for (segments, words) in fixtures {
+            let buckets = TranscriptSegmentSplitter.assignWords(words, to: segments)
+            for config in [TranscriptSegmentSplitter.Config.coarse, .medium, .fine] {
+                let parts = TranscriptSegmentSplitter.splitWithSources(segments: segments, buckets: buckets,
+                                                                       config: config)
+                XCTAssertEqual(parts.map(\.segment),
+                               TranscriptSegmentSplitter.split(segments: segments, words: words, config: config))
+            }
+            let server = TranscriptSegmentSplitter.splitWithSources(segments: segments, buckets: buckets, config: nil)
+            XCTAssertEqual(server.map(\.segment), segments)
+        }
+    }
+
+    /// NaN в границах сегмента (локальный движок) — как прежняя реализация.
+    func testNaNBoundsSplitLikeBefore() {
+        let segments = [segment("речь", .nan, 120)]
+        let result = TranscriptSegmentSplitter.split(segments: segments, words: longWords(count: 120), config: .fine)
+        XCTAssertGreaterThan(result.count, 1)
+    }
+
+    /// Диапазоны частей одного куска подряд покрывают все его слова.
+    func testSplitPartsCoverBucketContiguously() {
+        let words = longWords(count: 120)
+        let segments = [segment("речь", 0, 120)]
+        let parts = TranscriptSegmentSplitter.splitWithSources(
+            segments: segments, buckets: TranscriptSegmentSplitter.assignWords(words, to: segments), config: .fine)
+        XCTAssertGreaterThan(parts.count, 1)
+        XCTAssertEqual(parts.first?.words.lowerBound, 0)
+        XCTAssertEqual(parts.last?.words.upperBound, words.count)
+        for (a, b) in zip(parts, parts.dropFirst()) {
+            XCTAssertEqual(a.words.upperBound, b.words.lowerBound)
+        }
+    }
+
+    func testWordRangesMatchBuckets() {
+        let segments = [segment("а", 0, 10), segment("б", 10, 20), segment("в", 20, 30)]
+        let words = [word("рано", 1, 2), word("поздно", 15, 16), word("хвост", 40, 41)]
+        let ranges = TranscriptSegmentSplitter.assignWordRanges(words, to: segments)
+        XCTAssertEqual(ranges, [0..<1, 1..<2, 2..<3])
+        XCTAssertEqual(ranges.map { words[$0].map(\.text) },
+                       TranscriptSegmentSplitter.assignWords(words, to: segments).map { $0.map(\.text) })
+        XCTAssertEqual(TranscriptSegmentSplitter.assignWordRanges([], to: segments), [0..<0, 0..<0, 0..<0])
+    }
+
     // MARK: - Идемпотентность через TranscriptResult
 
     /// Смена детализации всегда считается от rawSegments, поэтому повторное

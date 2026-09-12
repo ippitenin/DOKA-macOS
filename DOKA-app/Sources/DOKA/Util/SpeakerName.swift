@@ -10,10 +10,16 @@ enum SpeakerName {
     private static let unknownPrefix = "unknown_"
 
     /// Индекс из сырого id: «speaker_0» → 0. nil, если формат не распознан.
+    /// Только ASCII-цифры и не длиннее 6: битый id с диска («speaker_-1»,
+    /// «speaker_9223372036854775807») не должен дать отрицательный индекс
+    /// цвета или переполнение в «+ 1».
     static func index(of raw: String) -> Int? {
         let lowered = raw.lowercased()
         guard lowered.hasPrefix(prefix) else { return nil }
-        return Int(lowered.dropFirst(prefix.count))
+        let digits = lowered.dropFirst(prefix.count)
+        guard !digits.isEmpty, digits.count <= 6,
+              digits.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        return Int(digits)
     }
 
     /// «speaker_N» → «Спикер N+1» (нумерация для людей — с единицы),
@@ -29,5 +35,35 @@ enum SpeakerName {
             return L("transcribe.speaker.unknownName", number)
         }
         return raw
+    }
+
+    /// id нового спикера («Назначить реплику → Новый спикер»): `speaker_N`
+    /// со следующим номером после всех известных. `existing` обязан включать
+    /// и ключи слияний — иначе новый спикер мог бы получить id влитого, и
+    /// переназначение молча слилось бы с ним.
+    static func nextID(existing: some Sequence<String>) -> String {
+        let maxIndex = existing.compactMap(index(of:)).max() ?? -1
+        return prefix + String(maxIndex + 1)
+    }
+
+    /// Индексы цветов бэйджей: `speaker_N` — по номеру, остальные id (роли,
+    /// `unknown_N`, новые спикеры) — по порядку в `orderedIDs`, пропуская
+    /// номера, занятые `speaker_N`: иначе роль и «Новый спикер» делили бы цвет.
+    /// Детерминировано между запусками — hashValue String рандомизирован на
+    /// процесс, и цвет роли «плавал» бы.
+    static func colorIndices(orderedIDs: [String]) -> [String: Int] {
+        let reserved = Set(orderedIDs.compactMap(index(of:)))
+        var indices: [String: Int] = [:]
+        var nextOrdinal = 0
+        for id in orderedIDs where indices[id] == nil {
+            if let index = index(of: id) {
+                indices[id] = index
+            } else {
+                while reserved.contains(nextOrdinal) { nextOrdinal += 1 }
+                indices[id] = nextOrdinal
+                nextOrdinal += 1
+            }
+        }
+        return indices
     }
 }

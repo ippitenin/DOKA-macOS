@@ -5,9 +5,10 @@ import Foundation
 /// для «чистый текст / с тайм-кодами / SRT / VTT / по спикерам». Отдельных
 /// запросов к API для субтитров не делаем: всё строим из сегментов.
 enum TranscriptFormatter {
-    /// Чистый текст без разметки.
+    /// Чистый текст без разметки. С правками текста — их полный текст: иначе
+    /// «Скопировать», .txt и поиск отдали бы расшифровку без правок.
     static func plainText(_ r: TranscriptResult) -> String {
-        let trimmed = r.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = (r.editedFullText ?? r.fullText).trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
         return r.segments.map(\.text).joined(separator: " ")
     }
@@ -22,13 +23,13 @@ enum TranscriptFormatter {
         }.joined(separator: "\n")
     }
 
-    /// Текст с тайм-кодом и спикером: «[1:23] Спикер 1: …».
-    /// У сегмента без спикера — строка без префикса.
+    /// Текст с тайм-кодом и спикером: «[1:23] Спикер 1: …» (или имя, заданное
+    /// пользователем). У сегмента без спикера — строка без префикса.
     static func textWithTimestampsAndSpeakers(_ r: TranscriptResult) -> String {
         guard !r.segments.isEmpty else { return plainText(r) }
         return r.segments.map { seg in
             if let speaker = seg.speaker {
-                return "[\(clock(seg.start))] \(SpeakerName.displayName(for: speaker)): \(seg.text)"
+                return "[\(clock(seg.start))] \(r.speakerLabel(speaker)): \(seg.text)"
             }
             return "[\(clock(seg.start))] \(seg.text)"
         }.joined(separator: "\n")
@@ -38,7 +39,7 @@ enum TranscriptFormatter {
     static func srt(_ r: TranscriptResult) -> String {
         guard !r.segments.isEmpty else { return plainText(r) }
         let blocks = r.segments.enumerated().map { index, seg -> String in
-            let line = seg.speaker.map { "\(SpeakerName.displayName(for: $0)): \(seg.text)" } ?? seg.text
+            let line = seg.speaker.map { "\(r.speakerLabel($0)): \(seg.text)" } ?? seg.text
             return "\(index + 1)\n\(srtTime(seg.start)) --> \(srtTime(seg.end))\n\(line)"
         }
         return blocks.joined(separator: "\n\n") + "\n"
@@ -48,36 +49,44 @@ enum TranscriptFormatter {
     static func vtt(_ r: TranscriptResult) -> String {
         guard !r.segments.isEmpty else { return "WEBVTT\n\n" + plainText(r) + "\n" }
         let cues = r.segments.map { seg -> String in
-            let line = seg.speaker.map { "\(SpeakerName.displayName(for: $0)): \(seg.text)" } ?? seg.text
+            let line = seg.speaker.map { "\(r.speakerLabel($0)): \(seg.text)" } ?? seg.text
             return "\(vttTime(seg.start)) --> \(vttTime(seg.end))\n\(line)"
         }
         return "WEBVTT\n\n" + cues.joined(separator: "\n\n") + "\n"
     }
 
     /// Текст по спикерам: подряд идущие реплики одного спикера объединены.
+    /// Группировка — по отображаемому имени: два спикера, которым дали одно
+    /// имя, склеиваются так же, как слитые.
     static func bySpeaker(_ r: TranscriptResult) -> String {
         guard r.hasSpeakers else { return plainText(r) }
         var lines: [String] = []
-        var currentSpeaker: String? = nil
+        var currentLabel: String? = nil
         var buffer: [String] = []
 
         func flush() {
             guard !buffer.isEmpty else { return }
-            // Группировка — по сырому id, отображение — человекочитаемое.
-            let speaker = currentSpeaker.map(SpeakerName.displayName) ?? L("transcribe.speaker.unknown")
+            let speaker = currentLabel ?? L("transcribe.speaker.unknown")
             lines.append("\(speaker): \(buffer.joined(separator: " "))")
             buffer.removeAll()
         }
 
         for seg in r.segments {
-            if seg.speaker != currentSpeaker {
+            let label = seg.speaker.map(r.speakerLabel)
+            if label != currentLabel {
                 flush()
-                currentSpeaker = seg.speaker
+                currentLabel = label
             }
             buffer.append(seg.text)
         }
         flush()
         return lines.joined(separator: "\n")
+    }
+
+    /// Вход анализа ИИ: «[м:сс] Имя: текст» — с именами спикеров и правками;
+    /// без диаризации — просто тайм-коды.
+    static func llmTranscript(_ r: TranscriptResult) -> String {
+        r.hasSpeakers ? textWithTimestampsAndSpeakers(r) : textWithTimestamps(r)
     }
 
     // MARK: - Форматирование времени
