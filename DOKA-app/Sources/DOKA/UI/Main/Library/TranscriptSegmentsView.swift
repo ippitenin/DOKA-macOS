@@ -55,6 +55,17 @@ struct SegmentEditContext: Equatable {
     }
 }
 
+/// Что строка сообщает записи. Пока открыт редактор реплики или поповер
+/// спикера, лента не следует за плеером (автопрокрутка выгрузила бы строку из
+/// ленивой ленты и сохранила недописанное), а клавиши плеера молчат.
+enum SegmentInteraction: Equatable {
+    case editorOpened
+    /// `returnFocus` — закрыли явно (Return, Esc, кнопки): фокус обратно на запись.
+    case editorClosed(returnFocus: Bool)
+    case popoverOpened
+    case popoverClosed
+}
+
 /// Сегменты расшифровки: тайм-код (с архивом звука — кнопка перемотки),
 /// спикер, текст; звучащий сегмент подсвечен. В детали библиотеки лента
 /// ленивая и следует за воспроизведением, в карточке страницы — обычная.
@@ -75,8 +86,10 @@ struct TranscriptSegmentsView: View {
     /// Тексты сегментов ДО словаря (параллельно `result.segments`) — с ними
     /// открывается редактор; nil — совпадают с показанными.
     let sourceTexts: [String]?
-    /// Редактор реплики открыт или закрыт: (индекс строки, открыт ли).
-    let onEditingChanged: (Int, Bool) -> Void
+    /// Не следовать за плеером: у строки открыт редактор или поповер.
+    let suspendsFollow: Bool
+    /// События строк: (индекс строки, событие).
+    let onInteraction: (Int, SegmentInteraction) -> Void
     let onSeek: (Double) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -90,7 +103,7 @@ struct TranscriptSegmentsView: View {
             rowsContainer
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contextMenu {
-                    Button(L("common.copy")) {
+                    Button(L("transcribe.segment.copyAll")) {
                         ClipboardManager.setString(TranscriptFormatter.plainText(result))
                     }
                 }
@@ -137,7 +150,8 @@ struct TranscriptSegmentsView: View {
                        canSeek: canSeek,
                        edit: target == nil ? nil : editContext,
                        target: target,
-                       onEditingChanged: { onEditingChanged(index, $0) },
+                       onInteraction: { onInteraction(index, $0) },
+                       onCopyAll: { ClipboardManager.setString(TranscriptFormatter.plainText(result)) },
                        onSeek: { onSeek(segment.start) })
                 .equatable()
                 .id(SegmentAnchor(index: index))
@@ -145,9 +159,10 @@ struct TranscriptSegmentsView: View {
     }
 
     /// Автоследование: только при воспроизведении и включённом «Следовать»
-    /// (ручная прокрутка его выключает). Reduce Motion — без анимации.
+    /// (ручная прокрутка его выключает) и не во время правки. Reduce Motion —
+    /// без анимации.
     private func follow(_ index: Int?) {
-        guard let index, let scrollProxy,
+        guard let index, let scrollProxy, !suspendsFollow,
               LibraryModel.shared.followPlayback,
               RecordingPlayer.shared.isPlaying else { return }
         let anchor = SegmentAnchor(index: index)
@@ -176,10 +191,13 @@ private struct SegmentRow: View, Equatable {
     /// nil — правка недоступна.
     let edit: SegmentEditContext?
     let target: EditTarget?
-    let onEditingChanged: (Bool) -> Void
+    let onInteraction: (SegmentInteraction) -> Void
+    let onCopyAll: () -> Void
     let onSeek: () -> Void
 
     @State private var isHovering = false
+    /// Меню «⋯» уже создано (с первого наведения).
+    @State private var hasMenu = false
     @State private var isEditing = false
     @State private var draft = ""
     /// Адрес и текст на момент открытия редактора: сохраняется по ним, даже
@@ -209,7 +227,8 @@ private struct SegmentRow: View, Equatable {
                                  info: edit?.roster.first { $0.id == speaker },
                                  roster: edit?.roster ?? [],
                                  document: edit?.document,
-                                 help: originalSpeakerLabel.map { L("transcribe.segment.speakerChanged", $0) })
+                                 help: originalSpeakerLabel.map { L("transcribe.segment.speakerChanged", $0) },
+                                 onPopoverChanged: { onInteraction($0 ? .popoverOpened : .popoverClosed) })
                 }
                 if isEditing {
                     editor
@@ -219,9 +238,17 @@ private struct SegmentRow: View, Equatable {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if let edit, let target, !isEditing {
-                // Место под меню держится всегда — строка не прыгает под курсором.
-                actionsMenu(edit, target)
-                    .opacity(isHovering ? 1 : 0)
+                // Меню создаётся с первого наведения и дальше живёт: лента страницы
+                // «Транскрибация» не ленивая, и сотни AppKit-меню разом тормозили
+                // бы показ, а убирать меню по уходу курсора нельзя — курсор
+                // уходит в само открытое меню. Место держится всегда.
+                ZStack {
+                    if hasMenu {
+                        actionsMenu(edit, target)
+                            .opacity(isHovering ? 1 : 0)
+                    }
+                }
+                .frame(width: 18, height: 16)
             }
         }
         .padding(.vertical, 3)
@@ -238,19 +265,27 @@ private struct SegmentRow: View, Equatable {
                     .padding(.vertical, 4)
             }
         }
-        .onHover { isHovering = $0 }
+        .onHover { hovering in
+            isHovering = hovering
+            if hovering { hasMenu = true }
+        }
+        // Контекстное меню строки перекрывает меню списка — поэтому
+        // «Скопировать всё» есть и здесь, в том числе у строки без правки.
         .contextMenu {
             if let edit, let target, !isEditing {
                 actionItems(edit, target)
+                Divider()
             }
+            Button(L("transcribe.segment.copyAll"), action: onCopyAll)
         }
-        // Строку перенарезали (смена детализации) или она ушла из ленивой
-        // ленты — открытая правка сохраняется, как при потере фокуса.
+        // Строку перенарезали (смена детализации) — открытая правка
+        // сохраняется, как при потере фокуса.
         .onChange(of: target) { _, _ in
             if isEditing { finishEditing(commit: true) }
         }
+        // Строка ушла из ленивой ленты — тоже сохранить.
         .onDisappear {
-            if isEditing { finishEditing(commit: true) }
+            if isEditing { finishEditing(commit: true, force: true) }
         }
     }
 
@@ -290,7 +325,7 @@ private struct SegmentRow: View, Equatable {
                 .lineLimit(1...12)
                 .focused($editorFocused)
                 .onSubmit(submit)
-                .onExitCommand { finishEditing(commit: false) }
+                .onExitCommand { finishEditing(commit: false, returnFocus: true) }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(
@@ -309,7 +344,7 @@ private struct SegmentRow: View, Equatable {
                     .controlSize(.small)
                     .focusable(false)
                     .disabled(!canSaveDraft)
-                Button(L("common.cancel")) { finishEditing(commit: false) }
+                Button(L("common.cancel")) { finishEditing(commit: false, returnFocus: true) }
                     .dsGlassButton()
                     .controlSize(.small)
                     .focusable(false)
@@ -337,23 +372,30 @@ private struct SegmentRow: View, Equatable {
         editingOriginal = editableText
         editingTarget = target
         isEditing = true
-        onEditingChanged(true)
+        onInteraction(.editorOpened)
     }
 
     /// Return: пустое не сохраняется и редактор не закрывает.
     private func submit() {
         guard !TranscriptEdits.normalizeText(draft).isEmpty else { return }
-        finishEditing(commit: true)
+        finishEditing(commit: true, returnFocus: true)
     }
 
     /// Единый выход из редактора; повторный вызов (фокус уходит вслед за
-    /// Esc или сохранением) ничего не делает.
-    private func finishEditing(commit: Bool) {
+    /// Esc или сохранением) ничего не делает. Если адрес устарел (реплику
+    /// успели сбросить или вернуть иначе), черновик не теряется: редактор
+    /// остаётся открытым на текущем адресе строки. `force` — строка уходит из
+    /// ленты, держать редактор негде.
+    private func finishEditing(commit: Bool, returnFocus: Bool = false, force: Bool = false) {
         guard isEditing else { return }
+        if commit, canSaveDraft, let editingTarget, let document = edit?.document,
+           document.setSegmentText(draft, at: editingTarget) == .stale, !force, let target {
+            self.editingTarget = target
+            editingOriginal = editableText
+            return
+        }
         isEditing = false
-        onEditingChanged(false)
-        guard commit, canSaveDraft, let target = editingTarget, let document = edit?.document else { return }
-        document.setSegmentText(draft, at: target)
+        onInteraction(.editorClosed(returnFocus: returnFocus))
     }
 
     // MARK: - Действия

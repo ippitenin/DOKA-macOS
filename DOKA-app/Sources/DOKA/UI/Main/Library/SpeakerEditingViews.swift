@@ -54,6 +54,7 @@ struct SpeakerChipLabel: View {
             Text(info.label)
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
+                .truncationMode(.tail)
             if showsCount {
                 Text(verbatim: String(info.segmentCount))
                     .font(.caption)
@@ -121,6 +122,8 @@ struct SpeakerBadge: View {
     let document: TranscriptDocument?
     /// Подсказка: исходный спикер, если реплику переназначили.
     var help: String?
+    /// Поповер открыт/закрыт — запись на это время не следует за плеером.
+    var onPopoverChanged: ((Bool) -> Void)?
 
     @State private var showsPopover = false
     @State private var isHovering = false
@@ -142,6 +145,11 @@ struct SpeakerBadge: View {
                     showsPopover = false
                 }
             }
+            .onChange(of: showsPopover) { _, shown in onPopoverChanged?(shown) }
+            // Строку выгрузили с открытым поповером — закрытие иначе не придёт.
+            .onDisappear {
+                if showsPopover { onPopoverChanged?(false) }
+            }
         } else {
             text
         }
@@ -154,9 +162,10 @@ struct SpeakerBadge: View {
     }
 }
 
-/// Поповер спикера: имя (Return — сохранить), «Вернуть «Спикер N»»,
-/// «Объединить с» и «Отделить». Любое действие закрывает поповер: после
-/// слияния спикер, для которого он открыт, может перестать существовать.
+/// Поповер спикера: имя (Return или клик мимо — сохранить, Esc — отмена),
+/// «Вернуть «Спикер N»», «Объединить с» и «Отделить». Любое действие
+/// закрывает поповер: после слияния спикер, для которого он открыт, может
+/// перестать существовать.
 struct SpeakerPopover: View {
     let info: SpeakerInfo
     let roster: [SpeakerInfo]
@@ -164,6 +173,8 @@ struct SpeakerPopover: View {
     let dismiss: () -> Void
 
     @State private var draft: String
+    /// Поповер закрыт действием или Esc — набранное имя по закрытию не сохранять.
+    @State private var isFinished = false
     @FocusState private var fieldFocused: Bool
 
     init(info: SpeakerInfo, roster: [SpeakerInfo], document: TranscriptDocument,
@@ -199,6 +210,10 @@ struct SpeakerPopover: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($fieldFocused)
                 .onSubmit(save)
+                .onExitCommand {
+                    isFinished = true
+                    dismiss()
+                }
 
             if isTooLong {
                 Text(L("transcribe.speaker.nameTooLong", TranscriptEdits.maxNameLength))
@@ -220,6 +235,7 @@ struct SpeakerPopover: View {
             HStack(spacing: 8) {
                 if info.hasCustomName {
                     Button(L("transcribe.speaker.resetName", info.defaultLabel)) {
+                        isFinished = true
                         document.renameSpeaker(info.id, to: "")
                         dismiss()
                     }
@@ -255,6 +271,7 @@ struct SpeakerPopover: View {
                 Divider()
                 ForEach(info.merged) { ref in
                     Button(L("transcribe.speaker.unmerge", ref.label)) {
+                        isFinished = true
                         document.unmergeSpeaker(ref.id)
                         dismiss()
                     }
@@ -268,15 +285,21 @@ struct SpeakerPopover: View {
         .frame(width: 280, alignment: .leading)
         // Поле только что вставлено в иерархию — фокус со следующего цикла.
         .onAppear { DispatchQueue.main.async { fieldFocused = true } }
+        // Клик мимо поповера — сохранить набранное, как у переименований записи.
+        .onDisappear {
+            if !isFinished, canSave { document.renameSpeaker(info.id, to: normalized) }
+        }
     }
 
     private func save() {
         guard canSave else { return }
+        isFinished = true
         document.renameSpeaker(info.id, to: normalized)
         dismiss()
     }
 
     private func merge(into other: SpeakerInfo) {
+        isFinished = true
         document.mergeSpeaker(info.id, into: other.id)
         dismiss()
     }
@@ -299,7 +322,7 @@ struct ChipFlowLayout: Layout {
         for row in arrange(width: bounds.width, subviews: subviews) {
             var x = bounds.minX
             for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
+                let size = fittedSize(subviews[index], width: bounds.width)
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
@@ -317,7 +340,7 @@ struct ChipFlowLayout: Layout {
         var rows: [Row] = []
         var row = Row()
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
+            let size = fittedSize(subviews[index], width: width)
             let needed = row.indices.isEmpty ? size.width : row.width + spacing + size.width
             if !row.indices.isEmpty, needed > width {
                 rows.append(row)
@@ -329,5 +352,13 @@ struct ChipFlowLayout: Layout {
         }
         if !row.indices.isEmpty { rows.append(row) }
         return rows
+    }
+
+    /// Размер чипа не шире строки: длинное имя (до 64 символов) обрезается,
+    /// а не вылезает за карточку или поповер.
+    private func fittedSize(_ subview: LayoutSubview, width: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard width.isFinite, ideal.width > width else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
     }
 }

@@ -161,6 +161,13 @@ final class TranscriptSegmentSplitterTests: XCTestCase {
         }
     }
 
+    /// NaN в границах сегмента (локальный движок) — как прежняя реализация.
+    func testNaNBoundsSplitLikeBefore() {
+        let segments = [segment("речь", .nan, 120)]
+        let result = TranscriptSegmentSplitter.split(segments: segments, words: longWords(count: 120), config: .fine)
+        XCTAssertGreaterThan(result.count, 1)
+    }
+
     /// Диапазоны частей одного куска подряд покрывают все его слова.
     func testSplitPartsCoverBucketContiguously() {
         let words = longWords(count: 120)

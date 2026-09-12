@@ -41,15 +41,23 @@ struct TranscriptEdits: Codable, Equatable {
     /// адресов слепнут.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        speakerNames = (try? c.decodeIfPresent([String: String].self, forKey: .speakerNames)) ?? [:]
-        speakerMerges = (try? c.decodeIfPresent([String: String].self, forKey: .speakerMerges)) ?? [:]
+        speakerNames = Self.lossyDictionary(c, key: .speakerNames)
+        speakerMerges = Self.lossyDictionary(c, key: .speakerMerges)
         let texts = (try? c.decodeIfPresent([Lossy<TextEdit>].self, forKey: .textEdits))?
             .compactMap(\.value) ?? []
         textEdits = Self.nonOverlapping(texts.filter { !Self.tokens($0.text).isEmpty }, anchor: \.anchor)
         let overrides = (try? c.decodeIfPresent([Lossy<SpeakerOverride>].self, forKey: .speakerOverrides))?
             .compactMap(\.value) ?? []
         speakerOverrides = Self.nonOverlapping(overrides, anchor: \.anchor)
-        revision = (try? c.decodeIfPresent(Int.self, forKey: .revision)) ?? 0
+        revision = max(0, (try? c.decodeIfPresent(Int.self, forKey: .revision)) ?? 0)
+    }
+
+    /// Словарь «строка → строка», где битое значение теряет только себя, а
+    /// не все имена сразу (следующее сохранение закрепило бы потерю).
+    private static func lossyDictionary(_ c: KeyedDecodingContainer<CodingKeys>,
+                                        key: CodingKeys) -> [String: String] {
+        let values = (try? c.decodeIfPresent([String: Lossy<String>].self, forKey: key)) ?? [:]
+        return values.compactMapValues(\.value)
     }
 
     /// Правок нет (счётчик не в счёт: после сброса он остаётся).
@@ -237,10 +245,19 @@ extension TranscriptEdits {
         speakerNames[canonical(id)]
     }
 
-    /// Отображаемое имя спикера: своё или «Спикер N» канонического id.
+    /// Отображаемое имя спикера: своё; без своего — имя первого влитого
+    /// (слили «Анну» в безымянного — видна «Анна»); иначе «Спикер N».
+    /// Унаследованное имя не хранится, поэтому «Отделить» возвращает обоим
+    /// прежние имена — иначе оба остались бы «Анной», и «по спикерам» (по
+    /// имени) снова склеило бы их реплики.
     func label(for id: String) -> String {
         let key = canonical(id)
-        return speakerNames[key] ?? SpeakerName.displayName(for: key)
+        return speakerNames[key] ?? inheritedName(for: key) ?? SpeakerName.displayName(for: key)
+    }
+
+    private func inheritedName(for key: String) -> String? {
+        guard !speakerMerges.isEmpty else { return nil }
+        return mergedIDs(into: key).lazy.compactMap { speakerNames[$0] }.first
     }
 
     /// Собственное имя id без учёта слияния — для пункта «Отделить».
@@ -261,15 +278,12 @@ extension TranscriptEdits {
     }
 
     /// Слияние: `id` (со всеми, кто уже влит в него) становится `target`.
-    /// Если у цели своего имени нет, она наследует имя влитого.
+    /// Если у цели своего имени нет, она показывает имя влитого (см. `label`).
     mutating func merge(_ id: String, into target: String) {
         let source = canonical(id)
         let destination = canonical(target)
         guard source != destination else { return }
         speakerMerges[source] = destination
-        if speakerNames[destination] == nil, let name = speakerNames[source] {
-            speakerNames[destination] = name
-        }
     }
 
     /// Отделить: удаляется только прямая связь `id`, влитые в него остаются с ним.
@@ -413,8 +427,51 @@ extension TranscriptEdits {
         let full = Self.normalizeText([target.prefix, body, target.suffix].joined(separator: " "))
         textEdits.removeAll { $0.anchor.intersects(target.anchor) }
         guard full != Self.normalizeText(target.originalText) else { return }
+        alignSpeakerOverrides(to: target.anchor)
         textEdits.append(TextEdit(anchor: target.anchor, text: full))
         textEdits.sort { $0.anchor.sortKey < $1.anchor.sortKey }
+    }
+
+    /// Все токены правки получают спикера её первого слова (`materialize`),
+    /// поэтому переназначения внутри якоря выравниваются под него же. Иначе
+    /// переназначение, спрятанное слиянием, после «Отделить» лежало бы под
+    /// правкой невидимым, а правка, начатая внутри переназначения, молча
+    /// перекрашивала бы чужие слова.
+    private mutating func alignSpeakerOverrides(to anchor: EditAnchor) {
+        guard case .words(let range) = anchor else { return }
+        let inside = speakerOverrides.filter { $0.anchor.intersects(anchor) }
+        guard !inside.isEmpty else { return }
+        if inside.count == 1, case .words(let own) = inside[0].anchor,
+           own.lowerBound <= range.lowerBound, range.upperBound <= own.upperBound {
+            return   // одно переназначение накрывает якорь целиком — уже ровно
+        }
+        let first = inside.first { override in
+            if case .words(let own) = override.anchor { return own.contains(range.lowerBound) }
+            return false
+        }?.speaker
+        cutSpeakerOverrides(anchor)
+        if let first {
+            speakerOverrides.append(SpeakerOverride(anchor: anchor, speaker: first))
+            speakerOverrides.sort { $0.anchor.sortKey < $1.anchor.sortKey }
+        }
+    }
+
+    /// Правки без неприменимых к этим исходникам (битые данные: якорь через
+    /// границу сегмента или за пределами слов, `.segment` у сегмента со
+    /// словами). `materialize` их и так пропускает, но `isValid` видел бы их
+    /// пересечение с адресами соседних реплик и навсегда блокировал их правку.
+    func sanitized(rawSegments: [TranscriptSegment], words: [TranscriptWord]) -> TranscriptEdits {
+        let ranges = TranscriptSegmentSplitter.assignWordRanges(words, to: rawSegments)
+        var copy = self
+        copy.textEdits = textEdits.filter { edit in
+            switch edit.anchor {
+            case .words(let range):
+                return ranges.contains { $0.lowerBound <= range.lowerBound && range.upperBound <= $0.upperBound }
+            case .segment(let index):
+                return index < ranges.count && ranges[index].isEmpty
+            }
+        }
+        return copy
     }
 
     /// «Вернуть исходный текст» — задетые правки удаляются целиком. Если
@@ -581,15 +638,37 @@ extension TranscriptEdits {
                  in materialized: MaterializedTranscript,
                  rawSegments: [TranscriptSegment],
                  words: [TranscriptWord]) -> [EditTarget] {
-        parts.map { part in
+        // Переназначения отсортированы и не пересекаются, а начала адресов
+        // частей не убывают — хватает одного указателя (часовая запись с сотнями
+        // переназначений иначе давала бы части × переназначения).
+        var wordOverrides: [Range<Int>] = []
+        var segmentOverrides = Set<Int>()
+        for override in speakerOverrides {
+            switch override.anchor {
+            case .words(let range): wordOverrides.append(range)
+            case .segment(let index): segmentOverrides.insert(index)
+            }
+        }
+        var segmentTextEdits: [Int: TextEdit] = [:]
+        for edit in textEdits {
+            if case .segment(let index) = edit.anchor { segmentTextEdits[index] = edit }
+        }
+        var cursor = 0
+        func isOverridden(_ range: Range<Int>) -> Bool {
+            while cursor < wordOverrides.count, wordOverrides[cursor].upperBound <= range.lowerBound {
+                cursor += 1
+            }
+            return cursor < wordOverrides.count && wordOverrides[cursor].lowerBound < range.upperBound
+        }
+
+        return parts.map { part in
             let r = materialized.rawIndex[part.piece]
             let raw = rawSegments[r]
             let pieceOrigins = materialized.origins[part.piece]
             guard !pieceOrigins.isEmpty, !part.words.isEmpty else {
-                let anchor = EditAnchor.segment(r)
-                return EditTarget(rawIndex: r, anchor: anchor, originalSpeaker: raw.speaker,
-                                  isSpeakerOverridden: speakerOverrides.contains { $0.anchor == anchor },
-                                  absorbed: textEdits.filter { $0.anchor == anchor },
+                return EditTarget(rawIndex: r, anchor: .segment(r), originalSpeaker: raw.speaker,
+                                  isSpeakerOverridden: segmentOverrides.contains(r),
+                                  absorbed: segmentTextEdits[r].map { [$0] } ?? [],
                                   originalText: raw.text)
             }
 
@@ -626,7 +705,7 @@ extension TranscriptEdits {
                 ? raw.text
                 : TranscriptSegmentSplitter.joinWords(Array(words[range]))
             return EditTarget(rawIndex: r, anchor: anchor, originalSpeaker: raw.speaker,
-                              isSpeakerOverridden: speakerOverrides.contains { $0.anchor.intersects(anchor) },
+                              isSpeakerOverridden: isOverridden(range),
                               absorbed: absorbed.map { textEdits[$0] },
                               prefix: prefix, suffix: suffix, originalText: originalText)
         }
@@ -684,12 +763,14 @@ extension TranscriptResult {
 
     /// Индексы цветов спикеров. Ключ — id, а не имя: цвет не меняется от
     /// переименования. Порядок — исходные id по первому появлению (включая
-    /// влитые), затем новые из переназначений: слияние не перекрашивает цель,
+    /// влитые), затем новые из переназначений и цели слияний (отсортированные:
+    /// порядок словаря случаен на процесс): слияние не перекрашивает цель,
     /// влитый получает её цвет, переназначение первой реплики ничего не сдвигает.
     var speakerColorIndices: [String: Int] {
         var ordered: [String] = []
         var seen = Set<String>()
         let ids = rawSegments.compactMap(\.speaker) + edits.speakerOverrides.map(\.speaker)
+            + edits.speakerMerges.values.sorted()
         for id in ids where !id.isEmpty && seen.insert(id).inserted {
             ordered.append(id)
         }

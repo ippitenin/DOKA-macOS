@@ -148,11 +148,26 @@ final class TranscriptEditsTests: XCTestCase {
         XCTAssertEqual(edits.canonical("speaker_2"), "speaker_1")
     }
 
+    /// «Отделить» возвращает обоим прежние имена: унаследованное не хранится,
+    /// иначе оба остались бы «Анной», и «по спикерам» склеило бы их снова.
+    func testUnmergeReturnsNames() {
+        var edits = TranscriptEdits()
+        edits.rename("speaker_1", to: "Анна")
+        edits.merge("speaker_1", into: "speaker_0")
+        edits.unmerge("speaker_1")
+        XCTAssertNotEqual(edits.label(for: "speaker_0"), "Анна")
+        XCTAssertEqual(edits.label(for: "speaker_1"), "Анна")
+        let lines = TranscriptFormatter.bySpeaker(dialogue().withEdits(edits, detail: .server))
+            .split(separator: "\n")
+        XCTAssertEqual(lines.count, 4)
+    }
+
     func testMergeInheritsNameWhenTargetHasNone() {
         var edits = TranscriptEdits()
         edits.rename("speaker_1", to: "Анна")
         edits.merge("speaker_1", into: "speaker_0")
         XCTAssertEqual(edits.label(for: "speaker_0"), "Анна")
+        XCTAssertNil(edits.customName(for: "speaker_0"), "имя показывается, но не копируется")
         // Своё имя у цели побеждает.
         var named = TranscriptEdits()
         named.rename("speaker_0", to: "Борис")
@@ -689,6 +704,83 @@ final class TranscriptEditsTests: XCTestCase {
         XCTAssertNil(server.editedFullText)
     }
 
+    // MARK: - Находки ревью
+
+    /// Правка текста выравнивает переназначения под спикера своего первого
+    /// слова: спрятанное слиянием переназначение не остаётся под правкой
+    /// невидимым после «Отделить».
+    func testTextEditAlignsHiddenOverride() {
+        let words = (0..<10).map { word("с\($0)", Double($0), Double($0) + 0.9) }
+        let r = result([segment("Исходная реплика.", 0, 10, speaker: "speaker_0")], words: words)
+        var edits = TranscriptEdits()
+        edits.speakerOverrides = [SpeakerOverride(anchor: .words(5..<8), speaker: "speaker_1")]
+        edits.merge("speaker_1", into: "speaker_0")
+        let target = r.withEdits(edits, detail: .server).segmentTargets[0]
+        XCTAssertEqual(target.anchor, .words(0..<10))
+        edits.setText("совсем новый текст реплики", at: target)
+        edits.unmerge("speaker_1")
+        let server = r.withEdits(edits, detail: .server)
+        XCTAssertEqual(server.segments.map(\.speaker), ["speaker_0"])
+        XCTAssertFalse(server.segmentTargets[0].isSpeakerOverridden)
+
+        // Правка, начатая внутри переназначения, переназначает себя целиком — явно.
+        var inside = TranscriptEdits()
+        inside.speakerOverrides = [SpeakerOverride(anchor: .words(0..<5), speaker: "speaker_1")]
+        inside.merge("speaker_1", into: "speaker_0")
+        inside.setText("другой текст", at: r.withEdits(inside, detail: .server).segmentTargets[0])
+        XCTAssertEqual(inside.speakerOverrides, [SpeakerOverride(anchor: .words(0..<10), speaker: "speaker_1")])
+    }
+
+    /// Битые id с диска: без отрицательного цвета и переполнений.
+    func testCorruptSpeakerIDsAreHarmless() {
+        XCTAssertNil(SpeakerName.index(of: "speaker_-1"))
+        XCTAssertNil(SpeakerName.index(of: "speaker_9223372036854775807"))
+        XCTAssertNil(SpeakerName.index(of: "speaker_"))
+        XCTAssertEqual(SpeakerName.displayName(for: "speaker_9223372036854775807"),
+                       "speaker_9223372036854775807")
+        XCTAssertEqual(SpeakerName.nextID(existing: ["speaker_9223372036854775807"]), "speaker_0")
+        XCTAssertTrue(SpeakerName.colorIndices(orderedIDs: ["speaker_-1", "speaker_2"]).values.allSatisfy { $0 >= 0 })
+    }
+
+    /// Одно битое имя теряет только себя.
+    func testNamesDecodeValueByValue() throws {
+        let json = #"""
+        {"speakerNames":{"speaker_0":"Анна","speaker_1":5},
+         "speakerMerges":{"speaker_2":"speaker_0","speaker_3":[]},"revision":-4}
+        """#
+        let edits = try JSONDecoder().decode(TranscriptEdits.self, from: Data(json.utf8))
+        XCTAssertEqual(edits.speakerNames, ["speaker_0": "Анна"])
+        XCTAssertEqual(edits.speakerMerges, ["speaker_2": "speaker_0"])
+        XCTAssertEqual(edits.revision, 0)
+    }
+
+    /// Неприменимая правка (через границу сегмента, `.segment` у сегмента со
+    /// словами) не блокирует соседние реплики навсегда.
+    func testSanitizedDropsInapplicableEdits() throws {
+        let r = longDialogue()
+        var edits = TranscriptEdits()
+        edits.textEdits = [TextEdit(anchor: .words(55..<65), text: "Через границу."),
+                           TextEdit(anchor: .segment(0), text: "Не бессловный.")]
+        let neighbor = try XCTUnwrap(r.withEdits(edits, detail: .fine).segmentTargets
+            .first { $0.anchor.intersects(.words(55..<65)) })
+        XCTAssertFalse(edits.isValid(neighbor))
+        let clean = edits.sanitized(rawSegments: r.rawSegments, words: r.words)
+        XCTAssertTrue(clean.textEdits.isEmpty)
+        XCTAssertTrue(clean.isValid(neighbor))
+    }
+
+    /// Цель слияния, оставшаяся только в слияниях, получает свой цвет, а не чужой.
+    func testMergeTargetOnlyInMergesGetsOwnColor() {
+        let r = dialogue()
+        let target = r.withDetail(.server).segmentTargets[0]
+        var edits = TranscriptEdits()
+        edits.setSpeaker("speaker_3", at: target)
+        edits.merge("speaker_1", into: "speaker_3")
+        edits.revertSpeaker(at: target)
+        let roster = r.withEdits(edits, detail: .server).speakerRoster
+        XCTAssertEqual(roster.first { $0.id == "speaker_3" }?.colorIndex, 3)
+    }
+
     func testSameContentIgnoresRevision() {
         var a = TranscriptEdits()
         a.rename("speaker_0", to: "Анна")
@@ -782,13 +874,27 @@ final class TranscriptDocumentEditsTests: XCTestCase {
         guard let target = document.output(detail: .server)?.segmentTargets.first else {
             return XCTFail("нет адресов сегментов")
         }
-        document.setSegmentText("Добрый вечер.", at: target)
+        XCTAssertEqual(document.setSegmentText("Добрый вечер.", at: target), .applied)
         XCTAssertEqual(store.cachedBody(id)?.plainText, "Добрый вечер. Здравствуйте.")
         XCTAssertEqual(store.record(id)?.summary?.preview.hasPrefix("Добрый вечер."), true)
 
-        document.setSegmentText("Ещё раз.", at: target)
+        // Редактор по такому итогу оставляет черновик открытым.
+        XCTAssertEqual(document.setSegmentText("Ещё раз.", at: target), .stale)
         XCTAssertEqual(document.output(detail: .server)?.segments.first?.text, "Добрый вечер.")
         XCTAssertEqual(document.source(detail: .server)?.segments.first?.text, "Добрый вечер.")
+    }
+
+    /// Счётчик на пределе (битые данные) не роняет следующую правку.
+    func testMaxRevisionDoesNotCrash() throws {
+        let (store, _, id) = makeDocument()
+        var body = try XCTUnwrap(store.cachedBody(id))
+        var edits = TranscriptEdits()
+        edits.revision = .max
+        body.edits = edits
+        store.saveBody(id, body)
+        let document = TranscriptDocument(recordID: id, store: store)
+        document.renameSpeaker("speaker_0", to: "Анна")
+        XCTAssertEqual(store.cachedBody(id)?.edits?.label(for: "speaker_0"), "Анна")
     }
 
     /// После переноса «Папки данных» библиотека заморожена — правки не принимаются.

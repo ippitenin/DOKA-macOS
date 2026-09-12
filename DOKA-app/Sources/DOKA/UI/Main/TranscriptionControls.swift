@@ -265,7 +265,9 @@ enum SpeakerPalette {
     ]
 
     static func color(at index: Int) -> Color {
-        colors[index % colors.count]
+        // Остаток неотрицательный: индекс мог прийти из битых данных.
+        let count = colors.count
+        return colors[((index % count) + count) % count]
     }
 }
 

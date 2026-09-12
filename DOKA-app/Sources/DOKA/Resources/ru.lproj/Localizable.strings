@@ -380,6 +380,7 @@
 "transcribe.segment.revertSpeaker" = "Вернуть исходного спикера";
 "transcribe.segment.speakerChanged" = "Исходный спикер: %@";
 "transcribe.segment.copy" = "Скопировать реплику";
+"transcribe.segment.copyAll" = "Скопировать всё";
 "transcribe.segment.edit" = "Изменить текст";
 "transcribe.segment.editHint" = "Return — сохранить, Esc — отмена";
 "transcribe.segment.revertText" = "Вернуть исходный текст";

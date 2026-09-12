@@ -106,10 +106,12 @@ struct RecordSummary: Codable, Equatable {
 
     static let previewLength = 160
 
-    static func make(from body: TranscriptBody) -> RecordSummary {
+    /// `serverResult` — уже построенный `makeResult(detail: .server)`, чтобы
+    /// не материализовать правки второй раз.
+    static func make(from body: TranscriptBody, serverResult: TranscriptResult? = nil) -> RecordSummary {
         // Спикеры — разрешённые, после слияний и переназначений: строка
         // списка должна совпадать с полосой спикеров записи.
-        let result = body.makeResult(detail: .server)
+        let result = serverResult ?? body.makeResult(detail: .server)
         let text = TranscriptFormatter.plainText(result)
         let speakers = Set(result.segments.compactMap { segment -> String? in
             guard let speaker = segment.speaker, !speaker.isEmpty else { return nil }

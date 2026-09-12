@@ -10,10 +10,16 @@ enum SpeakerName {
     private static let unknownPrefix = "unknown_"
 
     /// Индекс из сырого id: «speaker_0» → 0. nil, если формат не распознан.
+    /// Только ASCII-цифры и не длиннее 6: битый id с диска («speaker_-1»,
+    /// «speaker_9223372036854775807») не должен дать отрицательный индекс
+    /// цвета или переполнение в «+ 1».
     static func index(of raw: String) -> Int? {
         let lowered = raw.lowercased()
         guard lowered.hasPrefix(prefix) else { return nil }
-        return Int(lowered.dropFirst(prefix.count))
+        let digits = lowered.dropFirst(prefix.count)
+        guard !digits.isEmpty, digits.count <= 6,
+              digits.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        return Int(digits)
     }
 
     /// «speaker_N» → «Спикер N+1» (нумерация для людей — с единицы),

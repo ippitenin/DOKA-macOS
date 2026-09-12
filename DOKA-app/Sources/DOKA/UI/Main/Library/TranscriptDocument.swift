@@ -72,6 +72,13 @@ final class TranscriptDocument: ObservableObject {
             .filter { $0 == recordID }
             .sink { [weak self] _ in Task { await self?.reload() } }
             .store(in: &cancellables)
+        // Заморозка после переноса «Папки данных» выключает правку — вью
+        // должна перерисоваться (`canEdit` читает стор).
+        store.$isFrozen
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     func reload() async {
@@ -103,8 +110,15 @@ final class TranscriptDocument: ObservableObject {
         mutateEdits { $0.unmerge(id) }
     }
 
+    /// Итог правки. `stale` — адрес устарел (реплику успели поправить иначе):
+    /// редактор не должен терять черновик.
+    enum EditOutcome {
+        case applied, unchanged, stale, unavailable
+    }
+
     /// Новый текст реплики (до словаря). Пустой не сохраняется.
-    func setSegmentText(_ text: String, at target: EditTarget) {
+    @discardableResult
+    func setSegmentText(_ text: String, at target: EditTarget) -> EditOutcome {
         mutateEdits(validating: target) { $0.setText(text, at: target) }
     }
 
@@ -136,18 +150,23 @@ final class TranscriptDocument: ObservableObject {
     /// каждое нажатие клавиши. `saveBody` обновляет и текст для поиска, и сводку.
     /// Адрес `validating` проверяется на свежесть: устаревший (реплику успели
     /// поправить иначе) отвергается, а не портит правки.
+    @discardableResult
     private func mutateEdits(validating target: EditTarget? = nil,
-                             _ change: (inout TranscriptEdits) -> Void) {
-        guard var body, canEdit, store.record(recordID) != nil else { return }
-        let before = body.edits ?? TranscriptEdits()
-        if let target, !before.isValid(target) { return }
+                             _ change: (inout TranscriptEdits) -> Void) -> EditOutcome {
+        guard var body, canEdit, store.record(recordID) != nil else { return .unavailable }
+        // Неприменимые к исходникам правки (битые данные) отбрасываются: иначе
+        // `isValid` навсегда блокировал бы соседние реплики.
+        let before = (body.edits ?? TranscriptEdits())
+            .sanitized(rawSegments: body.transcript.rawSegments, words: body.transcript.words)
+        if let target, !before.isValid(target) { return .stale }
         var edits = before
         change(&edits)
-        guard !edits.hasSameContent(as: before) else { return }
-        edits.revision = before.revision + 1
+        guard !edits.hasSameContent(as: before) else { return .unchanged }
+        edits.revision = before.revision &+ 1
         body.edits = edits
         apply(body)
         store.saveBody(recordID, body)
+        return .applied
     }
 
     private func apply(_ newBody: TranscriptBody?) {

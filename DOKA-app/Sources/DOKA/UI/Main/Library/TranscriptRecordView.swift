@@ -31,9 +31,14 @@ struct TranscriptRecordView: View {
     @State private var isPlanningRetry = false
     /// Почему «Повторить» не запустился — у кнопки, а не фазой страницы.
     @State private var retryNote: String?
-    /// Строка, у которой открыт редактор реплики: клавиши плеера и Esc
-    /// «назад» в это время молчат.
-    @State private var editingSegment: Int?
+    /// Строки, где открыт редактор реплики или поповер спикера: пока они есть,
+    /// клавиши плеера и Esc «назад» молчат, а лента не следует за плеером.
+    @State private var segmentInteractions: Set<SegmentInteractionKey> = []
+
+    private struct SegmentInteractionKey: Hashable {
+        let index: Int
+        let isEditor: Bool
+    }
     @FocusState private var focus: FocusTarget?
 
     private enum FocusTarget: Hashable { case root, rename }
@@ -147,7 +152,7 @@ struct TranscriptRecordView: View {
         .onKeyPress(.leftArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: -5) } }
         .onKeyPress(.rightArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: 5) } }
         .onKeyPress(.escape) {
-            guard !isRenaming, editingSegment == nil, onBack != nil else { return .ignored }
+            guard !isRenaming, segmentInteractions.isEmpty, onBack != nil else { return .ignored }
             goBack()
             return .handled
         }
@@ -180,7 +185,7 @@ struct TranscriptRecordView: View {
     }
 
     private func playbackKey(_ action: (URL) -> Void) -> KeyPress.Result {
-        guard !isRenaming, editingSegment == nil, let url = audioURL else { return .ignored }
+        guard !isRenaming, segmentInteractions.isEmpty, let url = audioURL else { return .ignored }
         action(url)
         return .handled
     }
@@ -428,14 +433,29 @@ struct TranscriptRecordView: View {
                                sourceTexts: settings.applyDictionaryToFiles
                                    ? document.source(detail: model.detail)?.segments.map(\.text)
                                    : nil,
-                               onEditingChanged: { index, editing in
-                                   if editing {
-                                       editingSegment = index
-                                   } else if editingSegment == index {
-                                       editingSegment = nil
-                                   }
-                               },
+                               suspendsFollow: !segmentInteractions.isEmpty,
+                               onInteraction: { index, event in handleSegmentInteraction(index, event) },
                                onSeek: { seek(to: $0) })
+    }
+
+    /// Редактор и поповеры строк. Ключ — строка и вид: редактор строки B
+    /// открывается раньше, чем закрывается редактор строки A.
+    private func handleSegmentInteraction(_ index: Int, _ event: SegmentInteraction) {
+        switch event {
+        case .editorOpened:
+            segmentInteractions.insert(SegmentInteractionKey(index: index, isEditor: true))
+        case .editorClosed(let returnFocus):
+            segmentInteractions.remove(SegmentInteractionKey(index: index, isEditor: true))
+            // Закрыли явно — клавиши плеера и Esc «назад» снова работают сразу,
+            // без клика по записи. Со следующего цикла: поле ещё в иерархии.
+            if returnFocus, layout == .full {
+                DispatchQueue.main.async { focus = .root }
+            }
+        case .popoverOpened:
+            segmentInteractions.insert(SegmentInteractionKey(index: index, isEditor: false))
+        case .popoverClosed:
+            segmentInteractions.remove(SegmentInteractionKey(index: index, isEditor: false))
+        }
     }
 
     private func noticeCard(icon: String, tint: Color, text: String) -> some View {

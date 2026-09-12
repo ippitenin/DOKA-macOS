@@ -60,7 +60,8 @@ enum TranscriptSegmentSplitter {
         result.reserveCapacity(segments.count)
         for (piece, segment) in segments.enumerated() {
             let bucket = piece < buckets.count ? buckets[piece] : []
-            guard let config, segment.end - segment.start > config.splitThreshold, !bucket.isEmpty else {
+            // Именно `!(<=)`, а не `>`: с NaN в границах — как прежняя реализация.
+            guard let config, !(segment.end - segment.start <= config.splitThreshold), !bucket.isEmpty else {
                 result.append(SplitPart(segment: segment, piece: piece, words: 0..<bucket.count))
                 continue
             }
