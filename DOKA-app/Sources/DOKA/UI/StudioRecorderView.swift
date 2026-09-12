@@ -22,7 +22,7 @@ struct StudioRecorderView: View {
             .frame(width: size.width, height: size.height)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             // Как у классической панели: на macOS 26 — настоящий Liquid Glass,
-            // на 14/15 — материал со светящейся кромкой. Внешних теней нет
+            // на 15 — материал со светящейся кромкой. Внешних теней нет
             // намеренно: окно панели размером ровно с плашку, тень обрезалась
             // бы его квадратной границей — тёмные углы в светлой теме.
             .glassSurface(radius: 22)

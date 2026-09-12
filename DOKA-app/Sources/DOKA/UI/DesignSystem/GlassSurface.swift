@@ -31,7 +31,7 @@ struct GlassSurfaceShape: InsettableShape {
 
 extension View {
     /// Адаптивная стеклянная подложка — всё стекло приложения идёт через неё.
-    /// macOS 26 — Liquid Glass; 14/15 — материал со светящейся кромкой;
+    /// macOS 26 — Liquid Glass; 15 — материал со светящейся кромкой;
     /// Reduce Transparency — непрозрачный фон. forceMaterial — страховка
     /// для контекстов, где glassEffect ведёт себя плохо (borderless NSPanel).
     func glassSurface(
