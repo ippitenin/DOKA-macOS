@@ -85,8 +85,13 @@ final class AnalysisController: ObservableObject {
         if let running = runningRecordID, running != record.id { return .busyOtherRecord }
         // Конкурируем за один и тот же ускоритель только с ЛОКАЛЬНЫМ
         // распознаванием; сетевое и диктовка анализу не мешают.
-        if FileTranscriptionController.shared.isTranscribing,
-           SettingsStore.shared.isLocalService {
+        //
+        // Смотрим на маршрут ИДУЩЕГО прогона, а не на глобальный providerID:
+        // запуск из библиотеки идёт по снимку params.providerID, и глобальная
+        // настройка к нему отношения не имеет. Прежняя проверка ошибалась в обе
+        // стороны — пропускала анализ поверх локального распознавания (Qwen на
+        // Metal против Parakeet на ANE) и блокировала его при сетевом.
+        if FileTranscriptionController.shared.runningUsesLocalEngine {
             return .busyTranscribing
         }
         if let summary = record.summary, summary.wordCount == 0 { return .emptyTranscript }
@@ -190,10 +195,17 @@ final class AnalysisController: ObservableObject {
                 inputFingerprint: input.fingerprint,
                 truncated: result.truncated,
                 generationSeconds: Date().timeIntervalSince(started))
-            // Запись могли удалить, пока шёл анализ: сохранять некуда, но это
-            // не ошибка — просто возвращаемся в покой.
-            await store.addAnalysis(analysis, to: recordID)
+            // Сохранить может не получиться: запись удалили, пока шёл анализ,
+            // либо библиотеку заморозил перенос «Папки данных». Раньше
+            // результат просто игнорировался, и отчёт после 10–15 минут работы
+            // модели исчезал без единого слова. Теперь молчим только если
+            // сохранять действительно некуда (запись удалена).
+            let saved = await store.addAnalysis(analysis, to: recordID)
             guard !Task.isCancelled else { return }
+            if !saved, store.record(recordID) != nil {
+                phase = .failed(recordID: recordID, message: L("analysis.error.notSaved"))
+                return
+            }
             phase = .idle
         } catch is CancellationError {
             // Отмена уже перевела фазу — здесь ничего не трогаем.
