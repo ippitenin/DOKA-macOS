@@ -542,3 +542,8 @@
 "perf.group.avgAudio" = "Avg. audio";
 "perf.group.avgProcess" = "Avg. process time";
 "perf.empty" = "No analyzable records yet.";
+
+/* Local AI analysis */
+"analysis.error.diskSpace" = "Not enough disk space: about %@ required";
+"analysis.error.checksum" = "The model file downloaded incorrectly — please try again";
+"analysis.error.http" = "The server returned error %ld";

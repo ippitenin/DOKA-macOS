@@ -67,19 +67,58 @@ done
 for b in .build/apple/Products/Release/*.bundle; do
     [ -e "$b" ] && cp -RX "$b" "$STAGE_APP/Contents/Resources/"
 done
+
+# llama.cpp — ДИНАМИЧЕСКИЙ фреймворк движка локального ИИ-анализа. Цикл
+# «*.bundle» выше фреймворки не подхватывает, поэтому отдельный шаг. Берём из
+# распакованного артефакта SPM, а не из Products: путь в Products зависит от
+# версии swift-build, а в artifacts раскладка задана самим xcframework.
+LLAMA_FW="$(find .build/artifacts -type d -path '*macos-arm64_x86_64/llama.framework' -prune | head -1)"
+[ -n "$LLAMA_FW" ] || { echo "Не найден llama.framework (срез macos-arm64_x86_64)"; exit 1; }
+# Срез обязан быть universal: иначе Intel-часть приложения не слинкуется и
+# сломается уже после раздачи. Гейт здесь, а не в заметках к релизу.
+LLAMA_ARCHS="$(lipo -archs "$LLAMA_FW/Versions/A/llama")"
+if [[ "$LLAMA_ARCHS" != *arm64* || "$LLAMA_ARCHS" != *x86_64* ]]; then
+    echo "llama.framework не universal ($LLAMA_ARCHS) — такой релиз llama.cpp брать нельзя"
+    exit 1
+fi
+echo "    llama.framework: $LLAMA_ARCHS"
+mkdir -p "$STAGE_APP/Contents/Frameworks"
+# -R сохраняет симлинки Versions/Current, -X не тащит iCloud-xattr.
+cp -RX "$LLAMA_FW" "$STAGE_APP/Contents/Frameworks/"
+# Заголовки и modulemap в рантайме не нужны. Симлинки ВЕРХНЕГО уровня надо
+# убирать вместе с целями: висячий симлинк роняет `codesign --verify --strict`.
+FW="$STAGE_APP/Contents/Frameworks/llama.framework"
+rm -rf "$FW/Versions/A/Headers" "$FW/Versions/A/Modules" "$FW/Headers" "$FW/Modules"
+
 xattr -cr "$STAGE_APP" 2>/dev/null || true
 
+# rpath на @executable_path/../Frameworks приходит из linkerSettings в
+# Package.swift; страховка на случай, если swift-build его проглотит.
+# Именно `grep >/dev/null`, а НЕ `grep -q`: с -q grep закрывает пайп на первом
+# совпадении, otool получает SIGPIPE, и pipefail объявляет успешный поиск
+# неудачей — rpath добавился бы вторым экземпляром.
+if ! otool -l "$STAGE_APP/Contents/MacOS/${APP_NAME}" | grep "@executable_path/../Frameworks" >/dev/null; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$STAGE_APP/Contents/MacOS/${APP_NAME}"
+fi
+
 echo "==> Подпись…"
+# Вложенный фреймворк подписывается ПЕРВЫМ: у ggml-org он linker-signed
+# (x86_64-срез вовсе без подписи), и подпись приложения поверх чужой
+# не проходит `--strict`. install_name_tool выше тоже инвалидирует подпись.
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_ID"; then
+    codesign --force --sign "$SIGN_ID" "$FW"
     codesign --force --deep --sign "$SIGN_ID" "$STAGE_APP"
     echo "    Подписано сертификатом «${SIGN_ID}» — TCC-разрешения стабильны между сборками."
 else
+    codesign --force --sign - "$FW"
     codesign --force --deep --sign - "$STAGE_APP"
     echo "    ВНИМАНИЕ: подпись ad-hoc. Разрешения микрофона/Accessibility будут"
     echo "    сбрасываться при каждой пересборке. Создайте сертификат «DOKA Dev»"
     echo "    по инструкции scripts/make-dev-cert.md и пересоберите."
 fi
-codesign --verify --verbose=2 "$STAGE_APP"
+# --deep --strict: проверяет и вложенный фреймворк, и что в бандле нет
+# постороннего «мусора» (висячих симлинков, неподписанных бинарников).
+codesign --verify --deep --strict --verbose=2 "$STAGE_APP"
 
 echo "==> Установка в ${APP}…"
 mkdir -p "$INSTALL_DIR"

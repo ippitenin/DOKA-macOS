@@ -542,3 +542,8 @@
 "perf.group.avgAudio" = "Ср. аудио";
 "perf.group.avgProcess" = "Ср. обработка";
 "perf.empty" = "Пока нет анализируемых записей.";
+
+/* Локальный ИИ-анализ */
+"analysis.error.diskSpace" = "Не хватает места на диске: нужно около %@";
+"analysis.error.checksum" = "Файл модели скачался с ошибкой — попробуйте ещё раз";
+"analysis.error.http" = "Сервер ответил ошибкой %ld";

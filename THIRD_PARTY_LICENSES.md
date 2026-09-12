@@ -5,7 +5,41 @@ covered by that license — they are used under their own terms. All of them are
 (MIT or Apache-2.0) and one-way compatible with GPL-3.0, so distributing DOKA under the GPL
 carries no conflicting obligations.
 
-Versions are taken from `DOKA-app/Package.resolved`.
+Versions are taken from `DOKA-app/Package.resolved`, except for the binary target, which is
+pinned in `DOKA-app/Package.swift`.
+
+## Binary frameworks
+
+`llama.framework` is the only prebuilt binary shipped inside `DOKA.app`
+(`Contents/Frameworks`). It powers on-device AI analysis of transcripts.
+
+| Component | Version | License | Source |
+|---|---|---|---|
+| llama.cpp (prebuilt xcframework) | b10909 | MIT | https://github.com/ggml-org/llama.cpp |
+
+```
+MIT License
+
+Copyright (c) 2023-2024 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Swift packages
 
@@ -35,6 +69,11 @@ application bundle.
 | Whisper large-v3-turbo (OpenAI) | MIT | https://huggingface.co/openai/whisper-large-v3-turbo |
 | Parakeet TDT 0.6B v3 (NVIDIA) | CC-BY-4.0 | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 |
 | Speaker diarization, Core ML (FluidInference) | CC-BY-4.0 | https://huggingface.co/FluidInference/speaker-diarization-coreml |
+| Qwen3.5-4B, GGUF Q4_K_M (Alibaba Cloud) | Apache-2.0 | https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF |
+
+The GGUF build of *Qwen3.5-4B* is a quantization by
+[lmstudio-community](https://huggingface.co/lmstudio-community) of
+[Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B); both are Apache-2.0.
 
 **Attribution required by CC-BY-4.0:**
 
