@@ -136,7 +136,12 @@ struct ServiceSectionView: View {
                     SettingsPopup(titles: analysisTemplates.map(\.name),
                                   selectionIndex: Binding(
                                     get: { analysisTemplates.firstIndex { $0.id == settings.analysisTemplateID } ?? 0 },
-                                    set: { settings.analysisTemplateID = analysisTemplates[$0].id }),
+                                    // NSPopUpButton умеет отдать -1 — без
+                                    // проверки это выход за границы массива.
+                                    set: { index in
+                                        guard analysisTemplates.indices.contains(index) else { return }
+                                        settings.analysisTemplateID = analysisTemplates[index].id
+                                    }),
                                   width: nil)
                 }
             }

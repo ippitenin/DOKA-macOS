@@ -14,7 +14,17 @@ struct AnalysisTemplatesSheet: View {
     @State private var deleting: AnalysisTemplate?
 
     private var builtins: [AnalysisTemplate] { BuiltinAnalysisTemplate.all }
-    private var mine: [AnalysisTemplate] { settings.analysisTemplates }
+
+    /// Свои шаблоны плюс несохранённый черновик: новый шаблон и копия живут
+    /// только в черновике и попадают в настройки по «Сохранить». Иначе
+    /// «Новый шаблон» → «Отмена» навсегда оставлял бы в списке пустышку.
+    private var mine: [AnalysisTemplate] {
+        var items = settings.analysisTemplates
+        if let draft, !draft.isBuiltin, !items.contains(where: { $0.id == draft.id }) {
+            items.append(draft)
+        }
+        return items
+    }
 
     private var selected: AnalysisTemplate? {
         draft ?? (builtins + mine).first { $0.id == selectedID }
@@ -250,8 +260,7 @@ struct AnalysisTemplatesSheet: View {
             if let template = selected {
                 Button(L("analysis.templates.duplicate")) {
                     let copy = template.duplicated()
-                    settings.analysisTemplates.append(copy)
-                    draft = nil
+                    draft = copy
                     selectedID = copy.id
                 }
                 .dsGlassButton()
@@ -289,8 +298,7 @@ struct AnalysisTemplatesSheet: View {
         let new = AnalysisTemplate(name: L("analysis.templates.newName"),
                                    sections: [AnalysisSection(title: L("analysis.templates.sectionTitle"),
                                                               instruction: "")])
-        settings.analysisTemplates.append(new)
-        draft = nil
+        draft = new
         selectedID = new.id
     }
 

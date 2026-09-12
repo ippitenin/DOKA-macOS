@@ -70,6 +70,11 @@ enum LLMText {
         private static let close = "</think>"
 
         private var pending = ""
+        /// Проглоченное содержимое текущего блока: если блок так и не
+        /// закроется, а до него уже шёл видимый текст, это была не мысль
+        /// модели, а цитата тега — тогда содержимое возвращается наружу.
+        private var swallowed = ""
+        private var emittedVisibleText = false
         private(set) var isInsideThink = false
 
         init() {}
@@ -81,31 +86,44 @@ enum LLMText {
                 if isInsideThink {
                     guard let range = pending.range(of: Self.close) else {
                         // Хвост, который ещё может оказаться началом «</think>»,
-                        // придержим; остальное — размышление, выбрасываем.
-                        pending = String(pending.suffix(Self.partialSuffix(pending, of: Self.close)))
+                        // придержим; остальное — содержимое блока.
+                        let hold = Self.partialSuffix(pending, of: Self.close)
+                        swallowed += String(pending.prefix(pending.count - hold))
+                        pending = String(pending.suffix(hold))
                         return output
                     }
+                    swallowed = ""
                     pending = String(pending[range.upperBound...])
                     isInsideThink = false
                 } else {
                     guard let range = pending.range(of: Self.open) else {
                         let hold = Self.partialSuffix(pending, of: Self.open)
                         let emitCount = pending.count - hold
-                        output += String(pending.prefix(emitCount))
+                        let visible = String(pending.prefix(emitCount))
+                        output += visible
+                        if visible.contains(where: { !$0.isWhitespace }) { emittedVisibleText = true }
                         pending = String(pending.suffix(hold))
                         return output
                     }
-                    output += String(pending[pending.startIndex..<range.lowerBound])
+                    let visible = String(pending[pending.startIndex..<range.lowerBound])
+                    output += visible
+                    if visible.contains(where: { !$0.isWhitespace }) { emittedVisibleText = true }
                     pending = String(pending[range.upperBound...])
                     isInsideThink = true
+                    swallowed = ""
                 }
             }
         }
 
-        /// Хвост после последнего токена.
+        /// Хвост после последнего токена. Незакрытый блок в САМОМ НАЧАЛЕ
+        /// ответа — настоящее размышление, его выбрасываем. Незакрытый блок
+        /// после уже написанного текста — почти наверняка процитированный
+        /// тег: выбросить его значило бы потерять весь отчёт от этого места
+        /// и до конца.
         mutating func flush() -> String {
-            defer { pending = ""; isInsideThink = false }
-            return isInsideThink ? "" : pending
+            defer { pending = ""; swallowed = ""; isInsideThink = false }
+            guard isInsideThink else { return pending }
+            return emittedVisibleText ? Self.open + swallowed + pending : ""
         }
 
         /// Длина самого длинного суффикса `text`, который является префиксом
@@ -151,8 +169,17 @@ enum LLMText {
         private static func isRepeating(_ block: ArraySlice<Character>, period: Int) -> Bool {
             let chars = Array(block)
             guard chars.count == period * repeats else { return false }
-            // Повтор одного пробела или переноса строки — не зацикливание.
-            guard chars.prefix(period).contains(where: { !$0.isWhitespace }) else { return false }
+            let head = chars.prefix(period)
+            // Таблица Markdown повторяется ПО СВОЕЙ ПРИРОДЕ: разделитель
+            // «|-----|-----|-----|-----|» и строка «| Не указано | … » из
+            // четырёх колонок — это ровно четыре повтора периода. Встроенный
+            // «Протокол встречи» просит таблицу именно из четырёх колонок, а
+            // системный промпт велит писать «Не указано» в пустых ячейках,
+            // так что без этого правила детектор рубил бы отчёт посреди
+            // таблицы и ещё помечал его «оборван по длине».
+            guard !head.contains("|") else { return false }
+            // Повтор одних пробелов, дефисов и точек — оформление, не заедание.
+            guard head.contains(where: { $0.isLetter || $0.isNumber }) else { return false }
             for index in period..<chars.count where chars[index] != chars[index - period] {
                 return false
             }
@@ -172,36 +199,43 @@ enum LLMText {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// То же правило, что у потокового `ThinkFilter`: закрытый блок
+    /// вырезается где угодно, а незакрытый считается размышлением, только
+    /// если до него ещё не было видимого текста. Иначе это процитированный
+    /// тег, и выбрасывать из-за него хвост отчёта нельзя.
     static func stripThink(_ text: String) -> String {
         var result = ""
         var rest = Substring(text)
         while let open = rest.range(of: "<think>") {
-            result += rest[rest.startIndex..<open.lowerBound]
+            let before = rest[rest.startIndex..<open.lowerBound]
             guard let close = rest.range(of: "</think>", range: open.upperBound..<rest.endIndex) else {
-                // Незакрытый блок: всё до конца — размышление.
-                return result
+                let hasVisibleText = (result + before).contains { !$0.isWhitespace }
+                return hasVisibleText ? result + rest : result + before
             }
+            result += before
             rest = rest[close.upperBound...]
         }
         return result + rest
     }
 
     /// Обёртка всего ответа в ``` … ``` — только если она охватывает ВЕСЬ
-    /// текст: блок кода внутри отчёта трогать нельзя.
+    /// текст: блок кода внутри отчёта трогать нельзя. Снимается САМ забор,
+    /// а не строки вокруг него: модель регулярно закрывает забор на одной
+    /// строке с последним пунктом, и удаление последней строки съедало бы
+    /// содержимое (а у однострочного ответа — весь ответ целиком).
     static func stripCodeFence(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("```"), trimmed.hasSuffix("```"), trimmed.count > 6 else { return text }
-        var lines = trimmed.components(separatedBy: "\n")
-        guard lines.count >= 2 else { return text }
-        // Открывающая строка — только ``` и необязательный язык.
-        let language = lines[0].dropFirst(3).trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("```"), trimmed.hasSuffix("```"), trimmed.count > 6,
+              let firstNewline = trimmed.firstIndex(where: \.isNewline) else { return text }
+        // Открывающая строка — только ``` и необязательное имя языка.
+        let language = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 3)..<firstNewline]
+            .trimmingCharacters(in: .whitespaces)
         guard !language.contains("`") else { return text }
-        // Внутри не должно быть других заборов, иначе это несколько блоков.
-        guard !lines.dropFirst().dropLast().contains(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("```") })
-        else { return text }
-        lines.removeFirst()
-        lines.removeLast()
-        return lines.joined(separator: "\n")
+        let inner = trimmed[trimmed.index(after: firstNewline)...].dropLast(3)
+        // Забор внутри — значит это несколько блоков кода, а не одна обёртка:
+        // снятие внешнего склеило бы их в один.
+        guard !inner.contains("```") else { return text }
+        return String(inner).trimmingCharacters(in: .newlines)
     }
 
     // MARK: - CJK

@@ -10,6 +10,14 @@ struct AnalysisPanelView: View {
     @ObservedObject var document: TranscriptDocument
     /// Длительность записи — по ней тайм-коды ответа становятся ссылками.
     let seekDuration: Double?
+    /// Пункт «Шаблоны…» открывает модальный шит. На странице «Транскрибация»
+    /// он выключен: там уже висит свой `.fileImporter`, а вложенные модальные
+    /// окна SwiftUI на macOS обслуживает ненадёжно (см. CLAUDE.md). Шаблоны
+    /// правятся из раздела «Сервис».
+    var allowsTemplateEditor = true
+    /// Пока курсор в поле «Свой запрос», клавиши записи (пробел, Esc) должны
+    /// молчать: иначе Esc уводит в список и теряет набранный промпт.
+    var onPromptFocusChange: ((Bool) -> Void)?
 
     @ObservedObject private var controller = AnalysisController.shared
     @ObservedObject private var models = LocalModelStore.shared
@@ -21,6 +29,7 @@ struct AnalysisPanelView: View {
     @State private var customPrompt = ""
     @State private var deleting: StoredAnalysis?
     @State private var showsTemplates = false
+    @FocusState private var isPromptFocused: Bool
 
     private var recordID: UUID { document.recordID }
     private var analyses: [StoredAnalysis] { document.analyses }
@@ -73,6 +82,8 @@ struct AnalysisPanelView: View {
         .sheet(isPresented: $showsTemplates) {
             AnalysisTemplatesSheet()
         }
+        // Панель уходит с экрана — клавиши записи снова свободны.
+        .onDisappear { onPromptFocusChange?(false) }
     }
 
     private var deletePresented: Binding<Bool> {
@@ -293,6 +304,10 @@ struct AnalysisPanelView: View {
                 TextField(L("analysis.customPlaceholder"), text: $customPrompt, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2...5)
+                    .focused($isPromptFocused)
+                    .onChange(of: isPromptFocused) { _, focused in
+                        onPromptFocusChange?(focused)
+                    }
             }
         }
         .padding(DS.Spacing.cardPadding)
@@ -331,7 +346,9 @@ struct AnalysisPanelView: View {
 
     /// Порядок пунктов: встроенные → свои → «Свой запрос» → «Шаблоны…».
     private var templateTitles: [String] {
-        templates.map(\.name) + [L("analysis.customPrompt"), L("analysis.manageTemplates")]
+        var titles = templates.map(\.name) + [L("analysis.customPrompt")]
+        if allowsTemplateEditor { titles.append(L("analysis.manageTemplates")) }
+        return titles
     }
 
     private var templateIndex: Int {
@@ -342,7 +359,7 @@ struct AnalysisPanelView: View {
     private func selectTemplate(at index: Int) {
         if index == templates.count {
             isCustom = true
-        } else if index == templates.count + 1 {
+        } else if index == templates.count + 1, allowsTemplateEditor {
             showsTemplates = true
         } else if templates.indices.contains(index) {
             isCustom = false
@@ -367,7 +384,14 @@ struct AnalysisPanelView: View {
     }
 
     private func selectLanguage(at index: Int) {
-        settings.analysisLanguage = index == 0 ? "" : languageOptions[index - 1].id
+        // NSPopUpButton умеет отдать -1 («ничего не выбрано») — без проверки
+        // это выход за границы массива.
+        guard index > 0 else {
+            if index == 0 { settings.analysisLanguage = "" }
+            return
+        }
+        guard languageOptions.indices.contains(index - 1) else { return }
+        settings.analysisLanguage = languageOptions[index - 1].id
     }
 
     // MARK: - Запуск

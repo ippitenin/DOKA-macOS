@@ -61,11 +61,21 @@ final class LLMTextTests: XCTestCase {
         XCTAssertEqual(output, "начало  конец")
     }
 
-    /// Незакрытый блок — это размышление до конца ответа: показывать нельзя.
-    func testThinkFilterDropsUnclosedBlock() {
+    /// Незакрытый блок В НАЧАЛЕ ответа — настоящее размышление: выбрасываем.
+    func testThinkFilterDropsUnclosedBlockAtStart() {
         var filter = LLMText.ThinkFilter()
-        let output = filter.feed("видно <think>дальше только мысли") + filter.flush()
-        XCTAssertEqual(output, "видно ")
+        let output = filter.feed("<think>дальше только мысли") + filter.flush()
+        XCTAssertEqual(output, "")
+    }
+
+    /// Незакрытый блок ПОСЛЕ написанного текста — процитированный тег, а не
+    /// мысль: выбросить его значило бы потерять отчёт от этого места до конца.
+    func testThinkFilterKeepsUnclosedTagAfterVisibleText() {
+        var filter = LLMText.ThinkFilter()
+        let output = filter.feed("## Отчёт\nМодель пишет <think> в ответе, и дальше важный текст")
+            + filter.flush()
+        XCTAssertTrue(output.hasPrefix("## Отчёт"))
+        XCTAssertTrue(output.hasSuffix("важный текст"))
     }
 
     /// Одинокая «<» не должна застрять в фильтре навсегда.
@@ -102,6 +112,27 @@ final class LLMTextTests: XCTestCase {
         }
     }
 
+    /// Разделитель и строки markdown-таблицы повторяются по своей природе.
+    /// Встроенный «Протокол встречи» просит таблицу ровно из ЧЕТЫРЁХ колонок,
+    /// а системный промпт велит писать «Не указано» в пустых ячейках — без
+    /// правила про «|» детектор рубил бы отчёт посреди таблицы.
+    func testLoopDetectorIgnoresMarkdownTable() {
+        for line in ["|--------|--------|--------|--------|\n",
+                     "| ----- | ----- | ----- | ----- |\n",
+                     "| Не указано | Не указано | Не указано | Не указано |\n",
+                     "| Ответственный | Задача | Срок | Тайм-код |\n"] {
+            var detector = LLMText.LoopDetector()
+            XCTAssertFalse(detector.feed(line), "оборвано на строке таблицы: \(line)")
+        }
+    }
+
+    /// Повтор дефисов и точек — оформление, а не зацикливание.
+    func testLoopDetectorIgnoresPunctuationRuns() {
+        var detector = LLMText.LoopDetector()
+        XCTAssertFalse(detector.feed(String(repeating: "-", count: 200)))
+        XCTAssertFalse(detector.feed(String(repeating: ". ", count: 120)))
+    }
+
     /// Повтор пробелов и переносов — это оформление, а не зацикливание.
     func testLoopDetectorIgnoresWhitespace() {
         var detector = LLMText.LoopDetector()
@@ -115,6 +146,13 @@ final class LLMTextTests: XCTestCase {
     func testCleanStripsThinkAndFence() {
         let raw = "<think>подумал</think>\n```markdown\n## Отчёт\n- пункт\n```"
         XCTAssertEqual(LLMText.clean(raw), "## Отчёт\n- пункт")
+    }
+
+    /// Забор, закрытый на одной строке с текстом: снимать надо сам забор,
+    /// а не последнюю строку — иначе пропадает содержимое.
+    func testCleanKeepsContentWhenFenceClosesInline() {
+        XCTAssertEqual(LLMText.clean("```markdown\n## Отчёт\n- пункт```"), "## Отчёт\n- пункт")
+        XCTAssertEqual(LLMText.clean("```\nТолько одна строка```"), "Только одна строка")
     }
 
     func testCleanKeepsInnerCodeBlock() {
@@ -131,6 +169,13 @@ final class LLMTextTests: XCTestCase {
 
     func testCleanDropsUnclosedThink() {
         XCTAssertEqual(LLMText.clean("<think>только мысли"), "")
+    }
+
+    /// `clean` работает над уже отфильтрованным текстом, но и сама не должна
+    /// съедать отчёт из-за тега, процитированного в его середине.
+    func testCleanKeepsTextAfterQuotedThinkTag() {
+        let raw = "## Отчёт\nМодель вывела `<think>` и продолжила."
+        XCTAssertEqual(LLMText.clean(raw), raw)
     }
 
     // MARK: - CJK

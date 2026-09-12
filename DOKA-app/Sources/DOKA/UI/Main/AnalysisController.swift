@@ -148,6 +148,11 @@ final class AnalysisController: ObservableObject {
             guard !input.isEmpty else { throw AnalysisError.message(L("analysis.error.empty")) }
 
             let engine = try await LocalEngineManager.shared.llmEngine()
+            // Аренда на весь конвейер: без неё таймер простоя (3 мин) выгрузил
+            // бы модель посреди map-reduce, и следующий проход упал бы
+            // «модель не загружена» после минут работы.
+            LocalEngineManager.shared.beginLLMUse()
+            defer { LocalEngineManager.shared.endLLMUse() }
             try Task.checkCancellation()
 
             let languageName = Self.languageName(request: request, body: body,
@@ -188,7 +193,6 @@ final class AnalysisController: ObservableObject {
             // Запись могли удалить, пока шёл анализ: сохранять некуда, но это
             // не ошибка — просто возвращаемся в покой.
             await store.addAnalysis(analysis, to: recordID)
-            LocalEngineManager.shared.touchLLM()
             guard !Task.isCancelled else { return }
             phase = .idle
         } catch is CancellationError {
@@ -206,7 +210,10 @@ final class AnalysisController: ObservableObject {
         let overhead = Self.promptOverhead(template: template, input: input)
         let finalBudget = LLMChunker.Budget(context: context, promptOverhead: overhead,
                                             outputReserve: LLMChunker.finalOutputReserve)
-        guard finalBudget.input > 0 else {
+        // Не «> 0», а осмысленный минимум: шаблон из двенадцати разделов с
+        // длинными инструкциями на маке с окном 8k может съесть почти всё, и
+        // анализ по тремстам токенам расшифровки — это не отчёт.
+        guard finalBudget.input >= Self.minimumInputBudget else {
             throw AnalysisError.message(L("analysis.error.contextTooSmall"))
         }
 
@@ -224,13 +231,26 @@ final class AnalysisController: ObservableObject {
         // ── map: конспект каждой части.
         let mapBudget = LLMChunker.Budget(context: context, promptOverhead: overhead,
                                           outputReserve: LLMChunker.mapOutputReserve)
-        guard mapBudget.input > 0 else {
+        guard mapBudget.input >= Self.minimumInputBudget else {
             throw AnalysisError.message(L("analysis.error.contextTooSmall"))
         }
         let parts = LLMChunker.plan(lineTokens: lineTokens, budget: mapBudget.input)
         guard !parts.isEmpty else { throw AnalysisError.message(L("analysis.error.empty")) }
+        // План обязан покрывать ВЕСЬ вход и целиком укладываться в бюджет:
+        // усечённый план молча проанализировал бы кусок расшифровки вместо всей.
         guard parts.count <= LLMChunker.maxParts,
-              parts.last?.upperBound == lineTokens.count else {
+              parts.last?.upperBound == lineTokens.count,
+              parts.allSatisfy({ lineTokens[$0].reduce(0, +) <= mapBudget.input }) else {
+            throw AnalysisError.message(L("analysis.error.tooLong"))
+        }
+        // Сведение проверяется ЗАРАНЕЕ: бюджет сведения меньше на шапки
+        // конспектов, и узнать о его нехватке после всех map-проходов —
+        // значит выбросить десятки минут работы.
+        let reduceBudget = LLMChunker.Budget(
+            context: context,
+            promptOverhead: overhead + Self.notesOverhead(parts: parts.count),
+            outputReserve: LLMChunker.finalOutputReserve)
+        guard reduceBudget.input >= parts.count * LLMChunker.mapOutputReserve else {
             throw AnalysisError.message(L("analysis.error.tooLong"))
         }
 
@@ -255,7 +275,7 @@ final class AnalysisController: ObservableObject {
         // идём: два уровня сведения — это пересказ пересказа.
         update(recordID: recordID) { $0.stage = .combining }
         let noteTokens = try await engine.countTokens(notes.map(\.text))
-        guard let groups = LLMChunker.reduceGroups(noteTokens: noteTokens, budget: finalBudget.input),
+        guard let groups = LLMChunker.reduceGroups(noteTokens: noteTokens, budget: reduceBudget.input),
               groups.count == 1 else {
             throw AnalysisError.message(L("analysis.error.tooLong"))
         }
@@ -354,6 +374,21 @@ final class AnalysisController: ObservableObject {
         let characters = messages.reduce(0) { $0 + $1.content.count }
         // ~2 символа на токен для кириллицы плюс постоянный запас на шаблон чата.
         return characters / 2 + 128
+    }
+
+    /// Ниже этого числа токенов входа отчёт не имеет смысла.
+    private static let minimumInputBudget = 512
+
+    /// Надбавка к накладным расходам для шага сведения: заголовок блока
+    /// конспектов плюс шапка «Часть N из M (м:сс–м:сс):» на каждую часть.
+    /// Без неё бюджет сведения завышен, и на полутора десятках частей запас
+    /// `Budget.safety` съедается целиком — движок отдаёт contextOverflow уже
+    /// ПОСЛЕ всех map-проходов.
+    private static func notesOverhead(parts: Int) -> Int {
+        guard parts > 0 else { return 0 }
+        let header = L("analysis.prompt.notesHeader").count
+        let part = L("analysis.prompt.notePart", 88, 88, "88:88", "88:88").count + 2
+        return (header + part * parts) / 2 + 32
     }
 
     private static func analysisTitle(_ request: Request) -> String {

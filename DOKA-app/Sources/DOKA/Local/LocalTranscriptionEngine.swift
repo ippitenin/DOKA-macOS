@@ -64,6 +64,11 @@ final class LocalEngineManager {
     private var llm: LocalLLMEngine?
     private var llmLoading: Task<LocalLLMEngine, Error>?
     private var llmIdleTask: Task<Void, Never>?
+    /// Сколько операций сейчас ДЕРЖАТ языковую модель. Таймер простоя
+    /// отсчитывается только при нуле: анализ длинной записи идёт много
+    /// проходов подряд, и без аренды выгрузка срабатывала бы посреди него —
+    /// следующий проход упал бы с «модель не загружена».
+    private var llmUseCount = 0
 
     /// Языковая модель держит 3–5 ГБ ОЗУ — окно простоя короче, чем у речи.
     static let llmIdleUnloadDelay: Duration = .seconds(3 * 60)
@@ -198,17 +203,41 @@ final class LocalEngineManager {
             return engine
         }
         llmLoading = task
-        defer { llmLoading = nil }
+        defer { if llmLoading == task { llmLoading = nil } }
         let engine = try await task.value
+        // Пока шла загрузка, модель могли удалить: `unloadLLM` отменяет
+        // задачу, но у `load()` кооперативных точек отмены нет — она доходит
+        // до конца. Установить движок сейчас значило бы держать в памяти
+        // 2,5 ГБ весов и mmap уже удалённого файла.
+        guard llmLoading == task else {
+            await engine.unload()
+            throw CancellationError()
+        }
         llm = engine
         touchLLM()
         return engine
+    }
+
+    /// Взять модель в работу: пока аренда не отдана, таймер простоя молчит.
+    /// Парный вызов `endLLMUse()` обязателен — ставить его в `defer`.
+    func beginLLMUse() {
+        llmUseCount += 1
+        llmIdleTask?.cancel()
+        llmIdleTask = nil
+    }
+
+    func endLLMUse() {
+        llmUseCount = max(0, llmUseCount - 1)
+        if llmUseCount == 0 { touchLLM() }
     }
 
     /// Продлевает окно простоя языковой модели. Таймер отдельный: диктовка
     /// не должна держать модель анализа в памяти, а анализ — речевую.
     func touchLLM() {
         llmIdleTask?.cancel()
+        // Пока модель в работе, окно простоя не запускаем вовсе: его перезапустит
+        // `endLLMUse()`.
+        guard llmUseCount == 0 else { llmIdleTask = nil; return }
         llmIdleTask = Task { [weak self] in
             try? await Task.sleep(for: Self.llmIdleUnloadDelay)
             guard !Task.isCancelled else { return }
@@ -219,6 +248,7 @@ final class LocalEngineManager {
     func unloadLLM() {
         llmIdleTask?.cancel()
         llmIdleTask = nil
+        llmUseCount = 0
         llmLoading?.cancel()
         llmLoading = nil
         // Выгрузка идёт на исполнителе актора: если генерация ещё идёт, она

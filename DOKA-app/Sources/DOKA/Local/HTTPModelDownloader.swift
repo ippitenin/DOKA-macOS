@@ -238,19 +238,37 @@ enum HTTPModelDownloader {
 
     // MARK: - Хэш
 
+    /// Флаг отмены для detached-задачи: она НЕ наследует отмену родителя,
+    /// и `Task.checkCancellation()` внутри неё был бы мёртвым кодом.
+    private final class CancelFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        var isCancelled: Bool { lock.withLock { value } }
+        func cancel() { lock.withLock { value = true } }
+    }
+
     /// SHA-256 потоком кусками по 8 МБ: держать 2.5 ГБ в памяти нельзя.
-    /// Считается в отдельной задаче — это чистый CPU на десяток секунд.
+    /// Считается в отдельной задаче — это чистый CPU на десяток секунд, и на
+    /// вызывающем исполнителе (главный актор) он заморозил бы интерфейс.
+    /// Отмена пробрасывается флагом: иначе «Отмена» на 98 % ждала бы
+    /// дохеширования всех 2,5 ГБ и успевала установить модель до отката.
     private static func sha256(of url: URL) async throws -> String {
-        try await Task.detached(priority: .utility) {
-            let handle = try FileHandle(forReadingFrom: url)
-            defer { try? handle.close() }
-            var hasher = SHA256()
-            while true {
-                try Task.checkCancellation()
-                guard let chunk = try handle.read(upToCount: 8 * 1024 * 1024), !chunk.isEmpty else { break }
-                hasher.update(data: chunk)
-            }
-            return hasher.finalize().map { String(format: "%02x", $0) }.joined()
-        }.value
+        let flag = CancelFlag()
+        return try await withTaskCancellationHandler {
+            try await Task.detached(priority: .utility) {
+                let handle = try FileHandle(forReadingFrom: url)
+                defer { try? handle.close() }
+                var hasher = SHA256()
+                while true {
+                    if flag.isCancelled { throw CancellationError() }
+                    guard let chunk = try handle.read(upToCount: 8 * 1024 * 1024),
+                          !chunk.isEmpty else { break }
+                    hasher.update(data: chunk)
+                }
+                return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+            }.value
+        } onCancel: {
+            flag.cancel()
+        }
     }
 }

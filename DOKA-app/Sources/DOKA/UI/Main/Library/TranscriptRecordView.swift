@@ -34,6 +34,9 @@ struct TranscriptRecordView: View {
     /// Строки, где открыт редактор реплики или поповер спикера: пока они есть,
     /// клавиши плеера и Esc «назад» молчат, а лента не следует за плеером.
     @State private var segmentInteractions: Set<SegmentInteractionKey> = []
+    /// Курсор в поле «Свой запрос» карточки анализа — клавиши записи молчат,
+    /// как и при открытом редакторе реплики.
+    @State private var isEditingAnalysisPrompt = false
 
     private struct SegmentInteractionKey: Hashable {
         let index: Int
@@ -152,7 +155,8 @@ struct TranscriptRecordView: View {
         .onKeyPress(.leftArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: -5) } }
         .onKeyPress(.rightArrow) { playbackKey { TranscriptPlayback.skip(url: $0, recordID: recordID, by: 5) } }
         .onKeyPress(.escape) {
-            guard !isRenaming, segmentInteractions.isEmpty, onBack != nil else { return .ignored }
+            guard !isRenaming, segmentInteractions.isEmpty, !isEditingAnalysisPrompt,
+                  onBack != nil else { return .ignored }
             goBack()
             return .handled
         }
@@ -185,7 +189,8 @@ struct TranscriptRecordView: View {
     }
 
     private func playbackKey(_ action: (URL) -> Void) -> KeyPress.Result {
-        guard !isRenaming, segmentInteractions.isEmpty, let url = audioURL else { return .ignored }
+        guard !isRenaming, segmentInteractions.isEmpty, !isEditingAnalysisPrompt,
+              let url = audioURL else { return .ignored }
         action(url)
         return .handled
     }
@@ -324,15 +329,20 @@ struct TranscriptRecordView: View {
                 // нового; тайм-коды в ответе кликабельны, только если есть
                 // что перематывать.
                 AnalysisPanelView(document: document,
-                                  seekDuration: audioURL == nil ? nil : seekLimit(result))
+                                  seekDuration: audioURL == nil ? nil : seekLimit(result),
+                                  allowsTemplateEditor: layout == .full,
+                                  onPromptFocusChange: { isEditingAnalysisPrompt = $0 })
                 transcriptCard(result, proxy: proxy)
             }
         }
     }
 
-    /// Предел для ссылок на тайм-коды: длительность записи.
+    /// Предел для ссылок на тайм-коды: длительность записи. Именно так, а не
+    /// `record?.duration ?? result.duration`: у последнего тип `Double??`, и
+    /// при записи без длительности `??` не сработал бы — ссылки молча пропали.
     private func seekLimit(_ result: TranscriptResult) -> Double? {
-        document.record?.duration ?? result.duration
+        guard let record = document.record else { return result.duration }
+        return record.duration ?? result.duration
     }
 
     /// Карточка «Транскрибация»: детализация тайм-кодов — здесь, в шапке:

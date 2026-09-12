@@ -72,7 +72,10 @@ done
 # «*.bundle» выше фреймворки не подхватывает, поэтому отдельный шаг. Берём из
 # распакованного артефакта SPM, а не из Products: путь в Products зависит от
 # версии swift-build, а в artifacts раскладка задана самим xcframework.
-LLAMA_FW="$(find .build/artifacts -type d -path '*macos-arm64_x86_64/llama.framework' -prune | head -1)"
+# `-print -quit` вместо `| head -1`: под `set -o pipefail` head закрыл бы пайп,
+# find получил бы SIGPIPE, и присваивание уронило бы сборку с пустым сообщением
+# (та же ловушка, что с `grep -q` ниже).
+LLAMA_FW="$(find .build/artifacts -type d -path '*macos-arm64_x86_64/llama.framework' -prune -print -quit)"
 [ -n "$LLAMA_FW" ] || { echo "Не найден llama.framework (срез macos-arm64_x86_64)"; exit 1; }
 # Срез обязан быть universal: иначе Intel-часть приложения не слинкуется и
 # сломается уже после раздачи. Гейт здесь, а не в заметках к релизу.

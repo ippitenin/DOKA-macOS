@@ -51,6 +51,15 @@ struct TranscriptLLMInput: Equatable {
     /// нарезку на части (`LLMChunker` строки не режет).
     static let defaultMaxTurn: Double = 45
 
+    /// Потолок длины одной строки в символах. `LLMChunker` строки НЕ режет,
+    /// поэтому строка длиннее бюджета части сделала бы план невыполнимым.
+    /// Реплика в 45 с столько не набирает, но расшифровка совсем без знаков
+    /// препинания (Parakeet на монологе) приходит одним куском на десятки
+    /// тысяч символов — такую строку режем по границе слова.
+    /// 4000 символов кириллицы — примерно 1300 токенов, это влезает в любой
+    /// бюджет части, который мы вообще беремся обрабатывать.
+    static let maxLineCharacters = 4000
+
     /// `result` — то, что уйдёт в модель (со словарём замен, если он включён);
     /// `fingerprintSource` — тот же результат БЕЗ словаря, от него считается
     /// отпечаток. nil — отпечаток от самого `result` (в тестах и там, где
@@ -63,6 +72,7 @@ struct TranscriptLLMInput: Equatable {
     static func build(title: String, result: TranscriptResult,
                       fingerprintSource: TranscriptResult? = nil,
                       maxTurnSeconds: Double = defaultMaxTurn) -> TranscriptLLMInput {
+        let cleanTitle = sanitize(title)
         let lines = makeLines(result, maxTurnSeconds: maxTurnSeconds)
         var participants: [String] = []
         for line in lines {
@@ -74,7 +84,7 @@ struct TranscriptLLMInput: Equatable {
             ? lines
             : makeLines(source, maxTurnSeconds: maxTurnSeconds)
         return TranscriptLLMInput(
-            title: title,
+            title: cleanTitle,
             duration: result.duration,
             lines: lines,
             participants: participants,
@@ -101,14 +111,21 @@ struct TranscriptLLMInput: Equatable {
         func flush() {
             guard !buffer.isEmpty else { return }
             let text = sanitize(buffer.joined(separator: " "))
-            guard !text.isEmpty else { buffer.removeAll(); return }
-            lines.append(Line(start: start, end: end, speaker: speaker, text: text,
-                              rendered: render(start: start, speaker: speaker, text: text)))
             buffer.removeAll()
+            guard !text.isEmpty else { return }
+            for piece in splitByLength(text) {
+                lines.append(Line(start: start, end: end, speaker: speaker, text: piece,
+                                  rendered: render(start: start, speaker: speaker, text: piece)))
+            }
         }
 
         for segment in result.segments {
-            let label = segment.speaker.flatMap { $0.isEmpty ? nil : result.speakerLabel($0) }
+            // Имя спикера санитизируется так же, как текст: пользователь может
+            // переименовать спикера во что угодно, а промпт мы токенизируем
+            // со спецтокенами.
+            let label = segment.speaker.flatMap {
+                $0.isEmpty ? nil : sanitize(result.speakerLabel($0))
+            }
             // Новая реплика: сменился говорящий, либо текущая уже слишком длинная.
             let tooLong = !buffer.isEmpty && segment.end - start > maxTurnSeconds
             if label != speaker || tooLong {
@@ -132,18 +149,21 @@ struct TranscriptLLMInput: Equatable {
         guard !text.isEmpty else { return [] }
         var lines: [Line] = []
         var current = ""
+        func append(_ value: String) {
+            for piece in splitByLength(value) {
+                lines.append(Line(start: 0, end: 0, speaker: nil, text: piece, rendered: piece))
+            }
+        }
         for sentence in text.split(whereSeparator: \.isNewline).flatMap(splitSentences) {
             // Копим короткие предложения в одну строку: строка из трёх слов
             // раздувает число частей на ровном месте.
             if current.count + sentence.count > 400, !current.isEmpty {
-                lines.append(Line(start: 0, end: 0, speaker: nil, text: current, rendered: current))
+                append(current)
                 current = ""
             }
             current += current.isEmpty ? sentence : " " + sentence
         }
-        if !current.isEmpty {
-            lines.append(Line(start: 0, end: 0, speaker: nil, text: current, rendered: current))
-        }
+        if !current.isEmpty { append(current) }
         return lines
     }
 
@@ -161,6 +181,35 @@ struct TranscriptLLMInput: Equatable {
         let tail = current.trimmingCharacters(in: .whitespaces)
         if !tail.isEmpty { result.append(tail) }
         return result
+    }
+
+    /// Режет слишком длинную строку по границе слова. Одно предложение без
+    /// знаков препинания может прийти на десятки тысяч символов — такую
+    /// строку `LLMChunker` не разложил бы ни по какому бюджету.
+    private static func splitByLength(_ text: String) -> [String] {
+        guard text.count > maxLineCharacters else { return [text] }
+        var pieces: [String] = []
+        var current = ""
+        for word in text.split(separator: " ", omittingEmptySubsequences: true) {
+            if !current.isEmpty, current.count + 1 + word.count > maxLineCharacters {
+                pieces.append(current)
+                current = ""
+            }
+            if word.count > maxLineCharacters {
+                // Слово само длиннее потолка (склеенный текст без пробелов) —
+                // режем как есть, по символам.
+                if !current.isEmpty { pieces.append(current); current = "" }
+                var rest = Substring(word)
+                while !rest.isEmpty {
+                    pieces.append(String(rest.prefix(maxLineCharacters)))
+                    rest = rest.dropFirst(maxLineCharacters)
+                }
+                continue
+            }
+            current += current.isEmpty ? String(word) : " " + word
+        }
+        if !current.isEmpty { pieces.append(current) }
+        return pieces.isEmpty ? [text] : pieces
     }
 
     private static func render(start: Double, speaker: String?, text: String) -> String {

@@ -308,7 +308,14 @@ actor LocalLLMEngine {
                 }
             }
 
-            let status = llama_decode(ctx, llama_batch_get_one(&token, 1))
+            // Именно `withUnsafeMutablePointer`, а НЕ `&token` прямо в
+            // аргументе: указатель из inout-конверсии валиден только на время
+            // вызова, в аргументах которого он появился, то есть на время
+            // `llama_batch_get_one`. Батч уносит его дальше, в `llama_decode`,
+            // которое его разыменовывает.
+            let status = withUnsafeMutablePointer(to: &token) { pointer in
+                llama_decode(ctx, llama_batch_get_one(pointer, 1))
+            }
             guard status == 0 else { throw LLMError.decodeFailed(status) }
         }
         if generated >= options.maxTokens { truncated = true }
@@ -355,7 +362,7 @@ actor LocalLLMEngine {
     /// у Qwen это chatml, он в списке поддерживаемых. Если шаблона в GGUF
     /// нет — явный chatml, он же формат самой модели.
     private func applyTemplate(_ messages: [LLMMessage], model: OpaquePointer) throws -> String {
-        let template = llama_model_chat_template(model, nil).map { String(cString: $0) } ?? "chatml"
+        let modelTemplate = llama_model_chat_template(model, nil).map { String(cString: $0) }
 
         // C-строки живут до конца вызова: llama_chat_apply_template их только читает.
         var allocated: [UnsafeMutablePointer<CChar>] = []
@@ -371,6 +378,24 @@ actor LocalLLMEngine {
                                content: UnsafePointer(duplicate($0.content)))
         }
 
+        // `llama_chat_apply_template` НЕ разбирает Jinja: он сопоставляет
+        // текст шаблона со встроенным списком известных и возвращает -1, если
+        // не узнал. Поэтому вторая попытка — с литералом «chatml»: у Qwen это
+        // и есть формат, и модель с чуть иным Jinja не должна ронять анализ.
+        for template in [modelTemplate, "chatml"].compactMap({ $0 }) {
+            if let prompt = render(chat, template: template, messages: messages) {
+                // Префилл пустого блока размышлений: дописывается ПОСЛЕ
+                // открывающего тега ассистента, поэтому модель считает, что
+                // уже подумала, и сразу пишет ответ.
+                return prompt + (spec.assistantPrefill ?? "")
+            }
+        }
+        throw LLMError.templateFailed
+    }
+
+    /// Применяет один шаблон; nil — встроенная эвристика его не знает.
+    private func render(_ chat: [llama_chat_message], template: String,
+                        messages: [LLMMessage]) -> String? {
         // Рекомендация заголовка: вдвое больше суммарной длины сообщений.
         var capacity = max(1024, messages.reduce(0) { $0 + $1.content.utf8.count } * 2)
         for _ in 0..<2 {
@@ -381,18 +406,14 @@ actor LocalLLMEngine {
                                               true, out.baseAddress, Int32(out.count))
                 }
             }
-            guard written > 0 else { throw LLMError.templateFailed }
+            guard written > 0 else { return nil }
             if Int(written) <= capacity {
-                let prompt = String(decoding: buffer.prefix(Int(written)).map { UInt8(bitPattern: $0) },
-                                    as: UTF8.self)
-                // Префилл пустого блока размышлений: дописывается ПОСЛЕ
-                // открывающего тега ассистента, поэтому модель считает, что
-                // уже подумала, и сразу пишет ответ.
-                return prompt + (spec.assistantPrefill ?? "")
+                return String(decoding: buffer.prefix(Int(written)).map { UInt8(bitPattern: $0) },
+                              as: UTF8.self)
             }
             capacity = Int(written) + 1
         }
-        throw LLMError.templateFailed
+        return nil
     }
 
     // MARK: - Семплеры

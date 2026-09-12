@@ -577,9 +577,12 @@ final class SettingsStore: ObservableObject {
         } else {
             replacements = []
         }
+        // Поэлементно (как `analyses` и `edits` в теле записи): битый шаблон
+        // теряет только себя. При «всё или ничего» один сбойный элемент унёс
+        // бы ВСЕ свои шаблоны, а первое же редактирование закрепило бы потерю.
         if let data = defaults.data(forKey: Key.analysisTemplates),
-           let templates = try? JSONDecoder().decode([AnalysisTemplate].self, from: data) {
-            analysisTemplates = templates
+           let templates = try? JSONDecoder().decode([Lossy<AnalysisTemplate>].self, from: data) {
+            analysisTemplates = templates.compactMap(\.value)
         } else {
             analysisTemplates = []
         }
