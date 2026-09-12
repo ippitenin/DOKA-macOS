@@ -101,24 +101,20 @@ private struct EdgeRim: View {
     }
 }
 
-/// Анимированный sci-fi mesh: MeshGradient на macOS 15+,
-/// имитация из радиальных пятен на macOS 14.
+/// Анимированный sci-fi mesh на `MeshGradient` (доступен с macOS 15 —
+/// минимальной версии приложения, поэтому фолбэка больше нет).
 struct MeshBackground: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        if #available(macOS 15.0, *) {
-            TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: reduceMotion)) { context in
-                let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
-                MeshGradient(
-                    width: 3, height: 3,
-                    points: Self.drift(t),
-                    colors: DS.meshColors(for: scheme)
-                )
-            }
-        } else {
-            LegacyMeshImitation()
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: reduceMotion)) { context in
+            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+            MeshGradient(
+                width: 3, height: 3,
+                points: Self.drift(t),
+                colors: DS.meshColors(for: scheme)
+            )
         }
     }
 
@@ -135,36 +131,3 @@ struct MeshBackground: View {
     }
 }
 
-/// macOS 14: три радиальных пятна из палитры mesh под общим блюром.
-private struct LegacyMeshImitation: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion)) { context in
-            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
-            let colors = DS.meshColors(for: scheme)
-            GeometryReader { geo in
-                ZStack {
-                    colors[4]
-                    blob(colors[1], in: geo.size,
-                         x: 0.30 + 0.10 * sin(t * 0.07), y: 0.25 + 0.06 * cos(t * 0.05))
-                    blob(colors[6], in: geo.size,
-                         x: 0.20 + 0.08 * cos(t * 0.06), y: 0.80 - 0.07 * sin(t * 0.05))
-                    blob(colors[5], in: geo.size,
-                         x: 0.85 - 0.09 * sin(t * 0.05), y: 0.55 + 0.08 * cos(t * 0.07))
-                }
-                .blur(radius: 60)
-                .clipped()
-            }
-        }
-    }
-
-    private func blob(_ color: Color, in size: CGSize, x: Double, y: Double) -> some View {
-        let diameter = max(size.width, size.height) * 0.7
-        return Circle()
-            .fill(color)
-            .frame(width: diameter, height: diameter)
-            .position(x: size.width * x, y: size.height * y)
-    }
-}

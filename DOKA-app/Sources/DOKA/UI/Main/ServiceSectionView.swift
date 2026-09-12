@@ -323,11 +323,18 @@ struct ServiceSectionView: View {
             config = builtin
         }
         status = .checking
+        // Куда сохранять — решаем СЕЙЧАС, до сетевого запроса. Проверка идёт
+        // секунды, и за это время пользователь может переключить сервис в
+        // пикере: прежний код вычислял адресата уже после ответа, и ключ
+        // пресета уезжал в аккаунт того сервиса, который оказался выбран к
+        // этому моменту — вплоть до затирания ключа встроенного (платного)
+        // сервиса именем «nexara-api-key».
+        let destination = currentDestination
         Task {
             let result = await TranscriptionClient().validateKey(key, config: config)
             switch result {
             case .success:
-                guard persist(key: key) else {
+                guard persist(key: key, to: destination) else {
                     status = .invalid(L("error.keychainSaveFailed"))
                     return
                 }
@@ -335,40 +342,68 @@ struct ServiceSectionView: View {
             case .failure(let error):
                 if case .noFunds = error {
                     // Ключ верный — сохраняем, но предупреждаем о балансе.
-                    _ = persist(key: key)
+                    _ = persist(key: key, to: destination)
                 }
                 status = .invalid(error.localizedDescription)
             }
         }
     }
 
-    /// Сохраняет проверенную конфигурацию: новый пресет добавляется в список
-    /// и выбирается, у существующего обновляются адрес/модель/имя, у
-    /// встроенного — только ключ.
-    private func persist(key: String) -> Bool {
+    /// Для какого сервиса проверяется ключ. Снимок на момент нажатия
+    /// «Проверить» — см. комментарий в `checkAndSave`.
+    private enum KeyDestination {
+        /// Новый пресет: адрес и модель тоже снимаются заранее — поля могли
+        /// быть отредактированы, пока шла проверка.
+        case newPreset(endpoint: String, model: String)
+        case existingPreset(id: UUID, endpoint: String, model: String)
+        /// Встроенный сервис (или любой другой, у которого правится только ключ).
+        case account(String)
+    }
+
+    private var currentDestination: KeyDestination {
         if isAdding {
+            return .newPreset(endpoint: endpointDraft, model: modelDraft)
+        }
+        if let service = settings.selectedCustomService {
+            return .existingPreset(id: service.id, endpoint: endpointDraft, model: modelDraft)
+        }
+        return .account(settings.currentKeychainAccount)
+    }
+
+    /// Сохраняет проверенную конфигурацию по снятому заранее адресату: новый
+    /// пресет добавляется в список и выбирается, у существующего обновляются
+    /// адрес/модель/имя, у встроенного — только ключ.
+    private func persist(key: String, to destination: KeyDestination) -> Bool {
+        switch destination {
+        case let .newPreset(endpoint, model):
             let service = CustomService(
                 id: UUID(),
-                name: CustomService.makeName(endpoint: endpointDraft, model: modelDraft),
-                endpoint: endpointDraft,
-                model: modelDraft
+                name: CustomService.makeName(endpoint: endpoint, model: model),
+                endpoint: endpoint,
+                model: model
             )
             guard KeychainHelper.setAPIKey(key, account: service.keychainAccount) else { return false }
             settings.customServices.append(service)
             isAdding = false
             settings.providerID = "custom:\(service.id.uuidString)"
             return true
-        }
-        if let service = settings.selectedCustomService,
-           let index = settings.customServices.firstIndex(of: service) {
-            guard KeychainHelper.setAPIKey(key, account: service.keychainAccount) else { return false }
-            var updated = service
-            updated.endpoint = endpointDraft
-            updated.model = modelDraft
-            updated.name = CustomService.makeName(endpoint: endpointDraft, model: modelDraft)
+
+        case let .existingPreset(id, endpoint, model):
+            // Пресет могли удалить, пока шла проверка: тогда сохранять некуда,
+            // и уж точно нельзя ронять ключ в чужой аккаунт.
+            guard let index = settings.customServices.firstIndex(where: { $0.id == id }) else {
+                return false
+            }
+            var updated = settings.customServices[index]
+            guard KeychainHelper.setAPIKey(key, account: updated.keychainAccount) else { return false }
+            updated.endpoint = endpoint
+            updated.model = model
+            updated.name = CustomService.makeName(endpoint: endpoint, model: model)
             settings.customServices[index] = updated
             return true
+
+        case let .account(account):
+            return KeychainHelper.setAPIKey(key, account: account)
         }
-        return KeychainHelper.setAPIKey(key, account: settings.currentKeychainAccount)
     }
 }

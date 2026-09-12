@@ -99,16 +99,16 @@ keys live in the macOS Keychain, never in config files.
 
 ## Requirements
 
-- macOS 14 (Sonoma) or newer.
+- macOS 15 (Sequoia) or newer.
 - Apple Silicon for the local models. Whisper runs on Intel too, but much slower; Parakeet
   and local AI analysis require Apple Silicon (the official llama.cpp build for x86_64 ships
   without AVX2, and a 4B model there would take tens of minutes).
 - For local AI analysis — about 2.7 GB of disk space for the model and up to 5 GB of memory
   while it runs.
 - **Xcode 26 or newer** to build from source. The package itself declares
-  `swift-tools-version: 5.9` and targets macOS 14, but one of its dependencies
+  `swift-tools-version: 5.9` and targets macOS 15, but one of its dependencies
   requires Swift 6.2, and the Liquid Glass APIs need the macOS 26 SDK to compile.
-  The built app still runs on macOS 14 — this requirement applies to the build machine only.
+  The built app still runs on macOS 15 — this requirement applies to the build machine only.
 - An API key only if you pick a cloud service — local models need none.
 
 ## Installation

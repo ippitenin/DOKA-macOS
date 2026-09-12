@@ -53,6 +53,7 @@
 "dictation.retry.copied" = "Text transcribed and copied to the clipboard";
 "error.localLoadFailed" = "Failed to load the model: %@";
 "transcribe.local.modelMissing" = "The local model isn’t downloaded. Get it in the Service section or choose a network service.";
+"transcribe.busy.analysis" = "AI analysis is running — wait for it to finish or cancel it";
 "transcribe.local.noAudioTrack" = "The file has no audio track";
 
 /* Transcription providers */
@@ -666,6 +667,7 @@
 "analysis.busy.transcribing" = "Local transcription is running — wait for it to finish";
 "analysis.busy.other" = "An analysis is already running for another recording";
 "analysis.error.empty" = "The model wrote nothing — try another template";
+"analysis.error.notSaved" = "The report wasn’t saved — restart DOKA and run the analysis again";
 "analysis.error.tooLong" = "This recording is too long to analyse on this Mac";
 "analysis.model.status" = "Analysis model:";
 "analysis.model.help" = "Reports on transcripts are written by a language model right on this Mac: no internet, no key, no billing. The model is downloaded once.";

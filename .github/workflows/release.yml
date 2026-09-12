@@ -94,7 +94,7 @@ jobs:
 
           ## Требования
 
-          macOS 14 (Sonoma) или новее. Для локальных моделей распознавания —
+          macOS 15 (Sequoia) или новее. Для локальных моделей распознавания —
           Apple Silicon (Parakeet работает только на нём, Whisper на Intel — медленно).
           EOF
           gh release create "${GITHUB_REF_NAME}" DOKA.dmg \

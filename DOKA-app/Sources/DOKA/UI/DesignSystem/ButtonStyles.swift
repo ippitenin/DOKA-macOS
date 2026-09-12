@@ -1,14 +1,10 @@
 import SwiftUI
 
 extension View {
-    /// Непрерывное «дыхание» SF Symbol внутри вью на macOS 15+, ниже — статично.
-    @ViewBuilder
+    /// Непрерывное «дыхание» SF Symbol внутри вью (`.breathe` доступен с
+    /// macOS 15 — минимальной версии приложения).
     func dsBreathe() -> some View {
-        if #available(macOS 15.0, *) {
-            symbolEffect(.breathe)
-        } else {
-            self
-        }
+        symbolEffect(.breathe)
     }
 }
 

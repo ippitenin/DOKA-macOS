@@ -109,8 +109,21 @@ final class LocalEngineManager {
             return newEngine
         }
         loading = (model, task)
-        defer { loading = nil }
+        // Снимаем регистрацию ТОЛЬКО свою: безусловный `loading = nil` затирал
+        // запись другого запроса (пользователь сменил модель, пока шла
+        // загрузка), и следующий вызов грузил ту же модель второй раз.
+        defer { if loading?.task == task { loading = nil } }
         let newEngine = try await task.value
+        // Пока грузились, слот мог занять другой запрос или его могли
+        // освободить (удаление модели, смена сервиса). Поставить движок сейчас
+        // значило бы держать в памяти 1,6 ГБ модели, которую уже никто не ждёт,
+        // — в том числе модели, файлы которой уже удалены с диска. Отмена
+        // задачи от этого не спасает: у `load()` WhisperKit и FluidAudio
+        // кооперативных точек отмены нет, она доходит до конца.
+        guard loading?.task == task else {
+            newEngine.unload()
+            throw CancellationError()
+        }
         engine = newEngine
         touch()
         return newEngine
@@ -153,8 +166,12 @@ final class LocalEngineManager {
             return engine
         }
         diarizerLoading = task
-        defer { diarizerLoading = nil }
+        defer { if diarizerLoading == task { diarizerLoading = nil } }
         let engine = try await task.value
+        guard diarizerLoading == task else {
+            engine.unload()
+            throw CancellationError()
+        }
         diarizerEngine = engine
         touch()
         return engine
@@ -263,6 +280,10 @@ final class LocalEngineManager {
     var isLLMLoaded: Bool { llm != nil || llmLoading != nil }
 
     func unloadDiarizer() {
+        // Как `unloadLLM`: отменяем и НЕЗАВЕРШЁННУЮ загрузку, иначе она
+        // доедет и поставит модели, которых на диске уже нет.
+        diarizerLoading?.cancel()
+        diarizerLoading = nil
         diarizerEngine?.unload()
         diarizerEngine = nil
     }
@@ -280,13 +301,18 @@ final class LocalEngineManager {
     func unloadNow() {
         idleTask?.cancel()
         idleTask = nil
+        loading?.task.cancel()
+        loading = nil
         engine?.unload()
         engine = nil
         unloadDiarizer()
     }
 
-    /// Выгрузка, если в памяти именно эта модель (удаление файлов, смена сервиса).
+    /// Выгрузка, если слот ЗАНЯТ этой моделью — загруженной либо загружаемой.
+    /// Проверять только `engine` нельзя: во время загрузки он ещё nil, и
+    /// удаление модели в этот момент оказывалось no-op — задача доезжала и
+    /// ставила движок для модели, помеченной «не скачана», держа её в памяти.
     func unloadIfCurrent(_ model: LocalModel) {
-        if engine?.model == model { unloadNow() }
+        if engine?.model == model || loading?.model == model { unloadNow() }
     }
 }

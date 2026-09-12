@@ -178,4 +178,62 @@ final class SmoothingTests: XCTestCase {
     func testStaysAtTargetWhenAlreadyThere() {
         XCTAssertEqual(Float(0.5).smoothed(toward: 0.5, response: 0.4), 0.5, accuracy: 0.0001)
     }
+
+    // MARK: - Асимметричная огибающая
+
+    /// Ради асимметрии функция и существует: панели должны «выстреливать» на
+    /// голосе и мягко гаснуть на паузах. Симметричная EMA либо съедает пики,
+    /// либо дёргается между словами. Если attack и release когда-нибудь
+    /// сравняются, подъём перестанет опережать спад — и это надо заметить.
+    func testAttackIsFasterThanRelease() {
+        let rise = Float(0).envelope(toward: 1)
+        let fall = Float(1).envelope(toward: 0)
+        XCTAssertGreaterThan(rise, 1 - fall,
+                             "подъём обязан быть быстрее спада: \(rise) против \(1 - fall)")
+    }
+
+    func testDefaultsMatchTheRecorderEnvelope() {
+        XCTAssertEqual(Float(0).envelope(toward: 1), Float(0).smoothed(toward: 1, response: 0.5),
+                       accuracy: 0.0001)
+        XCTAssertEqual(Float(1).envelope(toward: 0), Float(1).smoothed(toward: 0, response: 0.18),
+                       accuracy: 0.0001)
+    }
+
+    /// Ровно на цели ветка выбирается по `target > self` — то есть спад;
+    /// значение при этом обязано остаться на месте, а не дёрнуться.
+    func testStaysPutAtTarget() {
+        XCTAssertEqual(Float(0.42).envelope(toward: 0.42), 0.42, accuracy: 0.0001)
+    }
+
+    func testConvergesFromBothSides() {
+        var up: Float = 0
+        var down: Float = 1
+        for _ in 0..<400 {
+            up = up.envelope(toward: 1)
+            down = down.envelope(toward: 0)
+        }
+        XCTAssertEqual(up, 1, accuracy: 0.01)
+        XCTAssertEqual(down, 0, accuracy: 0.01)
+    }
+
+    /// Огибающая не имеет права выйти за диапазон входа: уровень микрофона
+    /// нормирован 0…1, и перелёт дал бы полоски выше потолка панели.
+    func testNeverOvershoots() {
+        var value: Float = 0
+        for step in 0..<200 {
+            let target: Float = step % 7 == 0 ? 1 : 0
+            value = value.envelope(toward: target)
+            XCTAssertGreaterThanOrEqual(value, 0)
+            XCTAssertLessThanOrEqual(value, 1)
+        }
+    }
+
+    /// Кастомные коэффициенты работают (подсветка краёв «Авроры» зовёт
+    /// огибающую со своим, более мягким attack).
+    func testCustomCoefficientsAreHonoured() {
+        let soft = Float(0).envelope(toward: 1, attack: 0.25, release: 0.18)
+        let sharp = Float(0).envelope(toward: 1, attack: 0.5, release: 0.18)
+        XCTAssertLessThan(soft, sharp)
+        XCTAssertEqual(soft, 0.25, accuracy: 0.0001)
+    }
 }

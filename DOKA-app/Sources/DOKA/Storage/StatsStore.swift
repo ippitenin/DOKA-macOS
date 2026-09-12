@@ -5,6 +5,28 @@ struct StatsDayBucket: Codable, Equatable {
     var words: Int
     var duration: TimeInterval
     var sessions: Int
+
+    init(words: Int, duration: TimeInterval, sessions: Int) {
+        self.words = words
+        self.duration = duration
+        self.sessions = sessions
+    }
+
+    private enum CodingKeys: String, CodingKey { case words, duration, sessions }
+
+    /// Толерантный декодер — по той же причине, что и у `StatsSnapshot`, но
+    /// упустить его здесь опаснее: синтезированный декодер бросает на любом
+    /// недостающем ключе, а бакеты лежат ВНУТРИ снимка. Одно новое поле в
+    /// этой структуре — и все файлы, записанные прошлой версией, перестали бы
+    /// декодироваться целиком: `try?` в `StatsStore.load()` проглотил бы
+    /// ошибку, и накопленное «за всё время» молча обнулилось бы. Восстановить
+    /// его неоткуда — история капается на 200 записей.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        words = try c.decodeIfPresent(Int.self, forKey: .words) ?? 0
+        duration = try c.decodeIfPresent(TimeInterval.self, forKey: .duration) ?? 0
+        sessions = try c.decodeIfPresent(Int.self, forKey: .sessions) ?? 0
+    }
 }
 
 /// Снимок статистики на диске. Версионируется на случай будущих миграций.

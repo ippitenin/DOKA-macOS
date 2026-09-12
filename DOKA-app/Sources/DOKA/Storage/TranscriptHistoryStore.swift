@@ -222,6 +222,9 @@ final class TranscriptHistoryStore: ObservableObject {
     }
 
     func rename(_ id: UUID, title: String?) {
+        // Заморожено: имя сменилось бы только в памяти — `enqueueWrite`
+        // пропускает запись, и после перезапуска вернулся бы старый заголовок.
+        guard !isFrozen else { return }
         let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines)
         update(id) { $0.title = (trimmed?.isEmpty ?? true) ? nil : trimmed }
     }
@@ -367,7 +370,12 @@ final class TranscriptHistoryStore: ObservableObject {
     }
 
     /// «Стереть всё аудио транскрибаций»: тексты и анализы остаются.
+    /// Заморожено — no-op: `files` смотрит в СТАРУЮ папку, стирать там нечего,
+    /// зато `audioFileName` обнулился бы в памяти, а meta и индекс на диск не
+    /// доехали бы. Пользователь увидел бы исчезнувшие плееры и нулевое занятое
+    /// место, а после перезапуска всё аудио вернулось бы.
     func removeAllAudio() {
+        guard !isFrozen else { return }
         for task in audioTasks.values { task.cancel() }
         audioTasks.removeAll()
         if let playing = RecordingPlayer.shared.currentRecordID, record(playing) != nil {

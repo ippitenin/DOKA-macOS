@@ -187,6 +187,14 @@ final class FileTranscriptionController: ObservableObject {
     /// Что распознаётся сейчас — для дропзоны: у запуска из библиотеки это
     /// не выбранный на странице файл.
     private var runningSource: (name: String, url: URL)?
+    /// Идущий прогон занимает локальный ускоритель (ANE/GPU).
+    ///
+    /// Считается от маршрута ЭТОГО запуска, а не от глобального `providerID`:
+    /// повтор из библиотеки идёт по снимку `params.providerID`, и пользователь
+    /// мог с тех пор переключить сервис. Прежняя проверка глобальной настройки
+    /// ошибалась в обе стороны — разрешала анализ поверх локального прогона и
+    /// запрещала его при сетевом.
+    private(set) var runningUsesLocalEngine = false
     /// Фаза страницы до запуска из библиотеки. Контроллер один (файл за раз),
     /// поэтому на время повтора страница показывает его прогресс, но итог
     /// такого запуска виден в самой записи — по окончании страница
@@ -309,6 +317,14 @@ final class FileTranscriptionController: ObservableObject {
         if case .local(let model) = route, !LocalModelStore.shared.isDownloaded(model) {
             return .rejected(L("transcribe.local.modelMissing"))
         }
+        // Взаимоисключение с ИИ-анализом — в обе стороны: анализ не стартует
+        // поверх локального распознавания (AnalysisController.availability), а
+        // локальное распознавание — поверх анализа. Иначе речевая модель на ANE
+        // и языковая на Metal дерутся за ускоритель, а на маке с 8 ГБ ещё и за
+        // память. Сетевому распознаванию анализ не мешает.
+        if case .local = route, AnalysisController.shared.isRunning {
+            return .rejected(L("transcribe.busy.analysis"))
+        }
         if let message = params.rolesValidationMessage { return .rejected(message) }
         if params.usesLocalDiarization && !LocalModelStore.shared.isDownloaded(.diarizer) {
             Self.requestDiarizerModel()
@@ -346,6 +362,7 @@ final class FileTranscriptionController: ObservableObject {
 
         pagePhaseBeforeRun = target.isFromLibrary ? phase : nil
         runningSource = (displayName, url)
+        if case .local = route { runningUsesLocalEngine = true }
         phase = .transcribing
         progressNote = nil
         runningRecordID = recordID
@@ -469,6 +486,7 @@ final class FileTranscriptionController: ObservableObject {
     private func finishRun(showing recordID: UUID?) {
         runningRecordID = nil
         runningSource = nil
+        runningUsesLocalEngine = false
         if let before = pagePhaseBeforeRun {
             restorePagePhase(before)
         } else if let recordID {
@@ -483,6 +501,7 @@ final class FileTranscriptionController: ObservableObject {
     private func failRun(_ message: String) {
         runningRecordID = nil
         runningSource = nil
+        runningUsesLocalEngine = false
         if let before = pagePhaseBeforeRun {
             restorePagePhase(before)
         } else {
@@ -540,7 +559,14 @@ final class FileTranscriptionController: ObservableObject {
                 wavURL: wavURL,
                 numSpeakers: numSpeakers,
                 progress: { [weak self] fraction in
-                    self?.progressNote = L("transcribe.diarize.progress", Int(fraction * 100))
+                    // У FluidAudio в этой версии нет кооперативных точек
+                    // отмены: после «Отмена» он досчитывает до конца, а его
+                    // колбэк продолжает приходить. Без этой проверки он
+                    // перетирал бы `progressNote` уже на отменённой странице —
+                    // пользователь видел бы ползущий процент диаризации после
+                    // того, как сам всё остановил.
+                    guard let self, self.isTranscribing else { return }
+                    self.progressNote = L("transcribe.diarize.progress", Int(fraction * 100))
                 }
             )
             LocalEngineManager.shared.touch()
@@ -570,6 +596,7 @@ final class FileTranscriptionController: ObservableObject {
             runningRecordID = nil
         }
         runningSource = nil
+        runningUsesLocalEngine = false
         if let before = pagePhaseBeforeRun {
             restorePagePhase(before)
         } else {

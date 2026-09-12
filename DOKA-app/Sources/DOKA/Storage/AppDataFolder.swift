@@ -62,6 +62,22 @@ enum AppDataFolder {
         }
     }
 
+    /// Папку данных перенесли, а приложение ещё не перезапустили.
+    ///
+    /// Библиотека транскрибаций на этот случай замораживается (`freeze`), но у
+    /// истории диктовок, статистики и аудио своей заморозки нет: их синглтоны
+    /// фиксируют путь один раз в `init` (`HistoryStore:39`, `StatsStore:74`,
+    /// `AudioStore:17`) и создаются ДО переноса, поэтому продолжали бы писать
+    /// в старую папку — уже удалённую либо ставшую «призрачной». Всё, что
+    /// пользователь надиктовал после переноса и до перезапуска, пропадало.
+    ///
+    /// Флаг закрывает это на входе: новые диктовки не начинаются, пока
+    /// приложение не перезапустили.
+    @MainActor private(set) static var needsRestart = false
+
+    /// Вызывается после УСПЕШНОГО переноса.
+    @MainActor static func markNeedsRestart() { needsRestart = true }
+
     /// Переносит данные в выбранную пользователем папку и переключает путь.
     /// Если выбранная папка не называется «DOKA», данные лягут в подпапку
     /// `<выбранная>/DOKA` (не засоряем чужую папку россыпью файлов).
@@ -133,8 +149,12 @@ enum AppDataFolder {
             let items = try fm.contentsOfDirectory(atPath: source.path)
             for name in items where name != modelsFolderName {
                 let destination = target.appendingPathComponent(name)
-                try fm.copyItem(at: source.appendingPathComponent(name), to: destination)
+                // Запоминаем ДО копирования: FileManager не разматывает
+                // частичную копию сам, и упавший на середине элемент иначе не
+                // попал бы в откат. Огрызок в цели навсегда ломал бы «Вернуть
+                // по умолчанию» — он не входит в белый список `targetNotEmpty`.
                 copied.append(destination)
+                try fm.copyItem(at: source.appendingPathComponent(name), to: destination)
             }
         } catch {
             // Не оставляем частичную копию; существовавшую цель (с Models) не трогаем.
