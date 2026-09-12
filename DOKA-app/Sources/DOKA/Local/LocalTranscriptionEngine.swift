@@ -58,6 +58,16 @@ final class LocalEngineManager {
     private var diarizerEngine: LocalDiarizer?
     private var diarizerLoading: Task<LocalDiarizer, Error>?
 
+    /// Языковая модель анализа — со своим таймером простоя и НЕ в
+    /// `unloadNow()`: её выгрузка не должна быть побочным эффектом смены
+    /// сервиса распознавания или начала диктовки (см. `llmEngine`).
+    private var llm: LocalLLMEngine?
+    private var llmLoading: Task<LocalLLMEngine, Error>?
+    private var llmIdleTask: Task<Void, Never>?
+
+    /// Языковая модель держит 3–5 ГБ ОЗУ — окно простоя короче, чем у речи.
+    static let llmIdleUnloadDelay: Duration = .seconds(3 * 60)
+
     private init() {}
 
     /// Возвращает готовый движок, при необходимости загружая модель.
@@ -148,6 +158,79 @@ final class LocalEngineManager {
     func prewarmDiarizer() async {
         _ = try? await diarizer()
     }
+
+    // MARK: - Языковая модель анализа
+
+    /// Готовая языковая модель; при необходимости грузит её. Параллельные
+    /// вызовы ждут одну задачу — как у речевого движка и диаризатора.
+    func llmEngine() async throws -> LocalLLMEngine {
+        if let llm, await llm.isLoaded {
+            touchLLM()
+            return llm
+        }
+        if let llmLoading {
+            let shared = try await llmLoading.value
+            touchLLM()
+            return shared
+        }
+        guard LocalModelStore.shared.isDownloaded(.llm) else {
+            throw LocalEngineError.modelMissing
+        }
+        // На маке с 8 ГБ языковая модель и речевая вместе уводят систему
+        // в своп: освобождаем распознавание заранее, оно перезагрузится
+        // к следующей диктовке.
+        if LLMModelSpec.isLowMemoryMac { unloadNow() }
+
+        let task = Task<LocalLLMEngine, Error> {
+            let engine = LocalLLMEngine()
+            // «Подготовка модели…»: первая загрузка компилирует встроенные
+            // Metal-кернелы (около 12 секунд), и без статуса это выглядело бы
+            // зависанием кнопки «Проанализировать».
+            LocalModelStore.shared.markPreparing(.llm, true)
+            defer { LocalModelStore.shared.markPreparing(.llm, false) }
+            do {
+                try await engine.load()
+            } catch let error as LLMError {
+                throw error
+            } catch {
+                throw LocalEngineError.loadFailed(error.localizedDescription)
+            }
+            return engine
+        }
+        llmLoading = task
+        defer { llmLoading = nil }
+        let engine = try await task.value
+        llm = engine
+        touchLLM()
+        return engine
+    }
+
+    /// Продлевает окно простоя языковой модели. Таймер отдельный: диктовка
+    /// не должна держать модель анализа в памяти, а анализ — речевую.
+    func touchLLM() {
+        llmIdleTask?.cancel()
+        llmIdleTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.llmIdleUnloadDelay)
+            guard !Task.isCancelled else { return }
+            self?.unloadLLM()
+        }
+    }
+
+    func unloadLLM() {
+        llmIdleTask?.cancel()
+        llmIdleTask = nil
+        llmLoading?.cancel()
+        llmLoading = nil
+        // Выгрузка идёт на исполнителе актора: если генерация ещё идёт, она
+        // отработает до конца, и только потом освободятся указатели.
+        if let llm {
+            Task { await llm.unload() }
+            self.llm = nil
+        }
+    }
+
+    /// Языковая модель загружена в память (для политики «диктовка важнее»).
+    var isLLMLoaded: Bool { llm != nil || llmLoading != nil }
 
     func unloadDiarizer() {
         diarizerEngine?.unload()

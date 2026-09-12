@@ -547,3 +547,4 @@
 "analysis.error.diskSpace" = "Not enough disk space: about %@ required";
 "analysis.error.checksum" = "The model file downloaded incorrectly — please try again";
 "analysis.error.http" = "The server returned error %ld";
+"analysis.error.contextTooSmall" = "The recording is too long for the model window on this Mac";

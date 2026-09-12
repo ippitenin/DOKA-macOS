@@ -400,7 +400,10 @@ final class LocalModelStore: ObservableObject {
         switch asset {
         case .speech(let model): LocalEngineManager.shared.unloadIfCurrent(model)
         case .diarizer: LocalEngineManager.shared.unloadDiarizer()
-        case .llm: break
+        case .llm:
+            // Переименование папки из-под живого mmap безопасно, но держать
+            // модель в памяти после удаления файла незачем.
+            LocalEngineManager.shared.unloadLLM()
         }
         Self.removePartial(asset)
         knownSizes[asset] = nil
