@@ -335,6 +335,7 @@
 "common.done" = "Done";
 "common.cancel" = "Cancel";
 "common.ok" = "OK";
+"common.save" = "Save";
 "common.close" = "Close";
 
 /* Transcribe Audio section */
@@ -639,3 +640,62 @@
 "analysis.templates.validation.sections" = "At least one section is required, no more than %ld";
 "analysis.templates.validation.sectionTitle" = "Every section needs a title";
 "analysis.templates.validation.instruction" = "A section instruction must be no longer than %ld characters";
+
+/* Analysis panel */
+"analysis.title" = "AI analysis";
+"analysis.run" = "Analyse";
+"analysis.language" = "Answer language";
+"analysis.language.record" = "As in the recording";
+"analysis.customPrompt" = "Custom request";
+"analysis.customPlaceholder" = "What to do with the transcript: for example, “list every number mentioned, with context”";
+"analysis.manageTemplates" = "Templates…";
+"analysis.regenerate" = "Run again";
+"analysis.delete" = "Delete analysis";
+"analysis.deleteConfirmTitle" = "Delete this analysis?";
+"analysis.deleteConfirmText" = "The report will be deleted permanently. The transcript stays where it is.";
+"analysis.stale" = "The transcript was edited after this analysis";
+"analysis.truncated" = "cut off at the length limit";
+"analysis.source.nexara" = "Nexara";
+"analysis.source.nexaraTitle" = "Nexara analysis";
+"analysis.source.local" = "%@ · on this Mac";
+"analysis.progress.loading" = "Preparing the model…";
+"analysis.progress.reading" = "Reading the transcript… %ld%%";
+"analysis.progress.part" = "Part %ld of %ld · %ld%%";
+"analysis.progress.combining" = "Combining the parts…";
+"analysis.progress.writing" = "Writing the report…";
+"analysis.busy.transcribing" = "Local transcription is running — wait for it to finish";
+"analysis.busy.other" = "An analysis is already running for another recording";
+"analysis.error.empty" = "The model wrote nothing — try another template";
+"analysis.error.tooLong" = "This recording is too long to analyse on this Mac";
+"analysis.model.status" = "Analysis model:";
+"analysis.model.help" = "Reports on transcripts are written by a language model right on this Mac: no internet, no key, no billing. The model is downloaded once.";
+"analysis.model.footer" = "Analysis runs offline on this Mac. The model takes about 2.7 GB on disk and up to 5 GB of memory while it works; Apple Silicon is required.";
+"analysis.model.intelUnsupported" = "AI analysis works only on Apple Silicon (M1 and newer) — it is unavailable on Intel.";
+"analysis.model.needed" = "To analyse recordings on this Mac, download the language model.";
+"analysis.model.templates" = "Analysis templates…";
+"analysis.auto" = "Analyse automatically";
+"analysis.auto.help" = "Right after a file is transcribed, DOKA writes a report using the selected template. Analysis takes a few minutes and loads the Mac noticeably.";
+"analysis.auto.template" = "Auto-analysis template";
+"analysis.interruptedByDictation" = "Analysis was interrupted by dictation — start it again";
+
+/* Analysis templates: list */
+"analysis.templates.title" = "Analysis templates";
+"analysis.templates.builtin" = "Built-in";
+"analysis.templates.mine" = "Mine";
+"analysis.templates.new" = "New template";
+"analysis.templates.newName" = "My template";
+"analysis.templates.duplicate" = "Duplicate";
+"analysis.templates.delete" = "Delete";
+"analysis.templates.deleteTitle" = "Delete this template?";
+"analysis.templates.deleteConfirm" = "The template will be deleted. Analyses already written stay where they are.";
+"analysis.templates.name" = "Name";
+"analysis.templates.description" = "Description";
+"analysis.templates.sections" = "Sections";
+"analysis.templates.addSection" = "Add section";
+"analysis.templates.sectionTitle" = "Section title";
+"analysis.templates.sectionInstruction" = "What goes in this section";
+"analysis.templates.sectionFormat" = "Format";
+"analysis.templates.columns" = "Columns, comma-separated";
+"analysis.templates.cite" = "Timestamps";
+"analysis.templates.builtinReadonly" = "A built-in template cannot be changed — make a copy.";
+"analysis.templates.empty" = "Select a template on the left";

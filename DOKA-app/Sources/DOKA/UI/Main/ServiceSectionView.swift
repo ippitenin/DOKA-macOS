@@ -15,6 +15,8 @@ struct ServiceSectionView: View {
     @State private var modelDraft = ""
     @State private var apiKey = ""
     @State private var status: Status = .unknown
+    /// Редактор шаблонов анализа — модальный шит секции.
+    @State private var showsAnalysisTemplates = false
 
     private enum Status: Equatable {
         case unknown, checking, valid, invalid(String)
@@ -92,9 +94,65 @@ struct ServiceSectionView: View {
             } else {
                 keyCard
             }
+
+            analysisCard
         }
         .onAppear { reloadDrafts() }
         .onChange(of: settings.providerID) { _, _ in reloadDrafts() }
+        .sheet(isPresented: $showsAnalysisTemplates) {
+            AnalysisTemplatesSheet()
+        }
+    }
+
+    // MARK: - Карточка локального ИИ-анализа
+
+    /// Языковая модель анализа — не сервис распознавания: карточка видна при
+    /// ЛЮБОМ выбранном сервисе, потому что анализировать можно записи любого
+    /// происхождения (в том числе расшифровки Nexara).
+    private var analysisCard: some View {
+        SettingsCard(footer: L("analysis.model.footer")) {
+            SettingsRow(title: L("analysis.model.status"), help: L("analysis.model.help")) {
+                LocalAssetStatusView(asset: .llm, name: LLMModelSpec.current.displayName)
+            }
+            if !LocalModel.isAppleSiliconMac {
+                CardDivider()
+                Label(L("analysis.model.intelUnsupported"), systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, DS.Spacing.cardPadding)
+                    .padding(.vertical, 9)
+            }
+            CardDivider()
+            SettingsRow(title: L("analysis.auto"), help: L("analysis.auto.help")) {
+                Toggle("", isOn: $settings.autoAnalysis)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(!LocalModel.isAppleSiliconMac)
+            }
+            if settings.autoAnalysis {
+                CardDivider()
+                SettingsRow(title: L("analysis.auto.template")) {
+                    SettingsPopup(titles: analysisTemplates.map(\.name),
+                                  selectionIndex: Binding(
+                                    get: { analysisTemplates.firstIndex { $0.id == settings.analysisTemplateID } ?? 0 },
+                                    set: { settings.analysisTemplateID = analysisTemplates[$0].id }),
+                                  width: nil)
+                }
+            }
+            CardDivider()
+            HStack(spacing: 12) {
+                Button(L("analysis.model.templates")) { showsAnalysisTemplates = true }
+                    .dsGlassButton()
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, DS.Spacing.cardPadding)
+            .padding(.vertical, 9)
+        }
+    }
+
+    private var analysisTemplates: [AnalysisTemplate] {
+        BuiltinAnalysisTemplate.all + settings.analysisTemplates
     }
 
     // MARK: - Карточка API-ключа (сетевые сервисы)

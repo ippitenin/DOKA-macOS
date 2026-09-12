@@ -435,6 +435,7 @@ final class FileTranscriptionController: ObservableObject {
                 guard !Task.isCancelled else { return }
                 let saved = store.markDone(recordID, result: result)
                 self?.finishRun(showing: saved == nil ? nil : recordID)
+                if saved != nil { Self.startAutoAnalysis(recordID) }
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
                 self?.progressNote = nil
@@ -444,6 +445,22 @@ final class FileTranscriptionController: ObservableObject {
             }
         }
         return .started(recordID)
+    }
+
+    /// Автоанализ сразу после распознавания. По умолчанию выключен: анализ
+    /// идёт минутами и греет Mac. Гейт доступности — общий с кнопкой
+    /// «Проанализировать», поэтому без модели, на Intel и при занятом
+    /// анализе он просто не стартует и ничего не сообщает.
+    private static func startAutoAnalysis(_ recordID: UUID) {
+        let settings = SettingsStore.shared
+        guard settings.autoAnalysis else { return }
+        let controller = AnalysisController.shared
+        guard controller.availability(for: TranscriptHistoryStore.shared.record(recordID)).isRunnable
+        else { return }
+        controller.start(recordID: recordID,
+                         request: .init(kind: .template(settings.selectedAnalysisTemplate),
+                                        responseLanguage: settings.analysisLanguage.isEmpty
+                                            ? nil : settings.analysisLanguage))
     }
 
     /// Итог успешного запуска: показать запись, если она ещё жива (её могли

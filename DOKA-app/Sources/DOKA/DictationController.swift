@@ -212,6 +212,16 @@ final class DictationController: ObservableObject {
             return
         }
 
+        // Диктовка важнее анализа. На маке с небольшой ОЗУ языковая модель
+        // анализа (до 5 ГБ) и речевая модель вместе уводят систему в своп,
+        // и диктовка — та, ради которой приложение и запускают, — начинает
+        // тормозить. Гасим анализ ДО старта записи и объясняем, почему.
+        // Сетевой сервис распознавания ОЗУ не держит: там анализ не трогаем.
+        if settings.isLocalService && LLMModelSpec.isLowMemoryMac {
+            AnalysisController.shared.cancelIfRunning(message: L("analysis.interruptedByDictation"))
+            LocalEngineManager.shared.unloadLLM()
+        }
+
         do {
             _ = try recorder.start()
         } catch {

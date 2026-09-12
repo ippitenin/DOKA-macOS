@@ -71,8 +71,13 @@ private enum LlamaBackend {
         llama_backend_init()
         // llama.cpp очень болтлив на info-уровне (каждый тензор при загрузке).
         // В лог приложения пропускаем только предупреждения и ошибки.
+        // Сравнение «уровень >= WARN» здесь НЕ годится: у ggml после ERROR(4)
+        // идёт CONT(5) — «продолжение предыдущей строки», которым печатаются
+        // в том числе точки прогресса загрузки модели. С ним лог приложения
+        // забивался бы сотнями строк «.» на каждую загрузку.
         llama_log_set({ level, text, _ in
-            guard level.rawValue >= GGML_LOG_LEVEL_WARN.rawValue, let text else { return }
+            guard level == GGML_LOG_LEVEL_WARN || level == GGML_LOG_LEVEL_ERROR,
+                  let text else { return }
             let message = String(cString: text).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !message.isEmpty else { return }
             NSLog("DOKA llama: \(message)")

@@ -350,7 +350,7 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
                     var analyses: [StoredAnalysis] = []
                     if let llm = stored.llmOutput, !llm.isEmpty {
                         analyses.append(StoredAnalysis(createdAt: record.date,
-                                                       title: L("transcribe.llm.result.title"),
+                                                       title: L("analysis.source.nexaraTitle"),
                                                        templateID: nil, source: .nexara,
                                                        markdown: llm))
                     }

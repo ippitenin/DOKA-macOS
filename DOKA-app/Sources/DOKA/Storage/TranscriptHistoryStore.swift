@@ -175,7 +175,7 @@ final class TranscriptHistoryStore: ObservableObject {
         if let llm = result.llmOutput, !llm.isEmpty {
             let preset = record.params?.llmPresetValue
             analyses.append(StoredAnalysis(
-                title: preset.map(\.title) ?? L("transcribe.llm.result.title"),
+                title: preset.map(\.title) ?? L("analysis.source.nexaraTitle"),
                 templateID: preset.map { "nexara.\($0.rawValue)" },
                 source: .nexara, markdown: llm))
         }

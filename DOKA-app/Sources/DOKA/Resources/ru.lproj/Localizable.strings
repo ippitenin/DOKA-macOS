@@ -335,6 +335,7 @@
 "common.done" = "Готово";
 "common.cancel" = "Отмена";
 "common.ok" = "ОК";
+"common.save" = "Сохранить";
 "common.close" = "Закрыть";
 
 /* Секция «Транскрибация» */
@@ -639,3 +640,62 @@
 "analysis.templates.validation.sections" = "Нужен хотя бы один раздел, не больше %ld";
 "analysis.templates.validation.sectionTitle" = "У каждого раздела должно быть название";
 "analysis.templates.validation.instruction" = "Инструкция раздела не длиннее %ld символов";
+
+/* Панель анализа */
+"analysis.title" = "Анализ ИИ";
+"analysis.run" = "Проанализировать";
+"analysis.language" = "Язык ответа";
+"analysis.language.record" = "Как в записи";
+"analysis.customPrompt" = "Свой запрос";
+"analysis.customPlaceholder" = "Что сделать с расшифровкой: например, «выпиши все названные цифры с пояснениями»";
+"analysis.manageTemplates" = "Шаблоны…";
+"analysis.regenerate" = "Повторить";
+"analysis.delete" = "Удалить анализ";
+"analysis.deleteConfirmTitle" = "Удалить анализ?";
+"analysis.deleteConfirmText" = "Отчёт будет удалён без возможности восстановления. Расшифровка останется на месте.";
+"analysis.stale" = "Расшифровку изменили после этого анализа";
+"analysis.truncated" = "оборван по длине";
+"analysis.source.nexara" = "Nexara";
+"analysis.source.nexaraTitle" = "Анализ Nexara";
+"analysis.source.local" = "%@ · на этом Mac";
+"analysis.progress.loading" = "Подготовка модели…";
+"analysis.progress.reading" = "Читаю расшифровку… %ld %%";
+"analysis.progress.part" = "Часть %ld из %ld · %ld %%";
+"analysis.progress.combining" = "Свожу итог…";
+"analysis.progress.writing" = "Пишу отчёт…";
+"analysis.busy.transcribing" = "Идёт локальное распознавание — дождитесь его окончания";
+"analysis.busy.other" = "Анализ уже идёт у другой записи";
+"analysis.error.empty" = "Модель ничего не написала — попробуйте другой шаблон";
+"analysis.error.tooLong" = "Запись слишком длинная для анализа на этом Mac";
+"analysis.model.status" = "Модель анализа:";
+"analysis.model.help" = "Отчёты по расшифровкам составляет языковая модель прямо на этом Mac: без интернета, без ключа и без оплаты. Модель скачивается один раз.";
+"analysis.model.footer" = "Анализ идёт офлайн на этом Mac. Модель занимает около 2,7 ГБ на диске и до 5 ГБ оперативной памяти во время работы; нужен Apple Silicon.";
+"analysis.model.intelUnsupported" = "Анализ ИИ работает только на Apple Silicon (M1 и новее) — на Intel он недоступен.";
+"analysis.model.needed" = "Чтобы анализировать записи на этом Mac, скачайте языковую модель.";
+"analysis.model.templates" = "Шаблоны анализа…";
+"analysis.auto" = "Анализировать автоматически";
+"analysis.auto.help" = "Сразу после распознавания файла DOKA составит отчёт выбранным шаблоном. Анализ идёт несколько минут и заметно нагружает Mac.";
+"analysis.auto.template" = "Шаблон автоанализа";
+"analysis.interruptedByDictation" = "Анализ прерван диктовкой — запустите его заново";
+
+/* Шаблоны анализа: список */
+"analysis.templates.title" = "Шаблоны анализа";
+"analysis.templates.builtin" = "Встроенные";
+"analysis.templates.mine" = "Мои";
+"analysis.templates.new" = "Новый шаблон";
+"analysis.templates.newName" = "Мой шаблон";
+"analysis.templates.duplicate" = "Сделать копию";
+"analysis.templates.delete" = "Удалить";
+"analysis.templates.deleteTitle" = "Удалить шаблон?";
+"analysis.templates.deleteConfirm" = "Шаблон будет удалён. Уже готовые анализы останутся на месте.";
+"analysis.templates.name" = "Название";
+"analysis.templates.description" = "Описание";
+"analysis.templates.sections" = "Разделы";
+"analysis.templates.addSection" = "Добавить раздел";
+"analysis.templates.sectionTitle" = "Название раздела";
+"analysis.templates.sectionInstruction" = "Что писать в этом разделе";
+"analysis.templates.sectionFormat" = "Формат";
+"analysis.templates.columns" = "Колонки через запятую";
+"analysis.templates.cite" = "Тайм-коды";
+"analysis.templates.builtinReadonly" = "Встроенный шаблон нельзя изменить — сделайте копию.";
+"analysis.templates.empty" = "Выберите шаблон слева";

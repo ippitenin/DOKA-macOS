@@ -414,8 +414,10 @@ final class LocalModelStore: ObservableObject {
         case .speech(let model): LocalEngineManager.shared.unloadIfCurrent(model)
         case .diarizer: LocalEngineManager.shared.unloadDiarizer()
         case .llm:
-            // Переименование папки из-под живого mmap безопасно, но держать
-            // модель в памяти после удаления файла незачем.
+            // Сначала остановить анализ: он держит модель в памяти, а
+            // переименование папки из-под живого mmap оставило бы его без
+            // файла на следующем обращении.
+            AnalysisController.shared.cancelIfRunning()
             LocalEngineManager.shared.unloadLLM()
         }
         Self.removePartial(asset)
