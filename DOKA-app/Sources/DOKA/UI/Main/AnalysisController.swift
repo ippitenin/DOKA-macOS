@@ -34,7 +34,6 @@ final class AnalysisController: ObservableObject {
     /// Почему анализ нельзя запустить прямо сейчас.
     enum Availability: Equatable {
         case ok
-        case intelUnsupported
         case modelMissing
         case busyTranscribing      // идёт ЛОКАЛЬНОЕ распознавание — конкуренция за ANE/GPU
         case busyOtherRecord       // анализ уже идёт, но у другой записи
@@ -79,7 +78,6 @@ final class AnalysisController: ObservableObject {
 
     func availability(for record: FileTranscriptRecord?) -> Availability {
         guard let record, record.isDone else { return .notReady }
-        guard LocalModel.isAppleSiliconMac else { return .intelUnsupported }
         guard LocalModelStore.shared.isDownloaded(.llm) else { return .modelMissing }
         guard !TranscriptHistoryStore.shared.isFrozen else { return .frozen }
         if let running = runningRecordID, running != record.id { return .busyOtherRecord }

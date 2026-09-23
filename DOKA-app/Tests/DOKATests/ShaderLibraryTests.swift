@@ -3,7 +3,7 @@ import XCTest
 @testable import DOKA
 
 /// Шейдеры панели «Аврора» собираются ОТДЕЛЬНЫМ шагом (scripts/build-shaders.sh):
-/// SwiftPM .metal не компилирует, а build-tool-плагин ломает universal-сборку.
+/// SwiftPM .metal не компилирует, а build-tool-плагин ломал мультиарх-сборку.
 /// Значит metallib легко забыть перегенерить — тогда панель молча останется без
 /// эффекта. Эти проверки — единственный автоматический гейт на этот случай.
 final class ShaderLibraryTests: XCTestCase {

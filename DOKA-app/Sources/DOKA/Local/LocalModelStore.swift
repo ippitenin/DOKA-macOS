@@ -218,12 +218,6 @@ final class LocalModelStore: ObservableObject {
     func download(_ model: LocalModel) { download(.speech(model)) }
 
     func download(_ asset: LocalAsset) {
-        // Барьер платформы здесь, а не только в `.disabled` кнопки: любой
-        // другой путь к скачиванию не должен качать неподдерживаемую модель.
-        guard !asset.requiresAppleSilicon || LocalModel.isAppleSiliconMac else {
-            states[asset] = .failed(L("service.local.intelUnsupported"))
-            return
-        }
         if case .downloading = state(for: asset) { return }
         states[asset] = .downloading(0)
 

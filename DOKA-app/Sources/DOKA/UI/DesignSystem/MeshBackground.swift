@@ -66,21 +66,37 @@ private struct EdgeRim: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        // Радиус угла окна НЕ зашивать числом: он меняется от версии к версии
+        // macOS (26 → 27 уже менялся), и кромка начинала рисовать второе
+        // скругление внутри угла окна. С macOS 26 форму отдаёт система —
+        // `ConcentricRectangle` концентричен окну и учитывает отступ.
+        if #available(macOS 26, *) {
+            rim(ConcentricRectangle())
+        } else {
+            // Радиус титулованного окна macOS 15.
+            rim(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    /// `ConcentricRectangle` — не `InsettableShape`, поэтому вместо
+    /// `strokeBorder` — `stroke` с отступом в половину толщины линии
+    /// (плюс прежний отступ 1 pt от края окна).
+    private func rim(_ shape: some Shape) -> some View {
         let boost: Double = scheme == .dark ? 1.0 : 0.55
-        ZStack {
+        return ZStack {
             // Тонкая линия по всему периметру с угловым затуханием
             // (0° — восток, 90° — юг: максимум на юго-востоке).
             shape
-                .strokeBorder(rimGradient(peak: 0.9 * boost), lineWidth: 1)
+                .stroke(rimGradient(peak: 0.9 * boost), lineWidth: 1)
+                .padding(1 + 0.5)
                 .blur(radius: 0.5)
             // Утолщённое размытое свечение — только у юго-востока,
             // даёт неравную толщину кромки.
             shape
-                .strokeBorder(rimGradient(peak: 0.55 * boost, tightFalloff: true), lineWidth: 4)
+                .stroke(rimGradient(peak: 0.55 * boost, tightFalloff: true), lineWidth: 4)
+                .padding(1 + 2)
                 .blur(radius: 6)
         }
-        .padding(1)
         .allowsHitTesting(false)
     }
 

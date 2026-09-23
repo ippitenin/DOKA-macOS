@@ -138,12 +138,6 @@ struct RetranscribeSheet: View {
             SettingsRow(title: L("service.local.status")) {
                 LocalAssetStatusView(asset: .speech(model))
             }
-            if !LocalModel.isAppleSiliconMac {
-                CardDivider()
-                warning(model.requiresAppleSilicon
-                            ? L("service.local.intelUnsupported")
-                            : L("service.local.intelSlow"))
-            }
         } else if !remoteReady {
             CardDivider()
             warning(L("library.retranscribe.needsKey"))

@@ -106,10 +106,8 @@ keys live in the macOS Keychain, never in config files.
 
 ## Requirements
 
+- A Mac with Apple silicon (M1 or newer). Intel Macs are not supported.
 - macOS 15 (Sequoia) or newer.
-- Apple Silicon for the local models. Whisper runs on Intel too, but much slower; Parakeet
-  and local AI analysis require Apple Silicon (the official llama.cpp build for x86_64 ships
-  without AVX2, and a 4B model there would take tens of minutes).
 - For local AI analysis — about 2.7 GB of disk space for the model and up to 5 GB of memory
   while it runs.
 - **Xcode 26 or newer** to build from source. The package itself declares
@@ -141,7 +139,7 @@ All commands run from `DOKA-app/`:
 ```bash
 swift build        # quick debug compile check
 scripts/build-shaders.sh   # Metal shaders of the recording panel → default.metallib
-./build.sh         # release (universal: arm64 + x86_64), signed, installed to ~/Applications
+./build.sh         # release (arm64), signed, installed to ~/Applications
 ./build.sh --dmg   # the same, plus DOKA.dmg in the repository root
 ./run.sh           # build.sh + launch
 ```
@@ -166,7 +164,7 @@ Pick one on first launch, or later in the **Service** section:
 | Service | API key | Notes |
 |---|---|---|
 | Whisper Large v3 Turbo (Local) | not needed | ~1.6 GB one-time download, runs through WhisperKit on the Neural Engine |
-| Parakeet TDT 0.6B v3 (Local) | not needed | ~700 MB, runs through FluidAudio, Apple Silicon only |
+| Parakeet TDT 0.6B v3 (Local) | not needed | ~700 MB, runs through FluidAudio |
 | Built-in (Nexara) | required | adds recording-type presets, speaker roles, analysis ordered with transcription, and async jobs |
 | Custom service | required | any OpenAI-compatible `/audio/transcriptions` endpoint |
 
@@ -210,8 +208,8 @@ so those are verified by a manual smoke pass; `CLAUDE.md` lists what to check pe
 
 Two things worth knowing before you change dependencies or strings:
 
-- **Do not move WhisperKit past the 0.18.x line** — in 1.x two executable products share a
-  target and the universal build fails with “duplicate key found”.
+- **Dependency versions are pinned on purpose** — do not bump them with a blind
+  `swift package update`; see [`CONTRIBUTING.md`](CONTRIBUTING.md) for why.
 - **Every interface string goes through `L("key")`**, and every key must exist in both
   `ru.lproj` and `en.lproj`. `swift build` does not validate `.strings` syntax — run
   `plutil -lint` after editing them.

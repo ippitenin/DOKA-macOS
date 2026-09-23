@@ -9,9 +9,9 @@ struct SystemInfo {
     static func current() -> SystemInfo {
         SystemInfo(
             device: sysctlString("hw.model") ?? "Mac",
-            processor: sysctlString("machdep.cpu.brand_string")    // Intel
-                ?? sysctlString("hw.perflevel0.name")              // Apple Silicon
-                ?? "—",
+            // На M-чипе отдаёт «Apple M… Pro». Прежний фолбэк
+            // `hw.perflevel0.name` давал имя кластера ядер («Super»), а не чипа.
+            processor: sysctlString("machdep.cpu.brand_string") ?? "—",
             memory: ByteCountFormatter.string(
                 fromByteCount: Int64(ProcessInfo.processInfo.physicalMemory),
                 countStyle: .memory)

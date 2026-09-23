@@ -143,11 +143,7 @@ actor LocalLLMEngine {
         }
 
         var modelParams = llama_model_default_params()
-        #if arch(arm64)
         modelParams.n_gpu_layers = -1     // все слои на Metal
-        #else
-        modelParams.n_gpu_layers = 0      // Intel сюда не доходит (барьер в LocalModelStore)
-        #endif
 
         guard let loaded = llama_model_load_from_file(fileURL.path, modelParams) else {
             throw LLMError.loadFailed(fileURL.lastPathComponent)

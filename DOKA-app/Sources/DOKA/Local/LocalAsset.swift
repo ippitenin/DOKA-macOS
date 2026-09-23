@@ -27,19 +27,6 @@ enum LocalAsset: Hashable {
         }
     }
 
-    /// Ресурс не работает на Intel. У диаризатора (pyannote + WeSpeaker)
-    /// гварда Apple Silicon нет ни в FluidAudio, ни в самих моделях —
-    /// на Intel он идёт через CPU. У языковой модели наоборот: x86_64-срез
-    /// официального llama.cpp собран без AVX/AVX2/FMA, и Q4_K-матмулы 4B-модели
-    /// на голом SSE — это десятки минут на получасовую запись.
-    var requiresAppleSilicon: Bool {
-        switch self {
-        case .speech(let model): return model.requiresAppleSilicon
-        case .diarizer: return false
-        case .llm: return true
-        }
-    }
-
     /// Для логов; в UI ресурсы подписываются своими строками.
     var logName: String {
         switch self {

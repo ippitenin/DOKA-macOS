@@ -256,8 +256,6 @@
 "service.local.deleteConfirmTitle" = "Удалить модель?";
 "service.local.deleteConfirmText" = "Файлы модели будут удалены с диска. Их можно скачать заново в любой момент.";
 "service.local.offlineHint" = "Распознавание идёт целиком на этом Mac: без интернета, без ключа и без оплаты. Модель скачивается один раз.";
-"service.local.intelSlow" = "На Mac с процессором Intel нет нейродвижка — распознавание будет в разы медленнее. Рекомендуем сетевой сервис.";
-"service.local.intelUnsupported" = "Parakeet работает только на Apple Silicon (M1 и новее) — на Intel эта модель недоступна.";
 "service.local.downloadIncomplete" = "Скачивание не завершилось — попробуйте ещё раз";
 
 /* Секция «История» */
@@ -672,7 +670,6 @@
 "analysis.model.status" = "Модель анализа:";
 "analysis.model.help" = "Отчёты по расшифровкам составляет языковая модель прямо на этом Mac: без интернета, без ключа и без оплаты. Модель скачивается один раз.";
 "analysis.model.footer" = "Анализ идёт офлайн на этом Mac. Модель занимает около 2,7 ГБ на диске и до 5 ГБ оперативной памяти во время работы; нужен Apple Silicon.";
-"analysis.model.intelUnsupported" = "Анализ ИИ работает только на Apple Silicon (M1 и новее) — на Intel он недоступен.";
 "analysis.model.needed" = "Чтобы анализировать записи на этом Mac, скачайте языковую модель.";
 "analysis.model.templates" = "Шаблоны анализа…";
 "analysis.auto" = "Анализировать автоматически";
