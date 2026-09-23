@@ -10,10 +10,12 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
         // Локальные модели распознавания: Whisper через WhisperKit (Argmax OSS SDK)
-        // и Parakeet V3 через FluidAudio. Обе — CoreML/ANE, macOS 14+.
-        // ВНИМАНИЕ: линия 0.18.x — последняя без бага мультиарх-сборки SPM
-        // (в 1.x два executable-продукта argmax-cli/whisperkit-cli делят один
-        // таргет ArgmaxCLI → «duplicate key found» при --arch arm64 --arch x86_64).
+        // и Parakeet V3 через FluidAudio. Обе — CoreML/ANE, macOS 15+.
+        // Линия 0.18.x — последняя без бага мультиарх-сборки SPM (в 1.x два
+        // executable-продукта argmax-cli/whisperkit-cli делят один таргет
+        // ArgmaxCLI → «duplicate key found» при --arch arm64 --arch x86_64).
+        // С отказа от Intel сборка только arm64, и эта причина пина снята:
+        // обновление возможно, но отдельно — с release-сборкой и smoke Whisper.
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", .upToNextMinor(from: "0.18.0")),
         // ТОЧНЫЙ пин, а не линия: у FluidAudio «патч» не означает патч. Между
         // 0.15.5 и 0.15.7 — 237 файлов и +28 000 строк, включая новые бэкенды
@@ -24,13 +26,15 @@ let package = Package(
         // `swift build -c release --arch arm64 --arch x86_64` ПАДАЕТ:
         //     ld: library not found for -ltext_processing_rs
         // Срез `macos-arm64_x86_64` в самом xcframework есть — ломается
-        // мультиарх-путь SwiftPM, ровно как у WhisperKit 1.x выше. А DOKA
-        // раздаётся universal, то есть 0.15.7 для нас нерабочая.
+        // мультиарх-путь SwiftPM, ровно как у WhisperKit 1.x выше. Пока DOKA
+        // раздавалась universal, 0.15.7 для нас была нерабочей; с отказа от
+        // Intel (сборка только arm64) эта причина снята, но пин остаётся до
+        // отдельного обновления со smoke Parakeet и диаризации.
         //
         // Прежний `.upToNextMinor(from: "0.15.5")` от этого не защищал: он
         // разрешает 0.15.7, и любой `swift package update` или резолв без
         // Package.resolved ломал бы релиз. Поднимать версию — только после
-        // повторной проверки ИМЕННО universal-сборкой.
+        // полной проверки: `./build.sh` и smoke локальных моделей.
         //
         // Чего мы при этом не берём (полезное в 0.15.6/0.15.7):
         //   ce9f85e — проброс отмены в воркеры офлайнового диаризатора;
@@ -62,8 +66,8 @@ let package = Package(
         // Пин на КОНКРЕТНЫЙ bNNNNN: релизы выходят по нескольку раз в день,
         // C-API меняется без semver. Обновление = новый url + checksum
         // (`swift package compute-checksum` = sha256 zip) + ./build.sh + smoke
-        // анализа. macOS-срез ОБЯЗАН быть universal (`macos-arm64_x86_64`) —
-        // build.sh это проверяет guard'ом `lipo`.
+        // анализа. macOS-срез у ggml-org — `macos-arm64_x86_64`; build.sh
+        // вырезает из него x86_64 (`lipo -thin arm64`) и проверяет результат.
         .binaryTarget(
             name: "LlamaFramework",
             url: "https://github.com/ggml-org/llama.cpp/releases/download/b10909/llama-b10909-xcframework.zip",

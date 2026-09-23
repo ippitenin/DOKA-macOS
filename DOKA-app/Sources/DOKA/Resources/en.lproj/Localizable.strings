@@ -256,8 +256,6 @@
 "service.local.deleteConfirmTitle" = "Delete the model?";
 "service.local.deleteConfirmText" = "The model files will be removed from disk. You can download them again at any time.";
 "service.local.offlineHint" = "Recognition runs entirely on this Mac: no internet, no API key, no fees. The model is downloaded once.";
-"service.local.intelSlow" = "Intel Macs have no Neural Engine — recognition will be several times slower. A network service is recommended.";
-"service.local.intelUnsupported" = "Parakeet runs only on Apple Silicon (M1 or later) — this model is unavailable on Intel.";
 "service.local.downloadIncomplete" = "The download didn’t finish — please try again";
 
 /* History section */
@@ -672,7 +670,6 @@
 "analysis.model.status" = "Analysis model:";
 "analysis.model.help" = "Reports on transcripts are written by a language model right on this Mac: no internet, no key, no billing. The model is downloaded once.";
 "analysis.model.footer" = "Analysis runs offline on this Mac. The model takes about 2.7 GB on disk and up to 5 GB of memory while it works; Apple Silicon is required.";
-"analysis.model.intelUnsupported" = "AI analysis works only on Apple Silicon (M1 and newer) — it is unavailable on Intel.";
 "analysis.model.needed" = "To analyse recordings on this Mac, download the language model.";
 "analysis.model.templates" = "Analysis templates…";
 "analysis.auto" = "Analyse automatically";

@@ -1,6 +1,6 @@
 name: Release
 
-# Собирает universal-релиз и DMG. Запускается по тегу v* или вручную.
+# Собирает релиз для Apple Silicon (arm64) и DMG. Запускается по тегу v* или вручную.
 #
 # Подпись: сертификата «DOKA Dev» на раннере нет, поэтому build.sh уходит в свою
 # ad-hoc-ветку. Для чужого Mac разницы нет — ни ad-hoc, ни самоподписанный
@@ -43,7 +43,7 @@ jobs:
       - name: Проверка встраивания llama.framework
         # Движок локального ИИ-анализа — динамический фреймворк в
         # Contents/Frameworks. Три вещи, которые ломаются молча и всплывают
-        # только при запуске у пользователя: срез не universal, потерянный
+        # только при запуске у пользователя: срез не arm64, потерянный
         # rpath и неподписанный (или «мусорный») вложенный бандл.
         run: |
           APP="$RUNNER_TEMP/out/DOKA.app"
@@ -51,8 +51,11 @@ jobs:
           test -d "$FW" || { echo "::error::llama.framework не попал в бандл"; exit 1; }
           archs="$(lipo -archs "$FW/Versions/A/llama")"
           echo "llama.framework: $archs"
-          [[ "$archs" == *arm64* && "$archs" == *x86_64* ]] \
-            || { echo "::error::llama.framework не universal: $archs"; exit 1; }
+          [[ "$archs" == "arm64" ]] \
+            || { echo "::error::llama.framework не arm64: $archs"; exit 1; }
+          bin_archs="$(lipo -archs "$APP/Contents/MacOS/DOKA")"
+          [[ "$bin_archs" == "arm64" ]] \
+            || { echo "::error::бинарник не arm64: $bin_archs"; exit 1; }
           otool -L "$APP/Contents/MacOS/DOKA" | grep "llama.framework" >/dev/null \
             || { echo "::error::бинарник не слинкован с llama.framework"; exit 1; }
           # `grep >/dev/null`, а не `grep -q`: с -q otool получает SIGPIPE,
@@ -94,8 +97,8 @@ jobs:
 
           ## Требования
 
-          macOS 15 (Sequoia) или новее. Для локальных моделей распознавания —
-          Apple Silicon (Parakeet работает только на нём, Whisper на Intel — медленно).
+          Mac с чипом Apple (M1 и новее), macOS 15 (Sequoia) или новее.
+          Mac с процессором Intel не поддерживаются.
           EOF
           gh release create "${GITHUB_REF_NAME}" DOKA.dmg \
             --draft \

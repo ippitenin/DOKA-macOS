@@ -342,24 +342,12 @@ struct HomeSectionView: View {
 
     /// Скачивание локальной модели — тот же ряд состояний, что и в разделе
     /// «Сервис»: `LocalAssetStatusView` остаётся единственным источником этого
-    /// поведения (кнопка, прогресс, отмена, удаление, барьер Intel). Название
+    /// поведения (кнопка, прогресс, отмена, удаление). Название
     /// модели идёт параметром `name` и встаёт В строку статуса на место слова
     /// «Не скачана»/«Скачана»: отдельной подписи над строкой больше нет, как и
     /// напоминания про офлайн — оно переехало в подсказку шага.
     private func localModelDetail(_ model: LocalModel) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            LocalAssetStatusView(asset: .speech(model), name: model.plainTitle)
-
-            if !LocalModel.isAppleSiliconMac {
-                Label(model.requiresAppleSilicon
-                        ? L("service.local.intelUnsupported")
-                        : L("service.local.intelSlow"),
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        LocalAssetStatusView(asset: .speech(model), name: model.plainTitle)
     }
 
     /// Пресет «своего сервиса» подсвечивает облачный вариант: ему тоже нужен ключ.

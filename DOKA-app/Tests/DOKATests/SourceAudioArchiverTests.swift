@@ -31,7 +31,7 @@ final class SourceAudioArchiverTests: XCTestCase {
             samples[i] = Int16(sin(2 * .pi * 440 * t) * 0.5 * Double(Int16.max))
         }
         let data = samples.withUnsafeBufferPointer { ptr -> Data in
-            // WAV — little-endian; на Apple Silicon и Intel нативный порядок совпадает.
+            // WAV — little-endian, как и нативный порядок arm64.
             Data(buffer: ptr)
         }
         writer.append(data)

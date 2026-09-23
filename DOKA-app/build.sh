@@ -5,8 +5,9 @@
 #           приложением и симлинком на /Applications — привычная установка
 #           перетаскиванием, как у приложений из интернета.
 #
-# Бинарник собирается универсальным (arm64 + x86_64): приложение раздаётся
-# на Mac с чипами Apple Silicon, где Intel-срез работает только через Rosetta.
+# Сборка только под Apple Silicon (arm64). Intel не поддерживается: Parakeet
+# и ИИ-анализ там не работали вовсе, а universal-сборка зажимала зависимости
+# пинами (их мультиарх-сборка ломалась) и вдвое раздувала бинарник.
 #
 # ВАЖНО: папка проекта лежит на Рабочем столе, который синхронизируется iCloud.
 # FileProvider вешает на файлы расширенные атрибуты, из-за которых codesign
@@ -28,19 +29,21 @@ for arg in "$@"; do
     esac
 done
 
-# Шейдеры панели записи: SwiftPM .metal не компилирует, а build-tool-плагин
-# ломает мультиарх-сборку — поэтому metallib собирается заранее и уезжает
-# в бандл обычным ресурсом (см. scripts/build-shaders.sh).
+# Шейдеры панели записи: SwiftPM .metal не компилирует — metallib собирается
+# заранее и уезжает в бандл обычным ресурсом (см. scripts/build-shaders.sh).
 ./scripts/build-shaders.sh
 
-echo "==> Сборка release (swift build, universal arm64 + x86_64)…"
-swift build -c release --arch arm64 --arch x86_64
+echo "==> Сборка release (swift build, arm64)…"
+swift build -c release --arch arm64
 
-# При мультиарх-сборке (--arch … --arch …) SPM кладёт продукты
-# не в .build/release, а в .build/apple/Products/Release.
-BIN=".build/apple/Products/Release/${APP_NAME}"
+# Каталог продуктов спрашиваем у самого SwiftPM: он зависит от версии
+# swift-build (.build/release, .build/out/Products/Release, …).
+PRODUCTS="$(swift build -c release --arch arm64 --show-bin-path)"
+BIN="$PRODUCTS/${APP_NAME}"
 [ -f "$BIN" ] || { echo "Бинарник не найден: $BIN"; exit 1; }
-echo "    Архитектуры: $(lipo -archs "$BIN")"
+BIN_ARCHS="$(lipo -archs "$BIN")"
+[ "$BIN_ARCHS" = "arm64" ] || { echo "Бинарник не arm64: $BIN_ARCHS"; exit 1; }
+echo "    Архитектура: $BIN_ARCHS"
 
 echo "==> Формирование бандла во временной папке…"
 STAGE="$(mktemp -d /tmp/doka-build.XXXXXX)"
@@ -64,7 +67,7 @@ for lproj in Resources/*.lproj; do
 done
 
 # Ресурсные бандлы SPM-зависимостей (KeyboardShortcuts ищет свой bundle через Bundle.module)
-for b in .build/apple/Products/Release/*.bundle; do
+for b in "$PRODUCTS"/*.bundle; do
     [ -e "$b" ] && cp -RX "$b" "$STAGE_APP/Contents/Resources/"
 done
 
@@ -77,14 +80,6 @@ done
 # (та же ловушка, что с `grep -q` ниже).
 LLAMA_FW="$(find .build/artifacts -type d -path '*macos-arm64_x86_64/llama.framework' -prune -print -quit)"
 [ -n "$LLAMA_FW" ] || { echo "Не найден llama.framework (срез macos-arm64_x86_64)"; exit 1; }
-# Срез обязан быть universal: иначе Intel-часть приложения не слинкуется и
-# сломается уже после раздачи. Гейт здесь, а не в заметках к релизу.
-LLAMA_ARCHS="$(lipo -archs "$LLAMA_FW/Versions/A/llama")"
-if [[ "$LLAMA_ARCHS" != *arm64* || "$LLAMA_ARCHS" != *x86_64* ]]; then
-    echo "llama.framework не universal ($LLAMA_ARCHS) — такой релиз llama.cpp брать нельзя"
-    exit 1
-fi
-echo "    llama.framework: $LLAMA_ARCHS"
 mkdir -p "$STAGE_APP/Contents/Frameworks"
 # -R сохраняет симлинки Versions/Current, -X не тащит iCloud-xattr.
 cp -RX "$LLAMA_FW" "$STAGE_APP/Contents/Frameworks/"
@@ -92,6 +87,17 @@ cp -RX "$LLAMA_FW" "$STAGE_APP/Contents/Frameworks/"
 # убирать вместе с целями: висячий симлинк роняет `codesign --verify --strict`.
 FW="$STAGE_APP/Contents/Frameworks/llama.framework"
 rm -rf "$FW/Versions/A/Headers" "$FW/Versions/A/Modules" "$FW/Headers" "$FW/Modules"
+# У ggml-org macOS-срез только universal: x86_64 вырезаем — он не нужен
+# (приложение только arm64) и вдвое раздувает фреймворк. Если в новом релизе
+# llama.cpp arm64 не окажется, `lipo -thin` уронит сборку сам.
+LLAMA_BIN="$FW/Versions/A/llama"
+if [[ "$(lipo -archs "$LLAMA_BIN")" != "arm64" ]]; then
+    lipo "$LLAMA_BIN" -thin arm64 -output "$LLAMA_BIN.thin"
+    mv "$LLAMA_BIN.thin" "$LLAMA_BIN"
+fi
+LLAMA_ARCHS="$(lipo -archs "$LLAMA_BIN")"
+[ "$LLAMA_ARCHS" = "arm64" ] || { echo "llama.framework не arm64: $LLAMA_ARCHS"; exit 1; }
+echo "    llama.framework: $LLAMA_ARCHS"
 
 xattr -cr "$STAGE_APP" 2>/dev/null || true
 
@@ -105,9 +111,9 @@ if ! otool -l "$STAGE_APP/Contents/MacOS/${APP_NAME}" | grep "@executable_path/.
 fi
 
 echo "==> Подпись…"
-# Вложенный фреймворк подписывается ПЕРВЫМ: у ggml-org он linker-signed
-# (x86_64-срез вовсе без подписи), и подпись приложения поверх чужой
-# не проходит `--strict`. install_name_tool выше тоже инвалидирует подпись.
+# Вложенный фреймворк подписывается ПЕРВЫМ: у ggml-org он linker-signed,
+# `lipo -thin` выше его подпись всё равно снял, и подпись приложения поверх
+# чужой не проходит `--strict`. install_name_tool выше тоже инвалидирует подпись.
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_ID"; then
     codesign --force --sign "$SIGN_ID" "$FW"
     codesign --force --deep --sign "$SIGN_ID" "$STAGE_APP"

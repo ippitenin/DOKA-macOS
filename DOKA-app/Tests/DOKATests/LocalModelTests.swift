@@ -1,15 +1,13 @@
 import XCTest
 @testable import DOKA
 
-/// Инварианты локальных ресурсов: идентификаторы сервисов, пути на диске и
-/// барьеры платформы.
+/// Инварианты локальных ресурсов: идентификаторы сервисов и пути на диске.
 ///
 /// Зачем: весь каталог `Local/` — самый свежий код в проекте и до сих пор
 /// не покрыт ничем. Здесь закрепляется то, что ломается молча и дорого:
 /// формат `providerID` (ошибка разбора = тихий уход на ПЛАТНЫЙ сервис),
 /// имя папки Parakeet (FluidAudio срезает последний компонент пути — из-за
-/// этого «Удалить модель» однажды уже была no-op) и то, какие ресурсы
-/// нельзя качать на Intel.
+/// этого «Удалить модель» однажды уже была no-op).
 final class LocalModelTests: XCTestCase {
 
     // MARK: - providerID
@@ -66,25 +64,6 @@ final class LocalModelTests: XCTestCase {
     func testOnlyWhisperIsCalledTurbo() {
         XCTAssertTrue(LocalModel.whisper.plainTitle.contains("Turbo"))
         XCTAssertFalse(LocalModel.parakeet.plainTitle.contains("Turbo"))
-    }
-
-    // MARK: - Барьер платформы
-
-    /// FluidAudio требует Apple Silicon — Parakeet на Intel не работает вовсе.
-    /// Whisper работает, просто через CPU и медленно.
-    func testOnlyParakeetRequiresAppleSilicon() {
-        XCTAssertTrue(LocalModel.parakeet.requiresAppleSilicon)
-        XCTAssertFalse(LocalModel.whisper.requiresAppleSilicon)
-    }
-
-    /// Языковая модель анализа: официальный x86_64-срез llama.cpp собран без
-    /// AVX/AVX2/FMA, поэтому она тоже только для Apple Silicon. У диаризатора
-    /// такого ограничения нет — он идёт через CPU.
-    func testAssetPlatformBarriers() {
-        XCTAssertTrue(LocalAsset.llm.requiresAppleSilicon)
-        XCTAssertFalse(LocalAsset.diarizer.requiresAppleSilicon)
-        XCTAssertTrue(LocalAsset.speech(.parakeet).requiresAppleSilicon)
-        XCTAssertFalse(LocalAsset.speech(.whisper).requiresAppleSilicon)
     }
 
     // MARK: - LocalAsset

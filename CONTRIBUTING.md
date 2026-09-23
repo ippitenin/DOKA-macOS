@@ -76,19 +76,18 @@ not on a particular translation.
   from the `DS` tokens in `UI/DesignSystem/`; glass surfaces go through `glassSurface()`.
   Do not hardcode colours or magic numbers in new UI.
 - **Dependency pins are deliberate — do not loosen them, and never commit the result of a
-  blind `swift package update`.** Each of the three pins guards the universal (arm64 +
-  x86_64) release, which only `./build.sh` exercises — `swift build` alone will not catch a
-  regression here.
-  - **WhisperKit stays on the 0.18.x line.** In 1.x two executable products share a target
-    and the universal build fails with “duplicate key found”.
-  - **FluidAudio is pinned `exact: "0.15.5"`.** Its “patch” releases are not patches: 0.15.7
-    adds a binary `NemoTextProcessing.xcframework` on which the universal build dies with
-    `ld: library not found for -ltext_processing_rs`. A version range does not protect you
-    here — that is why the pin is exact.
+  blind `swift package update`.** A bump is verified with a full `./build.sh` and a manual
+  smoke pass over the affected local models — `swift build` alone will not catch a release
+  regression.
+  - **WhisperKit stays on the 0.18.x line** and **FluidAudio is pinned `exact: "0.15.5"`.**
+    Both pins date from the universal (arm64 + x86_64) build, which newer versions broke.
+    DOKA is now built for arm64 only, so that reason is gone, but moving either one is a
+    separate change with its own smoke pass. FluidAudio’s “patch” releases are not patches
+    (0.15.5 → 0.15.7 is 237 files) — that is why its pin is exact.
   - **llama.cpp is a `binaryTarget` pinned to one release (`b10909`) by url + checksum.**
-    Upstream ships several releases a day and changes the C API without semver, and the
-    macOS slice must be `macos-arm64_x86_64`. Moving it means a new checksum, a full
-    `./build.sh` and a smoke pass over AI analysis.
+    Upstream ships several releases a day and changes the C API without semver. Its macOS
+    slice is universal; `build.sh` strips x86_64 from it. Moving it means a new checksum, a
+    full `./build.sh` and a smoke pass over AI analysis.
 
   `Package.swift` carries the full reasoning next to each pin — read it before changing one.
 - Commits follow conventional commits with a Russian description: `feat:`, `fix:`, `docs:`,
@@ -96,7 +95,7 @@ not on a particular translation.
 
 ## Reporting bugs
 
-Include your macOS version, your Mac’s chip (Apple Silicon or Intel), which recognition
+Include your macOS version, your Mac’s chip (M1, M2, …), which recognition
 service you were using, and what you expected to happen. If it involves a crash, Console
 output helps.
 

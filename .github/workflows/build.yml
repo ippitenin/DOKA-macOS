@@ -57,8 +57,7 @@ jobs:
         run: swift package resolve
 
       - name: Компиляция шейдеров
-        # SwiftPM .metal не компилирует, а build-tool-плагин SPM ломает
-        # universal-сборку — metallib собирается заранее и попадает в бандл
+        # SwiftPM .metal не компилирует — metallib собирается заранее и попадает в бандл
         # обычным ресурсом. Без этого шага swift build соберёт приложение
         # без эффектов панели «Аврора», а тест их наличия упадёт.
         run: ./scripts/build-shaders.sh

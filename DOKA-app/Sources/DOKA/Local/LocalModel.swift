@@ -59,24 +59,6 @@ enum LocalModel: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Модель не работает на Intel (FluidAudio требует Apple Silicon).
-    /// Единственный источник этого знания: и предупреждение в UI, и барьер
-    /// в `LocalModelStore.download` смотрят сюда.
-    var requiresAppleSilicon: Bool {
-        switch self {
-        case .whisper: return false
-        case .parakeet: return true
-        }
-    }
-
-    /// Архитектура текущего Mac — для гейтов моделей, требующих Apple Silicon.
-    static let isAppleSiliconMac: Bool = {
-        #if arch(arm64)
-        return true
-        #else
-        return false
-        #endif
-    }()
 
     /// Вариант в репозитории argmaxinc/whisperkit-coreml. «v20240930» — дата
     /// релиза large-v3-turbo, то есть это и есть турбо-версия (дефолт

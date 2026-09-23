@@ -171,7 +171,7 @@ inline float capsuleSDF(float2 pos, float2 size, thread float2 &normal) {
     using namespace doka;
 
     constexpr int   kDots       = 6;
-    constexpr int   kSamples    = 5;      // сэмплов аберрации (у эталона 12 — дорого для Intel)
+    constexpr int   kSamples    = 5;      // сэмплов аберрации (у эталона 12 — дорого)
     constexpr float kRing       = 0.45f;
     constexpr float kDotRadius  = 0.1f;
     constexpr float kPairOffset = 0.085f;

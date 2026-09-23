@@ -294,12 +294,6 @@ struct AnalysisPanelView: View {
             } else {
                 controlsRow
             }
-            if availability == .intelUnsupported {
-                Label(L("analysis.model.intelUnsupported"), systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
             if isCustom {
                 TextField(L("analysis.customPlaceholder"), text: $customPrompt, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
@@ -332,10 +326,6 @@ struct AnalysisPanelView: View {
                 .disabled(!canRun)
                 .help(disabledHint ?? L("analysis.run"))
         }
-        // Контрол на Intel НЕ прячем: исчезнувший контрол не отличить от
-        // несуществующей функции (та же конвенция, что у Nexara-параметров).
-        .disabled(availability == .intelUnsupported)
-        .opacity(availability == .intelUnsupported ? 0.5 : 1)
     }
 
     // MARK: - Шаблоны и язык
@@ -406,7 +396,6 @@ struct AnalysisPanelView: View {
     private var disabledHint: String? {
         switch availability {
         case .ok: return nil
-        case .intelUnsupported: return L("analysis.model.intelUnsupported")
         case .modelMissing: return L("analysis.model.needed")
         case .busyTranscribing: return L("analysis.busy.transcribing")
         case .busyOtherRecord: return L("analysis.busy.other")

@@ -276,7 +276,6 @@ struct LocalAssetStatusView: View {
                     models.download(asset)
                 }
                 .dsProminentButton()
-                .disabled(asset.requiresAppleSilicon && !LocalModel.isAppleSiliconMac)
             }
         case .downloading(let progress):
             HStack(spacing: 12) {

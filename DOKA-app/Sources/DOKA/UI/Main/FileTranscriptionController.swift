@@ -466,7 +466,7 @@ final class FileTranscriptionController: ObservableObject {
 
     /// Автоанализ сразу после распознавания. По умолчанию выключен: анализ
     /// идёт минутами и греет Mac. Гейт доступности — общий с кнопкой
-    /// «Проанализировать», поэтому без модели, на Intel и при занятом
+    /// «Проанализировать», поэтому без модели и при занятом
     /// анализе он просто не стартует и ничего не сообщает.
     private static func startAutoAnalysis(_ recordID: UUID) {
         let settings = SettingsStore.shared

@@ -1,8 +1,7 @@
 import Foundation
 import FluidAudio
 
-/// Parakeet TDT 0.6b v3 поверх FluidAudio (CoreML: ANE/CPU). Требует
-/// Apple Silicon — на Intel FluidAudio отказывает на загрузке моделей.
+/// Parakeet TDT 0.6b v3 поверх FluidAudio (CoreML: ANE/CPU).
 /// Импорт FluidAudio намеренно ограничен этим файлом.
 @MainActor
 final class ParakeetLocalEngine: LocalTranscriptionEngine {

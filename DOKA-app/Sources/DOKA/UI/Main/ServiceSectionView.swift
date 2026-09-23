@@ -114,21 +114,11 @@ struct ServiceSectionView: View {
             SettingsRow(title: L("analysis.model.status"), help: L("analysis.model.help")) {
                 LocalAssetStatusView(asset: .llm, name: LLMModelSpec.current.displayName)
             }
-            if !LocalModel.isAppleSiliconMac {
-                CardDivider()
-                Label(L("analysis.model.intelUnsupported"), systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, DS.Spacing.cardPadding)
-                    .padding(.vertical, 9)
-            }
             CardDivider()
             SettingsRow(title: L("analysis.auto"), help: L("analysis.auto.help")) {
                 Toggle("", isOn: $settings.autoAnalysis)
                     .labelsHidden()
                     .toggleStyle(.switch)
-                    .disabled(!LocalModel.isAppleSiliconMac)
             }
             if settings.autoAnalysis {
                 CardDivider()
@@ -188,25 +178,10 @@ struct ServiceSectionView: View {
 
     // MARK: - Карточка локальной модели
 
-    /// На Intel-маках нейродвижка нет: Whisper работает через CPU в разы
-    /// медленнее (предупреждаем), Parakeet не работает вовсе (блокируем;
-    /// сам барьер — в `LocalModelStore.download`, тут только презентация).
     private func localModelCard(_ model: LocalModel) -> some View {
         SettingsCard(footer: L("service.local.offlineHint")) {
             SettingsRow(title: L("service.local.status")) {
                 LocalAssetStatusView(asset: .speech(model))
-            }
-            if !LocalModel.isAppleSiliconMac {
-                CardDivider()
-                Label(model.requiresAppleSilicon
-                        ? L("service.local.intelUnsupported")
-                        : L("service.local.intelSlow"),
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, DS.Spacing.cardPadding)
-                    .padding(.vertical, 9)
             }
         }
     }
