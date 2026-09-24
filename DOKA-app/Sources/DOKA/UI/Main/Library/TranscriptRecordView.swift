@@ -292,6 +292,9 @@ struct TranscriptRecordView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Системное синее кольцо фокуса выбивается из дизайна: при полном
+            // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+            .focusEffectDisabled()
             .help(L("library.hideResult"))
         }
         .padding(.top, 4)

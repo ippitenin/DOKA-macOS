@@ -187,6 +187,11 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(autoAnalysis, forKey: Key.autoAnalysis) }
     }
 
+    /// Все шаблоны анализа в порядке списков: встроенные, затем свои.
+    var allAnalysisTemplates: [AnalysisTemplate] {
+        BuiltinAnalysisTemplate.all + analysisTemplates
+    }
+
     /// Шаблон для запуска: выбранный, если он ещё существует, иначе первый
     /// встроенный (свой шаблон могли удалить).
     var selectedAnalysisTemplate: AnalysisTemplate {

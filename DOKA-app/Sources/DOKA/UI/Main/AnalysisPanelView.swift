@@ -267,6 +267,9 @@ struct AnalysisPanelView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            // Системное синее кольцо фокуса выбивается из дизайна: при полном
+            // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+            .focusEffectDisabled()
         }
         .padding(.horizontal, DS.Spacing.cardPadding)
         .padding(.top, 10)
@@ -330,9 +333,7 @@ struct AnalysisPanelView: View {
 
     // MARK: - Шаблоны и язык
 
-    private var templates: [AnalysisTemplate] {
-        BuiltinAnalysisTemplate.all + settings.analysisTemplates
-    }
+    private var templates: [AnalysisTemplate] { settings.allAnalysisTemplates }
 
     /// Порядок пунктов: встроенные → свои → «Свой запрос» → «Шаблоны…».
     private var templateTitles: [String] {

@@ -62,6 +62,11 @@ jobs:
           # и pipefail объявляет успешный поиск неудачей.
           otool -l "$APP/Contents/MacOS/DOKA" | grep "@executable_path/../Frameworks" >/dev/null \
             || { echo "::error::потерян rpath @executable_path/../Frameworks"; exit 1; }
+          # Пометка SDK: «собранному под 15» AppKit даёт старый вид контролов
+          # и кнопок окна на macOS 26+ (build.sh переписывает её через vtool).
+          sdk="$(xcrun --sdk macosx --show-sdk-version)"
+          otool -l "$APP/Contents/MacOS/DOKA" | grep -E "^ +sdk $sdk$" >/dev/null \
+            || { echo "::error::в бинарнике не sdk $sdk — старый вид контролов"; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Проверка образа

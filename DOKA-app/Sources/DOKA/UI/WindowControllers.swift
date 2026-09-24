@@ -9,6 +9,8 @@ final class WindowManager {
 
     private let mainState = MainWindowState()
     private var mainWindow: NSWindow?
+    /// Делегат окна — держим сами: `NSWindow.delegate` слабый.
+    private let windowDelegate = MainWindowDelegate()
 
     private init() {}
 
@@ -112,6 +114,7 @@ final class WindowManager {
         window.isMovableByWindowBackground = false
         window.isReleasedWhenClosed = false
         window.contentViewController = hosting
+        window.delegate = windowDelegate
         // Размер должен быть рассчитан ДО центрирования, иначе окно
         // центрируется с нулевым размером и «вырастает» из верхней точки.
         window.setContentSize(NSSize(width: 900, height: 640))
@@ -135,5 +138,23 @@ final class WindowManager {
             x: visible.midX - size.width / 2,
             y: visible.midY - size.height / 2
         ))
+    }
+}
+
+/// Делегат главного окна: шиты встают по вертикальному центру окна.
+/// Система вешает шит сразу под тулбаром, и высокий шит упирался в нижнюю
+/// кромку, а невысокий — висел у верха. Высокий, которому по центру места
+/// не хватает, остаётся на системном месте (выше тулбара шит не уезжает).
+@MainActor
+private final class MainWindowDelegate: NSObject, NSWindowDelegate {
+    func window(_ window: NSWindow, willPositionSheet sheet: NSWindow,
+                using rect: NSRect) -> NSRect {
+        // `rect.origin.y` — кромка, от которой шит свисает вниз (координаты
+        // окна, начало снизу). По центру: верх шита на (высота + шит) / 2.
+        let height = window.contentView?.bounds.height ?? window.frame.height
+        let centeredTop = ((height + sheet.frame.height) / 2).rounded()
+        var positioned = rect
+        positioned.origin.y = min(rect.origin.y, centeredTop)
+        return positioned
     }
 }

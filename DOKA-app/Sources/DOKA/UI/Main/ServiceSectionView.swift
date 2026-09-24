@@ -42,6 +42,10 @@ struct ServiceSectionView: View {
         return settings.selectedLocalModel
     }
 
+    /// Общая ширина полей и списков страницы: сервис, адрес, модель, ключ,
+    /// шаблон автоанализа.
+    private static let fieldWidth: CGFloat = 280
+
     var body: some View {
         SettingsForm(title: L("section.service")) {
             SettingsCard(footer: showsCustomFields ? L("service.customHint") : nil) {
@@ -53,8 +57,10 @@ struct ServiceSectionView: View {
                                 get: { selectionIndex },
                                 set: { select(index: $0) }
                             ),
-                            // Названия сервисов длинные — ширина по содержимому.
-                            width: nil
+                            // Та же ширина, что у полей ключа, адреса и модели:
+                            // правые края контролов страницы на одной линии.
+                            // Длинное имя пресета обрежется многоточием.
+                            width: Self.fieldWidth
                         )
                         if let service = settings.selectedCustomService, !isAdding {
                             Button {
@@ -75,7 +81,7 @@ struct ServiceSectionView: View {
                         TextField("", text: $endpointDraft,
                                   prompt: Text("https://example.com/v1"))
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 280)
+                            .frame(width: Self.fieldWidth)
                             .onChange(of: endpointDraft) { _, _ in status = .unknown }
                     }
                     CardDivider()
@@ -83,7 +89,7 @@ struct ServiceSectionView: View {
                         TextField("", text: $modelDraft,
                                   prompt: Text(TranscriptionProvider.custom.defaultModel))
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 280)
+                            .frame(width: Self.fieldWidth)
                             .onChange(of: modelDraft) { _, _ in status = .unknown }
                     }
                 }
@@ -132,7 +138,7 @@ struct ServiceSectionView: View {
                                         guard analysisTemplates.indices.contains(index) else { return }
                                         settings.analysisTemplateID = analysisTemplates[index].id
                                     }),
-                                  width: nil)
+                                  width: Self.fieldWidth)
                 }
             }
             CardDivider()
@@ -146,9 +152,7 @@ struct ServiceSectionView: View {
         }
     }
 
-    private var analysisTemplates: [AnalysisTemplate] {
-        BuiltinAnalysisTemplate.all + settings.analysisTemplates
-    }
+    private var analysisTemplates: [AnalysisTemplate] { settings.allAnalysisTemplates }
 
     // MARK: - Карточка API-ключа (сетевые сервисы)
 
@@ -157,7 +161,7 @@ struct ServiceSectionView: View {
             SettingsRow(title: L("service.apiKey")) {
                 SecureField("", text: $apiKey)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 280)
+                    .frame(width: Self.fieldWidth)
                     .onChange(of: apiKey) { _, _ in status = .unknown }
             }
             CardDivider()

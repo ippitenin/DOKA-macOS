@@ -31,24 +31,24 @@ struct AnalysisTemplatesSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(L("analysis.templates.title"))
-                    .font(.headline)
-                Spacer()
+        ZStack {
+            AppBackground()
+            VStack(spacing: 0) {
+                header
+                HStack(alignment: .top, spacing: 16) {
+                    list
+                    editor
+                }
+                .padding(.horizontal, 24)
+                // Вместе с нижним отступом шапки (4) — ровно `topFade`: лента
+                // редактора заходит в этот зазор своей верхней маской.
+                .padding(.top, Self.topFade - 4)
+                footer
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-            .padding(.bottom, 10)
-            HStack(spacing: 0) {
-                list
-                Divider()
-                editor
-            }
-            Divider()
-            footer
         }
-        .frame(minWidth: 760, idealWidth: 820, minHeight: 520, idealHeight: 560)
+        // Ниже окна (640): шит встаёт по центру с воздухом, лента редактора
+        // и список прокручиваются сами.
+        .frame(minWidth: 780, idealWidth: 840, minHeight: 460, idealHeight: 520)
         .onAppear {
             if selectedID == nil { selectedID = mine.first?.id ?? builtins.first?.id }
         }
@@ -60,8 +60,39 @@ struct AnalysisTemplatesSheet: View {
         }
     }
 
+    /// Высота зон растворения карточек у верхней и нижней кромок редактора.
+    private static let topFade: CGFloat = 20
+    private static let bottomFade: CGFloat = 36
+
     private var deletePresented: Binding<Bool> {
         Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
+    }
+
+    // MARK: - Шапка
+
+    /// Как у «Распознать заново»: крупный заголовок, пояснение и крестик.
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L("analysis.templates.title"))
+                    .font(.title2.bold())
+                Text(L("analysis.templates.subtitle"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .help(L("common.close"))
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Список
@@ -69,26 +100,28 @@ struct AnalysisTemplatesSheet: View {
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 10) {
                     group(L("analysis.templates.builtin"), builtins, locked: true)
                     if !mine.isEmpty {
                         group(L("analysis.templates.mine"), mine, locked: false)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(8)
             }
-            Divider()
+            .scrollIndicators(.never)
             Button {
                 addTemplate()
             } label: {
                 Label(L("analysis.templates.new"), systemImage: "plus")
-                    .font(.callout)
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(DS.accent)
+            .dsGlassButton()
+            .focusEffectDisabled()
             .padding(10)
         }
-        .frame(width: 240)
+        .frame(width: 230)
+        .frame(maxHeight: .infinity)
+        .glassSurface()
     }
 
     private func group(_ title: String, _ items: [AnalysisTemplate], locked: Bool) -> some View {
@@ -96,40 +129,16 @@ struct AnalysisTemplatesSheet: View {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
+                .padding(.horizontal, 11)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
             ForEach(items) { template in
-                row(template, locked: locked)
-            }
-        }
-    }
-
-    private func row(_ template: AnalysisTemplate, locked: Bool) -> some View {
-        let isSelected = selected?.id == template.id
-        return Button {
-            select(template)
-        } label: {
-            HStack(spacing: 6) {
-                Text(template.name)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if locked {
-                    Image(systemName: "lock")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                TemplateRow(template: template, locked: locked,
+                            isSelected: selected?.id == template.id) {
+                    select(template)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
-                    .fill(isSelected ? DS.accent.opacity(0.16) : .clear)
-                    .padding(.horizontal, 8)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Редактор
@@ -140,34 +149,54 @@ struct AnalysisTemplatesSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if template.isBuiltin {
-                        Label(L("analysis.templates.builtinReadonly"), systemImage: "lock")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        readonlyNotice
                     }
-                    field(L("analysis.templates.name"), text: binding(\.name), disabled: template.isBuiltin)
-                    field(L("analysis.templates.description"), text: binding(\.description),
-                          disabled: template.isBuiltin)
-
-                    Text(L("analysis.templates.sections"))
-                        .font(.headline)
+                    SettingsCard(header: L("analysis.templates.basics")) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            field(L("analysis.templates.name"), text: binding(\.name),
+                                  locked: template.isBuiltin)
+                            field(L("analysis.templates.description"), text: binding(\.description),
+                                  locked: template.isBuiltin)
+                        }
+                        .padding(DS.Spacing.cardPadding)
+                    }
                     ForEach(Array(template.sections.enumerated()), id: \.element.id) { index, section in
-                        sectionEditor(section, at: index, locked: template.isBuiltin)
+                        sectionCard(section, at: index, count: template.sections.count,
+                                    locked: template.isBuiltin)
                     }
                     if !template.isBuiltin {
                         Button {
                             mutate { $0.sections.append(AnalysisSection(title: "", instruction: "")) }
                         } label: {
                             Label(L("analysis.templates.addSection"), systemImage: "plus")
-                                .font(.callout)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(DS.accent)
+                        .dsGlassButton()
                         .disabled(template.sections.count >= AnalysisTemplate.maxSections)
                     }
                 }
-                .padding(18)
+                // Отступы равны высоте фейдов: в покое первая карточка и в конце
+                // прокрутки последняя выходят из-под маски целиком.
+                .padding(.top, Self.topFade)
+                .padding(.bottom, Self.bottomFade)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollIndicators(.never)
+            // Карточки у обеих кромок растворяются, а не срезаются — тот же
+            // приём, что у ленты «Истории» (`HistorySectionView.topFade`).
+            .mask {
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: Self.topFade)
+                    Color.black
+                    LinearGradient(colors: [.black, .clear],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: Self.bottomFade)
+                }
+            }
+            // Лента заходит вверх в зазор под шапкой (маска — ДО отступа, чтобы
+            // лечь на полную рамку): в покое первая карточка — вровень со списком.
+            .padding(.top, -Self.topFade)
         } else {
             Text(L("analysis.templates.empty"))
                 .foregroundStyle(.secondary)
@@ -175,64 +204,101 @@ struct AnalysisTemplatesSheet: View {
         }
     }
 
-    private func field(_ title: String, text: Binding<String>, disabled: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField("", text: text)
-                .textFieldStyle(.roundedBorder)
-                .disabled(disabled)
+    /// Встроенный шаблон: вместо россыпи серых заблокированных полей —
+    /// одна плашка «только просмотр» с подсказкой, как его изменить.
+    private var readonlyNotice: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(DS.accent)
+            Text(L("analysis.templates.builtinReadonly"))
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DS.Spacing.cardPadding)
+        .padding(.vertical, 12)
+        // Лёгкий тон, а не полный акцент: Liquid Glass с непрозрачным тоном
+        // заливал плашку сплошным кораллом, и замок цвета акцента пропадал.
+        .glassSurface(tint: DS.accent.opacity(0.25))
+    }
+
+    /// Поле ввода; у встроенного шаблона — просто текст.
+    @ViewBuilder
+    private func field(_ title: String, text: Binding<String>, locked: Bool,
+                       prompt: String = "", multiline: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if !title.isEmpty {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if locked {
+                Text(text.wrappedValue.isEmpty ? "—" : text.wrappedValue)
+                    .foregroundStyle(text.wrappedValue.isEmpty ? .secondary : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if multiline {
+                TextField(prompt, text: text, axis: .vertical)
+                    .lineLimit(2...6)
+                    .dsFieldBox()
+            } else {
+                TextField(prompt, text: text)
+                    .dsFieldBox()
+            }
         }
     }
 
-    private func sectionEditor(_ section: AnalysisSection, at index: Int, locked: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                TextField(L("analysis.templates.sectionTitle"),
-                          text: sectionBinding(index, \.title))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(locked)
-                if !locked {
-                    Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
-                        .buttonStyle(.plain)
-                        .disabled(index == 0)
-                    Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
-                        .buttonStyle(.plain)
-                        .disabled(index == (selected?.sections.count ?? 0) - 1)
-                    Button { mutate { $0.sections.remove(at: index) } } label: {
-                        Image(systemName: "trash")
+    private func sectionCard(_ section: AnalysisSection, at index: Int, count: Int,
+                             locked: Bool) -> some View {
+        SettingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Text(L("analysis.templates.sectionN", index + 1))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    if !locked {
+                        iconButton("chevron.up", disabled: index == 0) { move(index, by: -1) }
+                        iconButton("chevron.down", disabled: index == count - 1) { move(index, by: 1) }
+                        iconButton("trash", disabled: false) {
+                            mutate { $0.sections.remove(at: index) }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
                 }
-            }
-            TextField(L("analysis.templates.sectionInstruction"),
-                      text: sectionBinding(index, \.instruction), axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...4)
-                .disabled(locked)
-            HStack(spacing: 10) {
-                Text(L("analysis.templates.sectionFormat"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                SettingsPopup(titles: AnalysisSectionFormat.allCases.map(\.title),
-                              selectionIndex: Binding(
-                                get: { AnalysisSectionFormat.allCases.firstIndex(of: section.format) ?? 0 },
-                                set: { value in
-                                    mutate { $0.sections[index].format = AnalysisSectionFormat.allCases[value] }
-                                }),
-                              width: 130)
-                    .disabled(locked)
-                Toggle(L("analysis.templates.cite"), isOn: sectionBinding(index, \.cite))
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .disabled(locked)
-                Spacer(minLength: 0)
-            }
-            if section.format == .table {
-                TextField(L("analysis.templates.columns"),
-                          text: Binding(
+                if locked {
+                    Text(section.title)
+                        .font(.body.weight(.semibold))
+                    Text(section.instruction)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 6) {
+                        chip(section.format.title)
+                        if section.format == .table, !section.columns.isEmpty {
+                            chip(section.columns.joined(separator: " · "))
+                        }
+                        if section.cite { chip(L("analysis.templates.cite")) }
+                    }
+                } else {
+                    field("", text: sectionBinding(index, \.title), locked: false,
+                          prompt: L("analysis.templates.sectionTitle"))
+                    field("", text: sectionBinding(index, \.instruction), locked: false,
+                          prompt: L("analysis.templates.sectionInstruction"), multiline: true)
+                    HStack(spacing: 10) {
+                        Text(L("analysis.templates.sectionFormat"))
+                            .foregroundStyle(.secondary)
+                        SettingsPopup(titles: AnalysisSectionFormat.allCases.map(\.title),
+                                      selectionIndex: Binding(
+                                        get: { AnalysisSectionFormat.allCases.firstIndex(of: section.format) ?? 0 },
+                                        set: { value in
+                                            mutate { $0.sections[index].format = AnalysisSectionFormat.allCases[value] }
+                                        }),
+                                      width: 140)
+                        Spacer(minLength: 12)
+                        Text(L("analysis.templates.cite"))
+                        SettingsSwitch(isOn: sectionBinding(index, \.cite))
+                    }
+                    if section.format == .table {
+                        field("", text: Binding(
                             get: { section.columns.joined(separator: ", ") },
                             set: { value in
                                 mutate {
@@ -241,22 +307,42 @@ struct AnalysisTemplatesSheet: View {
                                         .map { $0.trimmingCharacters(in: .whitespaces) }
                                         .filter { !$0.isEmpty }
                                 }
-                            }))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(locked)
+                            }), locked: false, prompt: L("analysis.templates.columns"))
+                    }
+                }
             }
+            .padding(DS.Spacing.cardPadding)
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
-        )
+    }
+
+    private func iconButton(_ symbol: String, disabled: Bool,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.callout)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .focusEffectDisabled()
+        .disabled(disabled)
+        .opacity(disabled ? 0.35 : 1)
+    }
+
+    private func chip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(DS.accent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule(style: .continuous).fill(DS.accent.opacity(0.14)))
     }
 
     // MARK: - Низ
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             if let template = selected {
                 Button(L("analysis.templates.duplicate")) {
                     let copy = template.duplicated()
@@ -272,18 +358,20 @@ struct AnalysisTemplatesSheet: View {
             if let error = draft?.validationError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(DS.RecorderTone.error)
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
             Button(L("common.cancel")) { dismiss() }
                 .dsGlassButton()
+                .keyboardShortcut(.cancelAction)
             Button(L("common.save")) { save() }
                 .dsProminentButton()
                 .disabled(draft == nil || draft?.validationError != nil)
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(14)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
     }
 
     // MARK: - Правка черновика
@@ -361,5 +449,54 @@ struct AnalysisTemplatesSheet: View {
                     $0.sections[index][keyPath: keyPath] = value
                 }
             })
+    }
+}
+
+/// Строка списка шаблонов — в стиле пунктов сайдбара: капсула, выбранная —
+/// коралловая пилюля с белым текстом, наведение — лёгкая подложка.
+/// `.focusEffectDisabled()` обязателен: иначе при полном доступе с клавиатуры
+/// первая строка открывалась с синим системным кольцом фокуса.
+private struct TemplateRow: View {
+    let template: AnalysisTemplate
+    let locked: Bool
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(template.name)
+                    .lineLimit(1)
+                    .foregroundStyle(isSelected ? Color.white : .primary)
+                Spacer(minLength: 4)
+                if locked {
+                    Image(systemName: "lock")
+                        .font(.caption2)
+                        .foregroundStyle(isSelected ? AnyShapeStyle(Color.white.opacity(0.8))
+                                                    : AnyShapeStyle(.tertiary))
+                }
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .background {
+            if isSelected {
+                Capsule(style: .continuous)
+                    .fill(LinearGradient(colors: [DS.accent, DS.accent.opacity(0.82)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .shadow(color: DS.accent.opacity(0.35), radius: 6, y: 2)
+            } else if hovering {
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.07))
+            }
+        }
+        .onHover { hovering = $0 }
+        .animation(reduceMotion ? nil : DS.Anim.hover, value: hovering)
     }
 }

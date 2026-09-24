@@ -424,4 +424,21 @@ final class LocalAnalysisTests: XCTestCase {
         XCTAssertEqual(TimestampLinker.seconds(from: URL(string: "doka-seek:83")!), 83)
         XCTAssertNil(TimestampLinker.seconds(from: URL(string: "https://example.com")!))
     }
+
+    // MARK: - Промпт для Nexara
+
+    /// Nexara сама подставляет расшифровку: в промпте есть разделы шаблона,
+    /// но нет ни текста расшифровки, ни просьбы ставить тайм-коды (формат её
+    /// расшифровки для модели нам неизвестен).
+    func testNexaraPromptHasSectionsButNoTranscriptOrCitations() {
+        let prompt = AnalysisPromptBuilder.nexaraPrompt(template: .sections(meeting),
+                                                        languageName: "Русский")
+        for section in meeting.sections {
+            XCTAssertTrue(prompt.contains("## \(section.title)"), section.title)
+        }
+        XCTAssertTrue(prompt.contains(L("analysis.prompt.noTimestamps")))
+        XCTAssertFalse(prompt.contains(L("analysis.prompt.cite")))
+        XCTAssertFalse(prompt.contains(L("analysis.prompt.transcriptLabel")))
+        XCTAssertTrue(prompt.contains("Русский"))
+    }
 }

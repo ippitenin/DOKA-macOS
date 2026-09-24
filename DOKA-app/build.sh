@@ -52,6 +52,26 @@ STAGE_APP="$STAGE/${APP_NAME}.app"
 mkdir -p "$STAGE_APP/Contents/MacOS" "$STAGE_APP/Contents/Resources"
 # -X: не копировать расширенные атрибуты (iCloud/FileProvider-мусор)
 cp -X "$BIN" "$STAGE_APP/Contents/MacOS/${APP_NAME}"
+
+# Версия SDK в заголовке бинарника (LC_BUILD_VERSION). SwiftPM пишет туда
+# sdk = deployment target (15.0), хотя собирает SDK Xcode. AppKit по этой
+# пометке решает, давать ли приложению новый дизайн: «собранному под 15» на
+# macOS 26/27 достаются СТАРЫЕ кнопки окна, тумблеры, списки и ползунки.
+# Переписываем sdk на фактический; minos остаётся минимальной системой —
+# та же константа, что у шейдеров (обязана совпадать с Package.swift).
+MIN_MACOS="$(sed -n 's/^MIN_MACOS=//p' scripts/build-shaders.sh)"
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+APP_BIN="$STAGE_APP/Contents/MacOS/${APP_NAME}"
+vtool -set-build-version macos "$MIN_MACOS" "$SDK_VERSION" -replace \
+    -output "$APP_BIN.sdk" "$APP_BIN"
+mv "$APP_BIN.sdk" "$APP_BIN"
+# `grep >/dev/null`, а не `grep -q`: с -q otool получает SIGPIPE, и под
+# pipefail проверка давала бы ложный отрицательный ответ.
+if ! otool -l "$APP_BIN" | grep -E "^ +sdk $SDK_VERSION$" >/dev/null; then
+    echo "Версия SDK в бинарнике не $SDK_VERSION — приложение получит старый вид контролов"
+    exit 1
+fi
+echo "    SDK: $SDK_VERSION, минимум macOS $MIN_MACOS"
 cp -X "Resources/Info.plist" "$STAGE_APP/Contents/Info.plist"
 
 # Иконка приложения (Finder/Get Info/Spotlight; в Dock не светится — accessory).

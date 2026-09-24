@@ -59,6 +59,14 @@ enum AnalysisPromptBuilder {
                 LLMMessage(role: .user, content: user)]
     }
 
+    /// Промпт анализа для Nexara (`prompt` в запросе распознавания). Текста
+    /// расшифровки в нём нет — его подставляет сам сервер. Тайм-коды не
+    /// просим: в каком виде расшифровка доходит до модели Nexara, мы не знаем,
+    /// и выдуманные тайм-коды повели бы плеер в никуда.
+    static func nexaraPrompt(template: AnalysisTemplateBody, languageName: String) -> String {
+        system(languageName: languageName) + "\n\n" + task(template, hasTimestamps: false)
+    }
+
     /// Конспект одной части — вход шага reduce.
     struct NotePart: Equatable {
         let index: Int

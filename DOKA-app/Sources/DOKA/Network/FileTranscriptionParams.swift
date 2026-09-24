@@ -22,7 +22,13 @@ struct FileTranscriptionParams: Codable, Equatable {
     var rolesMode: String             // RolesMode.rawValue
     var rolesText: String
     var llmPreset: String             // LLMAnalysisPreset.rawValue
-    var llmCustomPrompt: String
+    var llmCustomPrompt: String       // при llmPreset == template — снимок собранного промпта шаблона
+    var llmTemplateID: String? = nil  // id шаблона анализа (llmPreset == template)
+    var llmTemplateTitle: String? = nil  // имя шаблона на момент запуска — заголовок анализа
+    /// Анализ на этом Mac (локальная модель после распознавания), а не LLM
+    /// Nexara в том же запросе. В облако расшифровка уходит только по явному
+    /// выбору; у записей до появления флага — false (они и были облачными).
+    var llmLocal: Bool = false
 }
 
 // MARK: - Гейты сервиса
@@ -99,12 +105,13 @@ extension FileTranscriptionParams {
     /// контекстная подсказка Whisper, LLM-инструкция там молча исказила бы
     /// транскрипцию.
     var effectiveLLMPrompt: String? {
-        guard isBuiltin else { return nil }
+        // Локальный анализ — в Nexara не уходит ни слова инструкции.
+        guard isBuiltin, !llmLocal else { return nil }
         let preset = llmPresetValue
         switch preset {
         case .off:
             return nil
-        case .custom:
+        case .custom, .template:
             let trimmed = llmCustomPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         case .meetingMinutes, .summary, .actionItems:
@@ -136,7 +143,58 @@ extension FileTranscriptionParams {
         var copy = self
         copy.llmPreset = LLMAnalysisPreset.off.rawValue
         copy.llmCustomPrompt = ""
+        copy.llmTemplateID = nil
+        copy.llmTemplateTitle = nil
+        copy.llmLocal = false
         return copy
+    }
+
+    /// Поля анализа ИИ в снимке страницы.
+    struct LLMFields: Equatable {
+        var preset: LLMAnalysisPreset
+        var prompt: String
+        var templateID: String?
+        var templateTitle: String?
+    }
+
+    /// Собирает поля анализа из выбора на странице. `template` — выбранный
+    /// шаблон, если он ещё существует (nil при `preset == .template` значит
+    /// «шаблон удалили, пока он был выбран» — анализ выключается, а не уходит
+    /// с пустым промптом). Локальный анализ идёт по самому шаблону (id),
+    /// облачный — СНИМКОМ промпта: «Повторить» отправит ровно его, даже если
+    /// шаблон потом изменят или удалят.
+    static func llmFields(preset: LLMAnalysisPreset,
+                          customPrompt: String,
+                          template: AnalysisTemplate?,
+                          local: Bool,
+                          languageName: String) -> LLMFields {
+        guard preset == .template else {
+            return LLMFields(preset: preset, prompt: customPrompt)
+        }
+        guard let template else { return LLMFields(preset: .off, prompt: "") }
+        let prompt = local ? "" : AnalysisPromptBuilder.nexaraPrompt(template: .sections(template),
+                                                                     languageName: languageName)
+        return LLMFields(preset: .template, prompt: prompt,
+                         templateID: template.id, templateTitle: template.name)
+    }
+
+    /// Что просить у локальной модели после распознавания; nil — локальный
+    /// анализ не заказан (выключен, облачный или шаблон с тех пор удалили).
+    /// Шаблоны передаются снаружи: они живут в `SettingsStore` (@MainActor),
+    /// а параметры — чистое значение.
+    func localAnalysisKind(templates: [AnalysisTemplate]) -> AnalysisController.Request.Kind? {
+        guard llmLocal else { return nil }
+        switch llmPresetValue {
+        case .template:
+            guard let id = llmTemplateID,
+                  let template = templates.first(where: { $0.id == id }) else { return nil }
+            return .template(template)
+        case .custom:
+            let trimmed = llmCustomPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : .custom(trimmed)
+        case .off, .meetingMinutes, .summary, .actionItems:
+            return nil
+        }
     }
 }
 
@@ -160,5 +218,8 @@ extension FileTranscriptionParams {
         llmPreset = try c.decodeIfPresent(String.self, forKey: .llmPreset)
             ?? LLMAnalysisPreset.off.rawValue
         llmCustomPrompt = try c.decodeIfPresent(String.self, forKey: .llmCustomPrompt) ?? ""
+        llmTemplateID = try c.decodeIfPresent(String.self, forKey: .llmTemplateID)
+        llmTemplateTitle = try c.decodeIfPresent(String.self, forKey: .llmTemplateTitle)
+        llmLocal = try c.decodeIfPresent(Bool.self, forKey: .llmLocal) ?? false
     }
 }

@@ -74,6 +74,9 @@ struct RetranscribeSheet: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            // Системное синее кольцо фокуса выбивается из дизайна: при полном
+            // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+            .focusEffectDisabled()
             .help(L("common.close"))
         }
         .padding(.horizontal, 24)
