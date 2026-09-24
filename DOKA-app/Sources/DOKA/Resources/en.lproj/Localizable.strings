@@ -231,11 +231,16 @@
 
 /* Dictionary section */
 "dictionary.subtitle" = "Replacements are applied to the transcribed text before pasting. A rule matches whole words.";
-"dictionary.insideWords" = "Inside words";
+"dictionary.insideWords" = "Match inside words";
 "dictionary.insideWords.help" = "Match the pattern inside words too — for example, “ё” → “е”. By default a rule matches whole words only: “doc” won’t touch “document”.";
-"dictionary.empty" = "No rules yet. Add a replacement with the “+” button — for example, “doka” → “DOKA”.";
+"dictionary.empty" = "No rules yet. Click “Add rule” — for example, “doka” → “DOKA”.";
 "dictionary.from" = "Text to replace";
 "dictionary.to" = "Replacement";
+"dictionary.add" = "Add rule";
+"dictionary.delete" = "Delete rule";
+"dictionary.insideWords.badge" = "in words";
+"dictionary.more" = "Actions";
+"dictionary.enabled" = "Rule enabled";
 
 /* Service section */
 "service.provider" = "Transcription service:";
@@ -349,7 +354,7 @@
 "transcribe.diarize.model" = "Speaker model:";
 "transcribe.diarize.modelMissing" = "The speaker separation model is not downloaded yet — wait for the download to finish or turn separation off.";
 "transcribe.diarize.progress" = "Separating speakers… %d%%";
-"transcribe.builtinOnly" = "“Recording type”, “Roles” and “AI analysis” work only with the built-in service.";
+"transcribe.builtinOnly" = "“Recording type”, “Roles” and analysis in the Nexara cloud work only with the built-in service.";
 "transcribe.numSpeakers" = "Speakers";
 "transcribe.numSpeakers.auto" = "Auto";
 "transcribe.diarizeSetting" = "Recording type";
@@ -392,12 +397,18 @@
 "transcribe.edits.resetAll.message" = "Text, speakers and their names will return to the recognition result.";
 "transcribe.edits.resetAll.confirm" = "Reset";
 "transcribe.llm" = "AI analysis:";
-"transcribe.llm.help" = "A language model processes the transcript within the same request: meeting minutes, a brief summary, an action-item list — or your own prompt. Billed additionally per token. Available only with the Nexara service.";
+"transcribe.llm.help" = "A report on the transcript — using a template from “Analysis templates” (the Service section), including your own, or your own prompt. “On this Mac” — a local model analyzes it after transcription: free, the transcript never leaves the Mac. “In the cloud” — the Nexara language model within the same request, billed additionally per token; available only with the Nexara service.";
+"transcribe.llm.where" = "Where to analyze:";
+"transcribe.llm.where.local" = "On this Mac";
+"transcribe.llm.where.cloud" = "In the cloud";
+"transcribe.llm.model" = "Analysis model:";
+"transcribe.llm.cloudNote" = "The transcript will be sent to the Nexara language model; analysis is billed separately.";
 "transcribe.llm.preset.off" = "Off";
 "transcribe.llm.preset.meetingMinutes" = "Meeting minutes";
 "transcribe.llm.preset.summary" = "Brief summary";
 "transcribe.llm.preset.actionItems" = "Action items";
 "transcribe.llm.preset.custom" = "Custom prompt";
+"transcribe.llm.preset.template" = "Template";
 "transcribe.llm.customPlaceholder" = "What to do with the transcript…";
 "transcribe.llm.prompt.meetingMinutes" = "Compose meeting minutes from the transcript: participants, topics discussed, decisions made, and next steps with owners if mentioned. Format as titled sections. Answer in English.";
 "transcribe.llm.prompt.summary" = "Summarize the conversation in 3–5 sentences: the gist, key points, the outcome. Answer in English.";
@@ -679,6 +690,9 @@
 
 /* Analysis templates: list */
 "analysis.templates.title" = "Analysis templates";
+"analysis.templates.subtitle" = "The structure of the report written by on-device AI analysis";
+"analysis.templates.basics" = "General";
+"analysis.templates.sectionN" = "Section %ld";
 "analysis.templates.builtin" = "Built-in";
 "analysis.templates.mine" = "Mine";
 "analysis.templates.new" = "New template";
@@ -689,12 +703,11 @@
 "analysis.templates.deleteConfirm" = "The template will be deleted. Analyses already written stay where they are.";
 "analysis.templates.name" = "Name";
 "analysis.templates.description" = "Description";
-"analysis.templates.sections" = "Sections";
 "analysis.templates.addSection" = "Add section";
 "analysis.templates.sectionTitle" = "Section title";
 "analysis.templates.sectionInstruction" = "What goes in this section";
 "analysis.templates.sectionFormat" = "Format";
 "analysis.templates.columns" = "Columns, comma-separated";
 "analysis.templates.cite" = "Timestamps";
-"analysis.templates.builtinReadonly" = "A built-in template cannot be changed — make a copy.";
+"analysis.templates.builtinReadonly" = "Built-in templates are read-only. Click “Duplicate” to edit a copy.";
 "analysis.templates.empty" = "Select a template on the left";

@@ -173,10 +173,15 @@ final class TranscriptHistoryStore: ObservableObject {
         guard let record = record(id) else { return nil }
         var analyses: [StoredAnalysis] = []
         if let llm = result.llmOutput, !llm.isEmpty {
-            let preset = record.params?.llmPresetValue
+            let params = record.params
+            let preset = params?.llmPresetValue
+            // Анализ по шаблону называется именем шаблона на момент запуска.
+            let isTemplate = preset == .template
+            let title = isTemplate ? params?.llmTemplateTitle : preset?.title
+            let templateID = isTemplate ? params?.llmTemplateID : preset.map { "nexara.\($0.rawValue)" }
             analyses.append(StoredAnalysis(
-                title: preset.map(\.title) ?? L("analysis.source.nexaraTitle"),
-                templateID: preset.map { "nexara.\($0.rawValue)" },
+                title: title ?? L("analysis.source.nexaraTitle"),
+                templateID: templateID,
                 source: .nexara, markdown: llm))
         }
         let body = TranscriptBody(transcript: StoredTranscript(result).withoutLLMOutput,

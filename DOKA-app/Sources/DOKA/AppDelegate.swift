@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// уведомлению при незапущенном приложении может не дойти; события добора
     /// (resumePendingJobs в didFinishLaunching) тоже должны застать подписку.
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // До первого поля поиска: рекордеры сочетаний создаются позже.
+        CenteredSearchFieldCell.install()
         FileTranscriptionNotifier.shared.install()
     }
 

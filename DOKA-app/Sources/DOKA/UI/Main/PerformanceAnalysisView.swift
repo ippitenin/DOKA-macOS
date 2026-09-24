@@ -26,7 +26,9 @@ struct PerformanceAnalysisView: View {
                 }
             }
         }
-        .frame(minWidth: 560, minHeight: 580)
+        // Ниже окна (640): шит встаёт по центру с воздухом сверху и снизу,
+        // контент и так прокручивается.
+        .frame(minWidth: 560, idealWidth: 600, minHeight: 420, idealHeight: 500)
     }
 
     private var header: some View {
@@ -39,6 +41,9 @@ struct PerformanceAnalysisView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            // Системное синее кольцо фокуса выбивается из дизайна: при полном
+            // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+            .focusEffectDisabled()
             .help(L("common.close"))
         }
         .padding(.horizontal, 24)
@@ -167,7 +172,10 @@ private struct PerfGroupCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            CardDivider()
+            // Не `CardDivider`: у него свой боковой отступ под строки без
+            // паддинга, а карточка уже с `cardPadding` — линия выходила уже
+            // текста. Здесь — во всю ширину содержимого, вид тот же.
+            Divider().opacity(0.5)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(formatMultiplier(group.fasterThanRealtime))
                     .font(.system(size: 30, weight: .bold))

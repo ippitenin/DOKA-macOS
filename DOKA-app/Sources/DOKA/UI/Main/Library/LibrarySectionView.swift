@@ -155,6 +155,9 @@ struct LibraryListView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Системное синее кольцо фокуса выбивается из дизайна: при полном
+            // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+            .focusEffectDisabled()
             .help(L("library.retentionNotice.dismiss"))
         }
         .padding(DS.Spacing.cardPadding)
@@ -177,6 +180,9 @@ struct LibraryListView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                // Системное синее кольцо фокуса выбивается из дизайна: при полном
+                // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+                .focusEffectDisabled()
                 .help(L("library.search.clear"))
             }
         }

@@ -14,8 +14,11 @@ struct HistorySectionView: View {
     @State private var confirmClearAll = false
     @State private var pendingDeleteOne: TranscriptionRecord?
     @State private var confirmDeleteBatch = false
-    @State private var showAnalyze = false
-    @State private var analyzeRecords: [TranscriptionRecord] = []
+    /// Запрос шита «Анализ производительности»: записи едут ВМЕСТЕ с фактом
+    /// показа (`.sheet(item:)`). Прежняя пара `@State`-массив + флаг в
+    /// `.sheet(isPresented:)` отдавала шиту старый (пустой) массив — нули,
+    /// пока вью не перерисуется чем-нибудь ещё.
+    @State private var performanceRequest: PerformanceRequest?
 
     private var filtered: [TranscriptionRecord] {
         guard !search.isEmpty else { return history.records }
@@ -42,8 +45,8 @@ struct HistorySectionView: View {
         .animation(DS.Anim.section, value: inspectorRecord?.id)
         .animation(DS.Anim.control, value: selection.isEmpty)
         .onDisappear { player.stop() }
-        .sheet(isPresented: $showAnalyze) {
-            PerformanceAnalysisView(records: analyzeRecords)
+        .sheet(item: $performanceRequest) { request in
+            PerformanceAnalysisView(records: request.records)
         }
     }
 
@@ -133,6 +136,11 @@ struct HistorySectionView: View {
 
     /// Высота зоны растворения карточек у верхней кромки ленты.
     private static let topFade: CGFloat = 28
+    /// Высота нижней зоны растворения, пока видна плашка мультивыбора:
+    /// плашка с отступами (~64) и ещё столько же выше неё: растворение
+    /// начинается заметно раньше плашки (96 по просьбе пользователя было
+    /// «низковато»), карточки уходят под неё в прозрачность.
+    private static let bottomFade: CGFloat = 150
 
     /// Лента карточек тянется до самой нижней кромки окна (обрезка краем окна,
     /// а не «в воздухе»), а сверху при прокрутке карточки плавно растворяются
@@ -159,7 +167,9 @@ struct HistorySectionView: View {
                 }
             }
             .padding(.top, Self.topFade)
-            .padding(.bottom, selection.isEmpty ? 20 : 76)
+            // С плашкой — на высоту фейда: последняя карточка прокручивается
+            // из-под него целиком.
+            .padding(.bottom, selection.isEmpty ? 20 : Self.bottomFade)
         }
         .scrollContentBackground(.hidden)
         // Overlay-скроллер macOS ездит поверх карточек — по просьбе пользователя
@@ -172,8 +182,23 @@ struct HistorySectionView: View {
                                startPoint: .top, endPoint: .bottom)
                     .frame(height: Self.topFade)
                 Color.black
+                // Снизу фейд только под плашкой выбора; без неё лента, как и
+                // задумано, обрезается кромкой окна.
+                // Спад не линейный, подобран с пользователем: у верха плашки
+                // (нижние ~64 из 150) контент виден примерно на 20%. Линейный
+                // (~43%) просвечивал слишком сильно, полное скрытие (0%) —
+                // «вообще ничего не видно».
+                LinearGradient(stops: [
+                    .init(color: .black, location: 0),
+                    .init(color: .black.opacity(0.7), location: 0.3),
+                    .init(color: .black.opacity(0.22), location: 0.57),
+                    .init(color: .black.opacity(0.06), location: 0.8),
+                    .init(color: .clear, location: 1)
+                ], startPoint: .top, endPoint: .bottom)
+                    .frame(height: selection.isEmpty ? 0 : Self.bottomFade)
             }
         }
+        .animation(DS.Anim.section, value: selection.isEmpty)
     }
 
     private var emptyState: some View {
@@ -193,57 +218,78 @@ struct HistorySectionView: View {
 
     // MARK: - Панель мультивыбора
 
+    /// Плашка мультивыбора: слева — что выбрано, справа — группа из трёх
+    /// одинаковых круглых кнопок вплотную. Раньше все пять элементов стояли
+    /// с одним шагом, и группировки не читалось.
     private var multiSelectBar: some View {
-        HStack(spacing: 12) {
-            Text(L("history.multi.count", selection.count))
-                .font(.callout.weight(.medium))
-                .monospacedDigit()
-            Spacer(minLength: 8)
-            Button(allVisibleSelected ? L("history.multi.deselectAll") : L("history.multi.selectAll")) {
-                if allVisibleSelected { selection.removeAll() }
-                else { selection = Set(filtered.map(\.id)) }
+        HStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text(L("history.multi.count", selection.count))
+                    .font(.callout.weight(.medium))
+                    .monospacedDigit()
+                Button(allVisibleSelected ? L("history.multi.deselectAll") : L("history.multi.selectAll")) {
+                    if allVisibleSelected { selection.removeAll() }
+                    else { selection = Set(filtered.map(\.id)) }
+                }
+                .buttonStyle(.plain)
+                .font(.callout)
+                .foregroundStyle(DS.accent)
             }
-            .buttonStyle(.plain)
-            .font(.callout)
-            .foregroundStyle(DS.accent)
+            Spacer(minLength: 28)
+            HStack(spacing: 6) {
+                Menu {
+                    Button(L("history.export.csv")) { exportCSV() }
+                    Button(L("history.export.txt")) { exportCombinedTxt() }
+                } label: {
+                    barIcon("square.and.arrow.down")
+                }
+                // `.button` + `.plain`, а не `.borderlessButton`: тот рисует лейбл
+                // по размеру символа и игнорирует его рамку — кнопка экспорта
+                // выходила мельче соседних.
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .glassCapsule(interactive: true)
+                .help(L("history.multi.export"))
 
-            Menu {
-                Button(L("history.export.csv")) { exportCSV() }
-                Button(L("history.export.txt")) { exportCombinedTxt() }
-            } label: {
-                Image(systemName: "square.and.arrow.down")
-                    .frame(width: 30, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .glassCapsule(interactive: true)
-            .help(L("history.multi.export"))
-
-            barIconButton("chart.bar.xaxis", help: L("history.multi.analyze")) {
-                analyzeRecords = selectedRecords
-                showAnalyze = true
-            }
-            barIconButton("trash", help: L("history.multi.delete"), tint: .red) {
-                confirmDeleteBatch = true
+                barIconButton("chart.bar.doc.horizontal", help: L("history.multi.analyze")) {
+                    performanceRequest = PerformanceRequest(records: selectedRecords)
+                }
+                barIconButton("trash", help: L("history.multi.delete"), tint: .red) {
+                    confirmDeleteBatch = true
+                }
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        // Чуть шире содержимого, чтобы между группами был воздух, и по
+        // центру, а не на всю ширину ленты.
+        .frame(minWidth: 460)
+        .fixedSize(horizontal: true, vertical: false)
         .glassSurface(shadow: true)
         .padding(.horizontal, 24)
         .padding(.bottom, 14)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
+    /// Лейбл круглой кнопки плашки — общий у всех трёх (у экспорта он внутри
+    /// `Menu`): один размер круга, один вес и стиль символа (контурный).
+    /// Цвет нейтральный: оранжевым в плашке остаётся только «Выбрать всё»,
+    /// красным — деструктивная корзина.
+    private func barIcon(_ symbol: String, tint: Color = .primary) -> some View {
+        Image(systemName: symbol)
+            .symbolVariant(.none)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(tint)
+            .frame(width: 32, height: 32)
+            .contentShape(Circle())
+    }
+
     private func barIconButton(_ symbol: String, help: String,
-                               tint: Color = DS.accent, action: @escaping () -> Void) -> some View {
+                               tint: Color = .primary, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .foregroundStyle(tint)
-                .frame(width: 30, height: 28)
-                .contentShape(Rectangle())
+            barIcon(symbol, tint: tint)
         }
         .buttonStyle(.plain)
         .glassCapsule(interactive: true)
@@ -546,6 +592,9 @@ private struct HistoryDetailInspector: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                // Системное синее кольцо фокуса выбивается из дизайна: при полном
+                // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+                .focusEffectDisabled()
                 .help(L("common.close"))
             }
 
@@ -595,3 +644,10 @@ private struct HistoryDetailInspector: View {
     }
 }
 
+
+/// Записи для шита «Анализ производительности» — идентифицируемый снимок
+/// для `.sheet(item:)`.
+private struct PerformanceRequest: Identifiable {
+    let id = UUID()
+    let records: [TranscriptionRecord]
+}

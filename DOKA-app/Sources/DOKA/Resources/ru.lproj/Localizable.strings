@@ -231,11 +231,16 @@
 
 /* Секция «Словарь» */
 "dictionary.subtitle" = "Замены применяются к распознанному тексту перед вставкой. Правило срабатывает на целое слово.";
-"dictionary.insideWords" = "Внутри слов";
+"dictionary.insideWords" = "Искать внутри слов";
 "dictionary.insideWords.help" = "Искать шаблон и внутри слов — например, «ё» → «е». По умолчанию правило срабатывает только на целое слово: «дока» не заденет «документ».";
-"dictionary.empty" = "Правил пока нет. Добавьте замену кнопкой «+» — например, «дока» → «DOKA».";
+"dictionary.empty" = "Правил пока нет. Нажмите «Добавить правило» — например, «дока» → «DOKA».";
 "dictionary.from" = "Что заменить";
 "dictionary.to" = "На что";
+"dictionary.add" = "Добавить правило";
+"dictionary.delete" = "Удалить правило";
+"dictionary.insideWords.badge" = "в словах";
+"dictionary.more" = "Действия";
+"dictionary.enabled" = "Правило включено";
 
 /* Секция «Сервис» */
 "service.provider" = "Сервис распознавания:";
@@ -349,7 +354,7 @@
 "transcribe.diarize.model" = "Модель разделения:";
 "transcribe.diarize.modelMissing" = "Модель разделения по спикерам ещё не скачана — дождитесь загрузки или выключите разделение.";
 "transcribe.diarize.progress" = "Разделение по спикерам… %d %%";
-"transcribe.builtinOnly" = "«Тип записи», «Роли» и «Анализ ИИ» работают только со встроенным сервисом.";
+"transcribe.builtinOnly" = "«Тип записи», «Роли» и анализ в облаке Nexara работают только со встроенным сервисом.";
 "transcribe.numSpeakers" = "Спикеры";
 "transcribe.numSpeakers.auto" = "Авто";
 "transcribe.diarizeSetting" = "Тип записи";
@@ -392,12 +397,18 @@
 "transcribe.edits.resetAll.message" = "Текст, спикеры и их имена вернутся к результату распознавания.";
 "transcribe.edits.resetAll.confirm" = "Сбросить";
 "transcribe.llm" = "Анализ ИИ:";
-"transcribe.llm.help" = "Языковая модель обработает расшифровку прямо в этом же запросе: протокол встречи, краткое резюме, список задач — либо свой запрос. Оплачивается дополнительно по токенам. Работает только с сервисом Nexara.";
+"transcribe.llm.help" = "Отчёт по расшифровке — по шаблону из «Шаблонов анализа» (раздел «Сервис»), включая свои, или по своему запросу. «На этом Mac» — анализ делает локальная модель после распознавания: бесплатно, расшифровка никуда не уходит. «В облаке» — языковая модель Nexara в том же запросе, оплачивается дополнительно по токенам; доступно только с сервисом Nexara.";
+"transcribe.llm.where" = "Где анализировать:";
+"transcribe.llm.where.local" = "На этом Mac";
+"transcribe.llm.where.cloud" = "В облаке";
+"transcribe.llm.model" = "Модель анализа:";
+"transcribe.llm.cloudNote" = "Расшифровка будет отправлена языковой модели Nexara; анализ оплачивается отдельно.";
 "transcribe.llm.preset.off" = "Выкл";
 "transcribe.llm.preset.meetingMinutes" = "Протокол встречи";
 "transcribe.llm.preset.summary" = "Краткое резюме";
 "transcribe.llm.preset.actionItems" = "Список задач";
 "transcribe.llm.preset.custom" = "Свой запрос";
+"transcribe.llm.preset.template" = "Шаблон";
 "transcribe.llm.customPlaceholder" = "Что сделать с расшифровкой…";
 "transcribe.llm.prompt.meetingMinutes" = "Составь протокол встречи по расшифровке: участники, обсуждённые темы, принятые решения и следующие шаги с ответственными, если они названы. Оформи разделами с заголовками. Отвечай на русском.";
 "transcribe.llm.prompt.summary" = "Сделай краткое резюме разговора в 3–5 предложениях: суть, ключевые моменты, итог. Отвечай на русском.";
@@ -679,6 +690,9 @@
 
 /* Шаблоны анализа: список */
 "analysis.templates.title" = "Шаблоны анализа";
+"analysis.templates.subtitle" = "Структура отчёта, который пишет ИИ-анализ на этом Mac";
+"analysis.templates.basics" = "Основное";
+"analysis.templates.sectionN" = "Раздел %ld";
 "analysis.templates.builtin" = "Встроенные";
 "analysis.templates.mine" = "Мои";
 "analysis.templates.new" = "Новый шаблон";
@@ -689,12 +703,11 @@
 "analysis.templates.deleteConfirm" = "Шаблон будет удалён. Уже готовые анализы останутся на месте.";
 "analysis.templates.name" = "Название";
 "analysis.templates.description" = "Описание";
-"analysis.templates.sections" = "Разделы";
 "analysis.templates.addSection" = "Добавить раздел";
 "analysis.templates.sectionTitle" = "Название раздела";
 "analysis.templates.sectionInstruction" = "Что писать в этом разделе";
 "analysis.templates.sectionFormat" = "Формат";
 "analysis.templates.columns" = "Колонки через запятую";
 "analysis.templates.cite" = "Тайм-коды";
-"analysis.templates.builtinReadonly" = "Встроенный шаблон нельзя изменить — сделайте копию.";
+"analysis.templates.builtinReadonly" = "Встроенный шаблон только для просмотра. Нажмите «Сделать копию», чтобы изменить его.";
 "analysis.templates.empty" = "Выберите шаблон слева";

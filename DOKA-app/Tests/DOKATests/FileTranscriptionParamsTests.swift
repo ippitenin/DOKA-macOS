@@ -66,6 +66,75 @@ final class FileTranscriptionParamsTests: XCTestCase {
         XCTAssertFalse(params.usesLocalDiarization)
     }
 
+    /// Анализ по шаблону уходит СНИМКОМ промпта: «Повторить» отправит ровно
+    /// его, даже если шаблон потом изменят или удалят.
+    func testTemplatePromptIsSnapshot() {
+        var params = make(llmPreset: LLMAnalysisPreset.template.rawValue,
+                          llmCustomPrompt: "  Снимок промпта шаблона \n")
+        params.llmTemplateID = "builtin.summary"
+        params.llmTemplateTitle = "Краткое резюме"
+        XCTAssertEqual(params.effectiveLLMPrompt, "Снимок промпта шаблона")
+        XCTAssertEqual(params.makeOptions(detail: .medium).llmPrompt, "Снимок промпта шаблона")
+
+        // Не Nexara — промпт не уходит: у OpenAI-совместимых API это подсказка Whisper.
+        params.providerID = customID
+        XCTAssertNil(params.effectiveLLMPrompt)
+
+        // «Распознать заново» — без анализа и без следов шаблона.
+        let stripped = make(llmPreset: LLMAnalysisPreset.template.rawValue,
+                            llmCustomPrompt: "x").withoutLLM()
+        XCTAssertNil(stripped.effectiveLLMPrompt)
+        XCTAssertNil(stripped.llmTemplateID)
+        XCTAssertNil(stripped.llmTemplateTitle)
+    }
+
+    /// «На этом Mac»: в Nexara не уходит ни слова инструкции, даже на
+    /// встроенном сервисе, — анализ сделает локальная модель после распознавания.
+    func testLocalAnalysisSendsNoPrompt() {
+        var params = make(llmPreset: LLMAnalysisPreset.custom.rawValue,
+                          llmCustomPrompt: "Сделай выжимку")
+        params.llmLocal = true
+        XCTAssertTrue(params.isBuiltin)
+        XCTAssertNil(params.effectiveLLMPrompt)
+        XCTAssertNil(params.makeOptions(detail: .medium).llmPrompt)
+        XCTAssertEqual(params.localAnalysisKind(templates: []), .custom("Сделай выжимку"))
+        XCTAssertFalse(params.withoutLLM().llmLocal)
+    }
+
+    func testLocalAnalysisKindResolvesTemplate() {
+        let templates = BuiltinAnalysisTemplate.all
+        let chapters = BuiltinAnalysisTemplate.chapters.template
+        var params = make(llmPreset: LLMAnalysisPreset.template.rawValue)
+        params.llmTemplateID = chapters.id
+        params.llmLocal = true
+        XCTAssertEqual(params.localAnalysisKind(templates: templates), .template(chapters))
+
+        // Шаблон удалили — анализ не заказан, а не «какой-нибудь другой».
+        params.llmTemplateID = "deleted-template"
+        XCTAssertNil(params.localAnalysisKind(templates: templates))
+
+        // Облачный анализ локальную модель не запускает.
+        params.llmTemplateID = chapters.id
+        params.llmLocal = false
+        XCTAssertNil(params.localAnalysisKind(templates: templates))
+
+        // Пустой свой запрос и «Выкл» — тоже ничего.
+        var blank = make(llmPreset: LLMAnalysisPreset.custom.rawValue, llmCustomPrompt: "  ")
+        blank.llmLocal = true
+        XCTAssertNil(blank.localAnalysisKind(templates: templates))
+        var off = make(llmPreset: LLMAnalysisPreset.off.rawValue)
+        off.llmLocal = true
+        XCTAssertNil(off.localAnalysisKind(templates: templates))
+    }
+
+    /// Прежние пресеты из UI убраны, но записи библиотеки с ними повторяются
+    /// тем же промптом.
+    func testLegacyPresetStillHasPrompt() {
+        let legacy = make(llmPreset: LLMAnalysisPreset.meetingMinutes.rawValue)
+        XCTAssertEqual(legacy.effectiveLLMPrompt, LLMAnalysisPreset.meetingMinutes.promptTemplate)
+        XCTAssertNotNil(legacy.effectiveLLMPrompt)
+    }
+
     func testCustomPromptIsTrimmedAndEmptyMeansOff() {
         let custom = make(llmPreset: LLMAnalysisPreset.custom.rawValue,
                           llmCustomPrompt: "  Сделай выжимку \n")
@@ -188,7 +257,13 @@ final class FileTranscriptionParamsTests: XCTestCase {
             make(),
             make(providerID: customID, numSpeakers: nil),
             make(providerID: LocalModel.parakeet.providerID, language: "auto", diarize: false,
-                 llmPreset: LLMAnalysisPreset.custom.rawValue, llmCustomPrompt: "Промпт \"в кавычках\"")
+                 llmPreset: LLMAnalysisPreset.custom.rawValue, llmCustomPrompt: "Промпт \"в кавычках\""),
+            FileTranscriptionParams(providerID: "builtin", language: "auto", diarize: false,
+                                    numSpeakers: nil, diarizationSetting: "general",
+                                    rolesMode: "off", rolesText: "",
+                                    llmPreset: LLMAnalysisPreset.template.rawValue,
+                                    llmCustomPrompt: "Снимок", llmTemplateID: "builtin.chapters",
+                                    llmTemplateTitle: "Главы", llmLocal: true)
         ]
         for original in values {
             let data = try JSONEncoder().encode(original)

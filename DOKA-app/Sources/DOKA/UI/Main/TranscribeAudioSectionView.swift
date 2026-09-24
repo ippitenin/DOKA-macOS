@@ -9,6 +9,9 @@ import UniformTypeIdentifiers
 struct TranscribeAudioSectionView: View {
     @ObservedObject private var controller = FileTranscriptionController.shared
     @ObservedObject private var settings = SettingsStore.shared
+    /// Наблюдается ради гейта запуска: докачалась языковая модель — кнопка
+    /// «Транскрибировать» должна ожить без перехода по секциям.
+    @ObservedObject private var models = LocalModelStore.shared
     @State private var isDropTargeted = false
     @State private var isImporterPresented = false
     /// Есть ли ключ у сетевого сервиса — мемо: `isServiceReady` читает Keychain
@@ -153,6 +156,9 @@ struct TranscribeAudioSectionView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            // Системное синее кольцо фокуса выбивается из дизайна: при полном
+            // доступе с клавиатуры фокус вставал на крестик (в шитах — сразу при открытии).
+            .focusEffectDisabled()
             .padding(10)
             .help(L("transcribe.remove"))
         }
@@ -180,10 +186,14 @@ struct TranscribeAudioSectionView: View {
 
     // MARK: - Параметры
 
+    /// Общая ширина трёх выпадающих списков карточки («Язык», «Анализ ИИ»,
+    /// «Где анализировать»): одинаковые рамки, и длинные имена шаблонов влезают.
+    private static let popupWidth: CGFloat = 220
+
     private var optionsCard: some View {
         // Сноска появляется только вне встроенного сервиса: у остальных часть
         // параметров остаётся видимой, но недоступной, и это надо объяснить.
-        SettingsCard(footer: controller.isBuiltinService ? nil : L("transcribe.builtinOnly")) {
+        SettingsCard(footer: optionsFootnote) {
             SettingsRow(title: L("transcribe.diarize"),
                         help: controller.isBuiltinService
                             ? L("transcribe.diarize.help")
@@ -201,16 +211,6 @@ struct TranscribeAudioSectionView: View {
                     rolesEditor
                 }
             }
-            CardDivider()
-            SettingsRow(title: L("transcribe.language")) {
-                SettingsPopup(
-                    titles: TranscriptionLanguage.all.map(\.title),
-                    selectionIndex: Binding(
-                        get: { TranscriptionLanguage.all.firstIndex { $0.id == controller.language } ?? 0 },
-                        set: { controller.language = TranscriptionLanguage.all[$0].id }
-                    )
-                )
-            }
             // Детализация тайм-кодов — в шапке карточки «Транскрибация» у
             // готового результата: нарезка локальная, до запуска она не нужна.
             CardDivider()
@@ -220,36 +220,127 @@ struct TranscribeAudioSectionView: View {
                         help: L("transcribe.applyDictionary.help")) {
                 SettingsSwitch(isOn: $settings.applyDictionaryToFiles)
             }
-            // LLM-анализ — специфика Nexara: у кастомных OpenAI-совместимых
-            // API prompt значит другое (контекстная подсказка Whisper), а
-            // локальной модели такого размера на Mac нет. Строка остаётся на
-            // месте приглушённой — чтобы функция не «пропадала» молча.
+            CardDivider()
+            SettingsRow(title: L("transcribe.language")) {
+                SettingsPopup(
+                    titles: TranscriptionLanguage.all.map(\.title),
+                    selectionIndex: Binding(
+                        get: { TranscriptionLanguage.all.firstIndex { $0.id == controller.language } ?? 0 },
+                        set: { controller.language = TranscriptionLanguage.all[$0].id }
+                    ),
+                    width: Self.popupWidth
+                )
+            }
+            // Анализ ИИ работает на любом сервисе: на этом Mac — локальной
+            // моделью после распознавания, в облаке — LLM Nexara в том же
+            // запросе (только встроенный сервис: у OpenAI-совместимых API
+            // `prompt` — подсказка Whisper, инструкция исказила бы транскрипцию).
             CardDivider()
             SettingsRow(title: L("transcribe.llm"), help: L("transcribe.llm.help")) {
-                // Гасим ТОЛЬКО контрол, а не строку целиком: `.disabled` на
-                // строке убил бы и «вопросик», в котором как раз написано,
-                // почему функция недоступна.
+                let items = llmMenuItems
                 SettingsPopup(
-                    titles: LLMAnalysisPreset.allCases.map(\.title),
+                    titles: items.map(\.title),
                     selectionIndex: Binding(
-                        get: { LLMAnalysisPreset.allCases.firstIndex(of: controller.llmPreset) ?? 0 },
-                        set: { controller.llmPreset = LLMAnalysisPreset.allCases[$0] }
-                    )
+                        get: { items.firstIndex(of: currentLLMItem) ?? 0 },
+                        set: { index in
+                            guard items.indices.contains(index) else { return }
+                            select(items[index])
+                        }
+                    ),
+                    width: Self.popupWidth
                 )
-                .disabled(!controller.isBuiltinService)
-                .opacity(controller.isBuiltinService ? 1 : 0.5)
             }
-            if controller.llmPreset == .custom && controller.isBuiltinService {
+            if controller.llmPreset == .custom {
                 llmPromptEditor
+            }
+            if controller.llmPreset != .off {
+                CardDivider()
+                llmWhereRow
+                if controller.analyzesLocally && !models.isDownloaded(.llm) {
+                    llmModelRow
+                }
             }
         }
         .animation(DS.Anim.section, value: controller.diarize)
         .animation(DS.Anim.section, value: controller.rolesMode)
         .animation(DS.Anim.section, value: controller.llmPreset)
+        .animation(DS.Anim.section, value: controller.llmLocal)
         .animation(DS.Anim.section, value: controller.usesLocalDiarization)
         // Сервис могли сменить на локальный уже при включённой диаризации —
         // модель нужна и в этом случае.
         .onChange(of: settings.providerID) { _, _ in controller.ensureDiarizerModel() }
+    }
+
+    /// Где анализировать. Облако — только у встроенного сервиса: у остальных
+    /// попап закреплён на «На этом Mac» (приглушён, причина — в сноске).
+    private var llmWhereRow: some View {
+        SettingsRow(title: L("transcribe.llm.where")) {
+            SettingsPopup(
+                titles: [L("transcribe.llm.where.local"), L("transcribe.llm.where.cloud")],
+                selectionIndex: Binding(
+                    get: { controller.analyzesLocally ? 0 : 1 },
+                    set: { controller.llmLocal = $0 == 0 }
+                ),
+                width: Self.popupWidth
+            )
+            .disabled(!controller.isBuiltinService)
+            .opacity(controller.isBuiltinService ? 1 : 0.5)
+        }
+    }
+
+    /// Языковой модели нет — скачать прямо здесь, как модель диаризации.
+    private var llmModelRow: some View {
+        HStack(spacing: 10) {
+            Text(L("transcribe.llm.model"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            LocalAssetStatusView(asset: .llm, name: LLMModelSpec.current.displayName)
+                .controlSize(.small)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DS.Spacing.cardPadding)
+        .padding(.bottom, 9)
+    }
+
+    /// Сноски карточки: недоступность Nexara-параметров вне встроенного
+    /// сервиса и предупреждение, что расшифровка уйдёт в облачную LLM.
+    private var optionsFootnote: String? {
+        var notes: [String] = []
+        if !controller.isBuiltinService { notes.append(L("transcribe.builtinOnly")) }
+        if controller.llmPreset != .off && !controller.analyzesLocally {
+            notes.append(L("transcribe.llm.cloudNote"))
+        }
+        return notes.isEmpty ? nil : notes.joined(separator: "\n")
+    }
+
+    /// Пункты списка «Анализ ИИ»: выкл → шаблоны (встроенные, затем свои) →
+    /// свой запрос. Пункт несёт сам шаблон, выбор — по значению, а не по
+    /// позиции (как `ServiceMenuItem`).
+    private var llmMenuItems: [LLMMenuItem] {
+        [.off] + controller.llmTemplates.map(LLMMenuItem.template) + [.custom]
+    }
+
+    private var currentLLMItem: LLMMenuItem {
+        switch controller.llmPreset {
+        case .custom: return .custom
+        case .template:
+            return controller.selectedLLMTemplate.map(LLMMenuItem.template) ?? .off
+        default:
+            // Прежние пресеты из UI убраны; на странице их не бывает.
+            return .off
+        }
+    }
+
+    private func select(_ item: LLMMenuItem) {
+        switch item {
+        case .off:
+            controller.llmPreset = .off
+        case .custom:
+            controller.llmPreset = .custom
+        case .template(let template):
+            controller.llmTemplateID = template.id
+            controller.llmPreset = .template
+        }
     }
 
     /// Поле своего промпта анализа: многострочное, растёт до 5 строк.
@@ -342,6 +433,8 @@ struct TranscribeAudioSectionView: View {
         if case .transcribing = controller.phase { return false }
         // Диаризация включена, а модель ещё качается — запуск заведомо упал бы.
         if controller.isDiarizerModelMissing { return false }
+        // Локальный анализ заказан, а модели нет — он молча не состоялся бы.
+        if controller.isLLMModelMissing { return false }
         return controller.rolesValidationMessage == nil
     }
 
@@ -417,5 +510,20 @@ struct TranscribeAudioSectionView: View {
     private func iconForFile(_ name: String) -> String {
         let ext = (name as NSString).pathExtension.lowercased()
         return FileTranscriptionController.videoExtensions.contains(ext) ? "film" : "waveform"
+    }
+}
+
+/// Пункт списка «Анализ ИИ» страницы «Транскрибация».
+private enum LLMMenuItem: Equatable {
+    case off
+    case template(AnalysisTemplate)
+    case custom
+
+    var title: String {
+        switch self {
+        case .off: return LLMAnalysisPreset.off.title
+        case .template(let template): return template.name
+        case .custom: return LLMAnalysisPreset.custom.title
+        }
     }
 }

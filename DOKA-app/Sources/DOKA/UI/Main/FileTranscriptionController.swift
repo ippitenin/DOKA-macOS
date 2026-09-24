@@ -10,10 +10,13 @@ enum RolesMode: String, CaseIterable, Identifiable {
     var title: String { L("transcribe.roles.\(rawValue)") }
 }
 
-/// Пресеты LLM-анализа расшифровки. Тексты промптов — ключи Localizable.strings:
-/// промпт следует языку интерфейса, включая язык ответа модели.
+/// Режим LLM-анализа Nexara. В списке страницы — только `off`, `template`
+/// (шаблон из «Шаблонов анализа») и `custom`. Прежние пресеты
+/// `meetingMinutes`/`summary`/`actionItems` из UI убраны (у каждого есть
+/// встроенный шаблон-двойник), но остаются в enum: записи библиотеки с ними
+/// декодируются и повторяются тем же промптом.
 enum LLMAnalysisPreset: String, CaseIterable, Identifiable {
-    case off, meetingMinutes, summary, actionItems, custom
+    case off, meetingMinutes, summary, actionItems, custom, template
 
     var id: String { rawValue }
     var title: String { L("transcribe.llm.preset.\(rawValue)") }
@@ -21,7 +24,7 @@ enum LLMAnalysisPreset: String, CaseIterable, Identifiable {
     /// Готовый промпт пресета; off и custom промпта не имеют.
     var promptTemplate: String? {
         switch self {
-        case .off, .custom: return nil
+        case .off, .custom, .template: return nil
         case .meetingMinutes, .summary, .actionItems:
             return L("transcribe.llm.prompt.\(rawValue)")
         }
@@ -130,19 +133,81 @@ final class FileTranscriptionController: ObservableObject {
     @Published var llmPreset: LLMAnalysisPreset = .off
     /// Свой промпт анализа (llmPreset == .custom).
     @Published var llmCustomPrompt: String = ""
+    /// Шаблон анализа (llmPreset == .template): id встроенного или своего.
+    @Published var llmTemplateID: String?
+    /// Где анализировать: на этом Mac (по умолчанию — в облако расшифровка
+    /// уходит только по явному выбору) или LLM Nexara в том же запросе.
+    @Published var llmLocal = true
+
+    /// Анализ фактически пойдёт локально: выбран «На этом Mac» либо сервис
+    /// не Nexara — у остальных облачного анализа нет вовсе.
+    var analyzesLocally: Bool { llmLocal || !isBuiltinService }
+
+    /// Локальный анализ заказан, а языковой модели нет — запускать нельзя
+    /// (иначе анализ молча не состоялся бы после распознавания).
+    var isLLMModelMissing: Bool {
+        llmPreset != .off && analyzesLocally && !LocalModelStore.shared.isDownloaded(.llm)
+    }
+
+    /// Шаблоны для списка «Анализ ИИ» — те же, что у панели анализа записи.
+    var llmTemplates: [AnalysisTemplate] {
+        BuiltinAnalysisTemplate.all + SettingsStore.shared.analysisTemplates
+    }
+
+    /// Выбранный шаблон; nil — не выбран или его успели удалить.
+    var selectedLLMTemplate: AnalysisTemplate? {
+        guard llmPreset == .template, let id = llmTemplateID else { return nil }
+        return llmTemplates.first { $0.id == id }
+    }
 
     /// Параметры страницы снимком — ровно то, что уйдёт в запрос и в запись
     /// библиотеки (по ним работают «Повторить» и «Распознать заново»).
     var pageParams: FileTranscriptionParams {
-        FileTranscriptionParams(providerID: SettingsStore.shared.providerID,
-                                language: language,
-                                diarize: diarize,
-                                numSpeakers: numSpeakers,
-                                diarizationSetting: diarizationSetting.rawValue,
-                                rolesMode: rolesMode.rawValue,
-                                rolesText: rolesText,
-                                llmPreset: llmPreset.rawValue,
-                                llmCustomPrompt: llmCustomPrompt)
+        var preset = llmPreset
+        var prompt = llmCustomPrompt
+        var template: AnalysisTemplate?
+        let local = llmLocal || SettingsStore.shared.providerID != TranscriptionProvider.builtin.rawValue
+        if llmPreset == .template && local {
+            // Локальный анализ идёт по самому шаблону (id), промпт Nexara не нужен.
+            if let selected = selectedLLMTemplate {
+                template = selected
+            } else {
+                preset = .off
+            }
+        } else if llmPreset == .template {
+            // Шаблон удалили, пока он был выбран, — анализ выключен, а не
+            // отправлен с пустым промптом.
+            if let selected = selectedLLMTemplate {
+                template = selected
+                // Снимок промпта: «Повторить» отправит ровно его, даже если
+                // шаблон потом изменят или удалят.
+                prompt = AnalysisPromptBuilder.nexaraPrompt(template: .sections(selected),
+                                                            languageName: llmLanguageName)
+            } else {
+                preset = .off
+                prompt = ""
+            }
+        }
+        return FileTranscriptionParams(providerID: SettingsStore.shared.providerID,
+                                       language: language,
+                                       diarize: diarize,
+                                       numSpeakers: numSpeakers,
+                                       diarizationSetting: diarizationSetting.rawValue,
+                                       rolesMode: rolesMode.rawValue,
+                                       rolesText: rolesText,
+                                       llmPreset: preset.rawValue,
+                                       llmCustomPrompt: prompt,
+                                       llmTemplateID: template?.id,
+                                       llmTemplateTitle: template?.name,
+                                       llmLocal: local)
+    }
+
+    /// Язык ответа анализа Nexara: язык записи, если он задан на странице,
+    /// иначе язык интерфейса — как у прежних пресетов.
+    private var llmLanguageName: String {
+        let code = language == "auto" ? AnalysisController.interfaceLanguageCode : language
+        return TranscriptionLanguage.all.first { $0.id == code }?.title
+            ?? Locale.current.localizedString(forLanguageCode: code) ?? code
     }
 
     /// Ошибка валидации своего списка ролей; nil — всё валидно.
@@ -452,7 +517,7 @@ final class FileTranscriptionController: ObservableObject {
                 guard !Task.isCancelled else { return }
                 let saved = store.markDone(recordID, result: result)
                 self?.finishRun(showing: saved == nil ? nil : recordID)
-                if saved != nil { Self.startAutoAnalysis(recordID) }
+                if saved != nil { Self.startAnalysisAfterTranscription(recordID) }
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
                 self?.progressNote = nil
@@ -464,16 +529,27 @@ final class FileTranscriptionController: ObservableObject {
         return .started(recordID)
     }
 
-    /// Автоанализ сразу после распознавания. По умолчанию выключен: анализ
-    /// идёт минутами и греет Mac. Гейт доступности — общий с кнопкой
-    /// «Проанализировать», поэтому без модели и при занятом
-    /// анализе он просто не стартует и ничего не сообщает.
-    private static func startAutoAnalysis(_ recordID: UUID) {
+    /// Локальный анализ сразу после распознавания: заказанный на странице
+    /// («Анализ ИИ» → «На этом Mac», по сохранённым params — работает и для
+    /// «Повторить»), иначе глобальный автоанализ (по умолчанию выключен:
+    /// анализ идёт минутами и греет Mac). Гейт доступности — общий с кнопкой
+    /// «Проанализировать», поэтому без модели и при занятом анализе он просто
+    /// не стартует и ничего не сообщает. Добор async-задач после перезапуска
+    /// идёт мимо контроллера — там анализ не запускается.
+    private static func startAnalysisAfterTranscription(_ recordID: UUID) {
         let settings = SettingsStore.shared
-        guard settings.autoAnalysis else { return }
         let controller = AnalysisController.shared
-        guard controller.availability(for: TranscriptHistoryStore.shared.record(recordID)).isRunnable
-        else { return }
+        let record = TranscriptHistoryStore.shared.record(recordID)
+        guard controller.availability(for: record).isRunnable else { return }
+        // Анализ, заказанный на странице «На этом Mac», важнее глобального
+        // автоанализа: пользователь выбрал его для этого файла. Язык ответа —
+        // «как в записи».
+        let templates = BuiltinAnalysisTemplate.all + settings.analysisTemplates
+        if let kind = record?.params?.localAnalysisKind(templates: templates) {
+            controller.start(recordID: recordID, request: .init(kind: kind, responseLanguage: nil))
+            return
+        }
+        guard settings.autoAnalysis else { return }
         controller.start(recordID: recordID,
                          request: .init(kind: .template(settings.selectedAnalysisTemplate),
                                         responseLanguage: settings.analysisLanguage.isEmpty

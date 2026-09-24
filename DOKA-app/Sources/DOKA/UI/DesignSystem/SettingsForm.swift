@@ -26,6 +26,9 @@ struct SettingsForm<Content: View>: View {
 struct SettingsCard<Content: View>: View {
     var header: String? = nil
     var footer: String? = nil
+    /// Материал вместо Liquid Glass — для высоких карточек: их линза у кромок
+    /// дотягивается до соседей и отражает сайдбар и контролы выше.
+    var forceMaterial: Bool = false
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -41,7 +44,7 @@ struct SettingsCard<Content: View>: View {
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassSurface()
+            .glassSurface(forceMaterial: forceMaterial)
             if let footer {
                 Text(footer)
                     .font(.caption)
@@ -102,6 +105,12 @@ private struct PopUpButton: NSViewRepresentable {
         button.action = #selector(Coordinator.didChange(_:))
         context.coordinator.button = button
         guard fixedWidth != nil else { return button }
+        // Минимальная ширина NSPopUpButton растёт по САМОМУ ДЛИННОМУ пункту
+        // меню: с длинными пунктами («Задачи и договорённости») кнопка
+        // раздвигала фрейм и вылезала за карточку в обе стороны. Сжимаемая
+        // кнопка плюс многоточие держат ровно заданную ширину.
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        (button.cell as? NSPopUpButtonCell)?.lineBreakMode = .byTruncatingTail
         // Контейнер с констрейнтами: интринсик-ширина NSPopUpButton сильнее
         // предложенного SwiftUI фрейма, без них кнопка вылезает за карточку.
         let container = NSView()
@@ -113,6 +122,13 @@ private struct PopUpButton: NSViewRepresentable {
             button.centerYAnchor.constraint(equalTo: container.centerYAnchor)
         ])
         return container
+    }
+
+    /// Заданная ширина — ровно она: иначе SwiftUI берёт минимальный размер
+    /// AppKit-вью (по длинному пункту) и центрирует его поверх фрейма.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
+        guard let fixedWidth else { return nil }
+        return CGSize(width: fixedWidth, height: 26)
     }
 
     func updateNSView(_ view: NSView, context: Context) {
@@ -217,5 +233,23 @@ struct HelpBubble: View {
                 .padding(12)
                 .frame(width: 280, alignment: .leading)
         }
+    }
+}
+
+extension View {
+    /// Плоское поле ввода: мягкая подложка и тонкая кромка вместо системной
+    /// серой рамки `.roundedBorder` — «Шаблоны анализа», «Словарь».
+    func dsFieldBox() -> some View {
+        textFieldStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+            )
     }
 }
