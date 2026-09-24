@@ -149,6 +149,35 @@ extension FileTranscriptionParams {
         return copy
     }
 
+    /// Поля анализа ИИ в снимке страницы.
+    struct LLMFields: Equatable {
+        var preset: LLMAnalysisPreset
+        var prompt: String
+        var templateID: String?
+        var templateTitle: String?
+    }
+
+    /// Собирает поля анализа из выбора на странице. `template` — выбранный
+    /// шаблон, если он ещё существует (nil при `preset == .template` значит
+    /// «шаблон удалили, пока он был выбран» — анализ выключается, а не уходит
+    /// с пустым промптом). Локальный анализ идёт по самому шаблону (id),
+    /// облачный — СНИМКОМ промпта: «Повторить» отправит ровно его, даже если
+    /// шаблон потом изменят или удалят.
+    static func llmFields(preset: LLMAnalysisPreset,
+                          customPrompt: String,
+                          template: AnalysisTemplate?,
+                          local: Bool,
+                          languageName: String) -> LLMFields {
+        guard preset == .template else {
+            return LLMFields(preset: preset, prompt: customPrompt)
+        }
+        guard let template else { return LLMFields(preset: .off, prompt: "") }
+        let prompt = local ? "" : AnalysisPromptBuilder.nexaraPrompt(template: .sections(template),
+                                                                     languageName: languageName)
+        return LLMFields(preset: .template, prompt: prompt,
+                         templateID: template.id, templateTitle: template.name)
+    }
+
     /// Что просить у локальной модели после распознавания; nil — локальный
     /// анализ не заказан (выключен, облачный или шаблон с тех пор удалили).
     /// Шаблоны передаются снаружи: они живут в `SettingsStore` (@MainActor),

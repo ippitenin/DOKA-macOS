@@ -127,6 +127,55 @@ final class FileTranscriptionParamsTests: XCTestCase {
         XCTAssertNil(off.localAnalysisKind(templates: templates))
     }
 
+    // MARK: - Сборка полей анализа со страницы
+
+    func testLLMFieldsLocalTemplateCarriesIDNotPrompt() {
+        let chapters = BuiltinAnalysisTemplate.chapters.template
+        // Хвост прошлого «Своего запроса» в снимок не попадает.
+        let fields = FileTranscriptionParams.llmFields(preset: .template,
+                                                       customPrompt: "старый запрос",
+                                                       template: chapters, local: true,
+                                                       languageName: "Русский")
+        XCTAssertEqual(fields, .init(preset: .template, prompt: "",
+                                     templateID: chapters.id, templateTitle: chapters.name))
+    }
+
+    func testLLMFieldsCloudTemplateIsPromptSnapshot() {
+        let summary = BuiltinAnalysisTemplate.summary.template
+        let fields = FileTranscriptionParams.llmFields(preset: .template, customPrompt: "",
+                                                       template: summary, local: false,
+                                                       languageName: "English")
+        XCTAssertEqual(fields.prompt,
+                       AnalysisPromptBuilder.nexaraPrompt(template: .sections(summary),
+                                                          languageName: "English"))
+        XCTAssertFalse(fields.prompt.isEmpty)
+        XCTAssertEqual(fields.templateID, summary.id)
+        XCTAssertEqual(fields.templateTitle, summary.name)
+    }
+
+    /// Шаблон удалили, пока он был выбран: анализ выключен, а не отправлен
+    /// с пустым промптом — и локально, и в облако.
+    func testLLMFieldsDeletedTemplateTurnsAnalysisOff() {
+        for local in [true, false] {
+            let fields = FileTranscriptionParams.llmFields(preset: .template, customPrompt: "x",
+                                                           template: nil, local: local,
+                                                           languageName: "Русский")
+            XCTAssertEqual(fields, .init(preset: .off, prompt: ""))
+        }
+    }
+
+    func testLLMFieldsCustomAndOffPassThrough() {
+        let custom = FileTranscriptionParams.llmFields(preset: .custom, customPrompt: "Выжимка",
+                                                       template: nil, local: false,
+                                                       languageName: "Русский")
+        XCTAssertEqual(custom, .init(preset: .custom, prompt: "Выжимка"))
+        let off = FileTranscriptionParams.llmFields(preset: .off, customPrompt: "",
+                                                    template: nil, local: true,
+                                                    languageName: "Русский")
+        XCTAssertEqual(off.preset, .off)
+        XCTAssertNil(off.templateID)
+    }
+
     /// Прежние пресеты из UI убраны, но записи библиотеки с ними повторяются
     /// тем же промптом.
     func testLegacyPresetStillHasPrompt() {

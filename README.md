@@ -78,8 +78,11 @@ written in Russian.
   and combined into a single report. Template sections can be rewritten, or you can build
   your own template. The result renders as formatted text with headings, lists and tables,
   its timestamps are clickable and seek the player; copying puts both plain and rich text
-  on the clipboard, so tables paste as tables into Telegram, Notes or Word. A Nexara
-  analysis ordered together with transcription works exactly as before.
+  on the clipboard, so tables paste as tables into Telegram, Notes or Word. Analysis can
+  be ordered right when transcribing a file — with any template or your own prompt: by
+  default it runs on this Mac after recognition, and with the built-in service you can pick
+  “In the cloud” (the Nexara language model) instead, so the analysis rides in the same
+  request as the transcription.
 - **History** — a journal of dictations with metadata, playback, export (CSV or plain text)
   and a performance analysis screen.
 - **Dashboard** — words dictated, time saved, and how much faster this is than your own
@@ -174,9 +177,9 @@ minutes of inactivity.
 
 Speaker diarization works with every service: the built-in one does it server-side, everyone
 else gets the on-device diarizer. What stays exclusive to the built-in service — and is shown
-greyed out elsewhere — is the recording-type preset, automatic speaker roles, and analysis
-ordered together with transcription, because its `prompt` means something entirely different
-in a plain OpenAI-compatible API.
+greyed out elsewhere — is the recording-type preset, automatic speaker roles, and cloud analysis in the same
+request, because its `prompt` means something entirely different in a plain OpenAI-compatible
+API; analysis ordered while transcribing always runs on this Mac there.
 
 AI analysis of a finished transcript does not depend on the service: it is written by a
 language model on this Mac and is equally available to recordings of any origin. The model

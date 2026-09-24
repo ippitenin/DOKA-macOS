@@ -253,7 +253,7 @@ struct TranscribeAudioSectionView: View {
             if controller.llmPreset == .custom {
                 llmPromptEditor
             }
-            if controller.llmPreset != .off {
+            if controller.effectiveLLMPreset != .off {
                 CardDivider()
                 llmWhereRow
                 if controller.analyzesLocally && !models.isDownloaded(.llm) {
@@ -307,7 +307,7 @@ struct TranscribeAudioSectionView: View {
     private var optionsFootnote: String? {
         var notes: [String] = []
         if !controller.isBuiltinService { notes.append(L("transcribe.builtinOnly")) }
-        if controller.llmPreset != .off && !controller.analyzesLocally {
+        if controller.effectiveLLMPreset != .off && !controller.analyzesLocally {
             notes.append(L("transcribe.llm.cloudNote"))
         }
         return notes.isEmpty ? nil : notes.joined(separator: "\n")

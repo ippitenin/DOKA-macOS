@@ -152,9 +152,7 @@ struct ServiceSectionView: View {
         }
     }
 
-    private var analysisTemplates: [AnalysisTemplate] {
-        BuiltinAnalysisTemplate.all + settings.analysisTemplates
-    }
+    private var analysisTemplates: [AnalysisTemplate] { settings.allAnalysisTemplates }
 
     // MARK: - Карточка API-ключа (сетевые сервисы)
 

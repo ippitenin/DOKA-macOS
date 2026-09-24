@@ -146,13 +146,19 @@ final class FileTranscriptionController: ObservableObject {
     /// Локальный анализ заказан, а языковой модели нет — запускать нельзя
     /// (иначе анализ молча не состоялся бы после распознавания).
     var isLLMModelMissing: Bool {
-        llmPreset != .off && analyzesLocally && !LocalModelStore.shared.isDownloaded(.llm)
+        effectiveLLMPreset != .off && analyzesLocally && !LocalModelStore.shared.isDownloaded(.llm)
+    }
+
+    /// Режим анализа, который реально уйдёт в снимок: выбранный шаблон могли
+    /// удалить в «Шаблонах анализа» — тогда анализ выключен (как в
+    /// `FileTranscriptionParams.llmFields`), и запуск не должен блокироваться
+    /// «нет модели», пока попап уже показывает «Выкл».
+    var effectiveLLMPreset: LLMAnalysisPreset {
+        llmPreset == .template && selectedLLMTemplate == nil ? .off : llmPreset
     }
 
     /// Шаблоны для списка «Анализ ИИ» — те же, что у панели анализа записи.
-    var llmTemplates: [AnalysisTemplate] {
-        BuiltinAnalysisTemplate.all + SettingsStore.shared.analysisTemplates
-    }
+    var llmTemplates: [AnalysisTemplate] { SettingsStore.shared.allAnalysisTemplates }
 
     /// Выбранный шаблон; nil — не выбран или его успели удалить.
     var selectedLLMTemplate: AnalysisTemplate? {
@@ -163,42 +169,25 @@ final class FileTranscriptionController: ObservableObject {
     /// Параметры страницы снимком — ровно то, что уйдёт в запрос и в запись
     /// библиотеки (по ним работают «Повторить» и «Распознать заново»).
     var pageParams: FileTranscriptionParams {
-        var preset = llmPreset
-        var prompt = llmCustomPrompt
-        var template: AnalysisTemplate?
-        let local = llmLocal || SettingsStore.shared.providerID != TranscriptionProvider.builtin.rawValue
-        if llmPreset == .template && local {
-            // Локальный анализ идёт по самому шаблону (id), промпт Nexara не нужен.
-            if let selected = selectedLLMTemplate {
-                template = selected
-            } else {
-                preset = .off
-            }
-        } else if llmPreset == .template {
-            // Шаблон удалили, пока он был выбран, — анализ выключен, а не
-            // отправлен с пустым промптом.
-            if let selected = selectedLLMTemplate {
-                template = selected
-                // Снимок промпта: «Повторить» отправит ровно его, даже если
-                // шаблон потом изменят или удалят.
-                prompt = AnalysisPromptBuilder.nexaraPrompt(template: .sections(selected),
-                                                            languageName: llmLanguageName)
-            } else {
-                preset = .off
-                prompt = ""
-            }
-        }
-        return FileTranscriptionParams(providerID: SettingsStore.shared.providerID,
+        let providerID = SettingsStore.shared.providerID
+        // У сервисов кроме Nexara облачного анализа нет — только локальный.
+        let local = llmLocal || providerID != TranscriptionProvider.builtin.rawValue
+        let llm = FileTranscriptionParams.llmFields(preset: llmPreset,
+                                                    customPrompt: llmCustomPrompt,
+                                                    template: selectedLLMTemplate,
+                                                    local: local,
+                                                    languageName: llmLanguageName)
+        return FileTranscriptionParams(providerID: providerID,
                                        language: language,
                                        diarize: diarize,
                                        numSpeakers: numSpeakers,
                                        diarizationSetting: diarizationSetting.rawValue,
                                        rolesMode: rolesMode.rawValue,
                                        rolesText: rolesText,
-                                       llmPreset: preset.rawValue,
-                                       llmCustomPrompt: prompt,
-                                       llmTemplateID: template?.id,
-                                       llmTemplateTitle: template?.name,
+                                       llmPreset: llm.preset.rawValue,
+                                       llmCustomPrompt: llm.prompt,
+                                       llmTemplateID: llm.templateID,
+                                       llmTemplateTitle: llm.templateTitle,
                                        llmLocal: local)
     }
 
@@ -544,8 +533,7 @@ final class FileTranscriptionController: ObservableObject {
         // Анализ, заказанный на странице «На этом Mac», важнее глобального
         // автоанализа: пользователь выбрал его для этого файла. Язык ответа —
         // «как в записи».
-        let templates = BuiltinAnalysisTemplate.all + settings.analysisTemplates
-        if let kind = record?.params?.localAnalysisKind(templates: templates) {
+        if let kind = record?.params?.localAnalysisKind(templates: settings.allAnalysisTemplates) {
             controller.start(recordID: recordID, request: .init(kind: kind, responseLanguage: nil))
             return
         }

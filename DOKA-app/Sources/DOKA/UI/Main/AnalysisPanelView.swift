@@ -333,9 +333,7 @@ struct AnalysisPanelView: View {
 
     // MARK: - Шаблоны и язык
 
-    private var templates: [AnalysisTemplate] {
-        BuiltinAnalysisTemplate.all + settings.analysisTemplates
-    }
+    private var templates: [AnalysisTemplate] { settings.allAnalysisTemplates }
 
     /// Порядок пунктов: встроенные → свои → «Свой запрос» → «Шаблоны…».
     private var templateTitles: [String] {
