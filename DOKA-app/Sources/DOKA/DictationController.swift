@@ -7,6 +7,19 @@ struct RecordedDictation: Equatable {
     let duration: TimeInterval
     let speechDuration: TimeInterval
     let microphone: String?
+    /// Тихий режим (шёпот) — снимок настройки на старте записи: переключение
+    /// посреди записи не должно смешать пороги.
+    var quiet = false
+    /// Время речи по порогу тихого режима (`SpeechMeter.quietThresholdDb`).
+    var quietSpeechDuration: TimeInterval = 0
+
+    /// Речь для гейта тишины: шёпот почти целиком ниже обычного порога.
+    var gateSpeechDuration: TimeInterval { quiet ? quietSpeechDuration : speechDuration }
+
+    /// Речь для статистики скорости и истории. У шёпота её нет: время выше
+    /// тихого порога — лишь доля реального шёпота, и «Скорость речи» на
+    /// дашборде взлетела бы в разы. nil — запись в скорость не входит.
+    var statsSpeechDuration: TimeInterval? { quiet ? nil : speechDuration }
 }
 
 /// Последняя неудачная попытка распознавания — один слот на приложение,
@@ -164,6 +177,22 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// Тихий режим (шёпот) из меню-бара или по клавише. Настройка снимается
+    /// на старте записи, поэтому переключение посреди записи действует со
+    /// следующей. В покое панель коротко называет новый режим: у клавиши
+    /// другой обратной связи нет. Во время записи и распознавания автомат
+    /// не трогаем — сообщение увело бы его в `.error`.
+    func toggleQuietMode() {
+        settings.quietMode.toggle()
+        switch state {
+        case .idle, .error:
+            showError(settings.quietMode ? L("quietMode.on") : L("quietMode.off"),
+                      sound: .recordStop)
+        case .recording, .transcribing:
+            break
+        }
+    }
+
     /// «Повторить неудачную диктовку» из меню-бара: та же запись уходит на
     /// распознавание текущим сервисом, в обход гейта тишины (пользователь
     /// явно просит распознать). Esc во время повтора возвращает запись в слот.
@@ -247,7 +276,7 @@ final class DictationController: ObservableObject {
         }
 
         do {
-            _ = try recorder.start()
+            _ = try recorder.start(quiet: settings.quietMode)
         } catch {
             showError(error.localizedDescription)
             return
@@ -270,10 +299,12 @@ final class DictationController: ObservableObject {
         // Имя микрофона для метаданных истории — независимо от уже остановленного движка.
         let audio = RecordedDictation(url: result.url, duration: result.duration,
                                       speechDuration: result.speechDuration,
-                                      microphone: recorder.currentInputDeviceName)
+                                      microphone: recorder.currentInputDeviceName,
+                                      quiet: result.quiet,
+                                      quietSpeechDuration: result.quietSpeechDuration)
 
         switch DictationGate.decide(duration: audio.duration,
-                                    speechDuration: audio.speechDuration,
+                                    speechDuration: audio.gateSpeechDuration,
                                     speechGateEnabled: settings.skipSilentRecordings) {
         case .tooShort:
             Self.removeFile(audio.url)
@@ -282,8 +313,8 @@ final class DictationController: ObservableObject {
         case .noSpeech:
             // Ни API, ни история, ни статистика: не платим за тишину и не ловим
             // галлюцинации Whisper. Лог — для калибровки порога.
-            NSLog("DOKA: гейт тишины — запись %.2f с, речи %.2f с, на распознавание не отправлена",
-                  audio.duration, audio.speechDuration)
+            NSLog("DOKA: гейт тишины — запись %.2f с, речи %.2f с%@, на распознавание не отправлена",
+                  audio.duration, audio.gateSpeechDuration, audio.quiet ? " (тихий режим)" : "")
             if DictationGate.isRetryable(duration: audio.duration) {
                 // Возможно, просто тихий голос: запись можно распознать всё равно.
                 storeFailed(audio, message: L("error.noSpeech"), gated: true)
@@ -329,8 +360,10 @@ final class DictationController: ObservableObject {
 
         // Копия без тишины — только для отправки: история, статистика и m4a
         // работают с оригиналом. Обрезка — CPU-работа вне главного потока.
+        // Шёпот не режем: его порог −40 дБFS, отдельные согласные шёпота его
+        // перешагивают, и от фразы остались бы клочки вокруг них.
         var uploadURL = url
-        if settings.silenceRemoval {
+        if settings.silenceRemoval && !audio.quiet {
             let trimmed = await Task.detached(priority: .userInitiated) {
                 SilenceRemover.process(url)
             }.value
@@ -383,10 +416,12 @@ final class DictationController: ObservableObject {
                 return
             }
             history.add(id: recordID, text: text, duration: audio.duration, language: language,
-                        speechDuration: audio.speechDuration, model: modelTag, provider: providerRaw,
+                        speechDuration: audio.statsSpeechDuration, model: modelTag, provider: providerRaw,
                         microphone: audio.microphone, transcriptionTime: transcriptionTime,
                         audioFileName: audioName)
-            stats.record(text: text, duration: audio.duration, speechDuration: audio.speechDuration)
+            // Без времени речи (шёпот) запись не входит в «Скорость речи».
+            stats.record(text: text, duration: audio.duration,
+                         speechDuration: audio.statsSpeechDuration ?? 0)
             // Текст уже в истории: дальше повторять нечего, даже если вставка не пройдёт.
             outcome = .succeeded
 

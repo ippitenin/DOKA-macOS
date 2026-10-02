@@ -99,6 +99,7 @@ final class SettingsStore: ObservableObject {
         static let customServices = "customServices"
         static let servicesMigrated = "servicesMigrated"
         static let skipSilentRecordings = "skipSilentRecordings"
+        static let quietMode = "quietMode"
         static let applyDictionaryToFiles = "applyDictionaryToFiles"
         static let libraryRetentionNoticeDismissed = "libraryRetentionNoticeDismissed"
         static let saveTranscriptAudio = "saveTranscriptAudio"
@@ -234,6 +235,13 @@ final class SettingsStore: ObservableObject {
     @Published var skipSilentRecordings: Bool {
         didSet { defaults.set(skipSilentRecordings, forKey: Key.skipSilentRecordings) }
     }
+    /// Тихий режим — диктовка шёпотом: гейт тишины считает речь по порогу
+    /// `SpeechMeter.quietThresholdDb` вместо обычного, тишина не режется,
+    /// уровень на панели поднят. Модель распознавания та же — шёпот она
+    /// понимает (Whisper ~4 % ошибок), мешал только порог гейта.
+    @Published var quietMode: Bool {
+        didSet { defaults.set(quietMode, forKey: Key.quietMode) }
+    }
     /// Применять «Словарь» к расшифровкам файлов — на выходном слое
     /// (`TranscriptOutput`): показ, копирование, «Сохранить как…». По
     /// умолчанию выключено — изоляция пайплайна файлов сохраняется.
@@ -336,12 +344,14 @@ final class SettingsStore: ObservableObject {
             Key.openWindowAtLaunch: true,
             Key.mouseShortcutButton: -1,
             Key.skipSilentRecordings: true,
+            Key.quietMode: false,
             Key.applyDictionaryToFiles: false,
             Key.saveTranscriptAudio: true,
             Key.notifyFileTranscription: true
         ])
         notifyFileTranscription = defaults.bool(forKey: Key.notifyFileTranscription)
         skipSilentRecordings = defaults.bool(forKey: Key.skipSilentRecordings)
+        quietMode = defaults.bool(forKey: Key.quietMode)
         applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
         libraryRetentionNoticeDismissed = defaults.bool(forKey: Key.libraryRetentionNoticeDismissed)
         saveTranscriptAudio = defaults.bool(forKey: Key.saveTranscriptAudio)

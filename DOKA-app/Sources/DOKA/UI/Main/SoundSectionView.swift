@@ -22,6 +22,11 @@ struct SoundSectionView: View {
                             help: L("sound.skipSilent.hint")) {
                     SettingsSwitch(isOn: $settings.skipSilentRecordings)
                 }
+                CardDivider()
+                SettingsRow(title: L("sound.quietMode"),
+                            help: L("sound.quietMode.hint")) {
+                    SettingsSwitch(isOn: $settings.quietMode)
+                }
             }
 
             SettingsCard(header: L("sound.effectsCard")) {

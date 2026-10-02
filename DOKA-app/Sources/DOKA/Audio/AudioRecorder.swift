@@ -35,7 +35,8 @@ final class AudioRecorder {
     /// ВАЖНО: порог живёт на СТАРОЙ dB-кривой (`speechLevel`) и не должен ехать
     /// вслед за кривой для UI — иначе поедут «Скорость речи», сэкономленное время
     /// и множитель на дашборде, которые считаются от накопленного `speechTime`.
-    private static let speechLevelThreshold: Float = 0.2
+    /// Тихий режим (шёпот) считает речь отдельным счётчиком — см. `SpeechMeter`.
+    static let speechLevelThreshold: Float = 0.2
 
     /// Кривая уровня для панелей записи. Логарифмическая шкала (dB) сжимает
     /// обычную речь в узкий диапазон и выглядит вяло, поэтому уровень строится
@@ -65,16 +66,35 @@ final class AudioRecorder {
         let converter: AVAudioConverter
         let writer: WavWriter
         let targetFormat: AVAudioFormat
+        /// Тихий режим (шёпот): уровень для панелей поднимается на
+        /// `SpeechMeter.quietDisplayGain`, иначе на шёпоте волна стоит.
+        let quiet: Bool
         var smoothedLevel: Float = 0
         /// Накопленное время, когда реально звучал голос (сек), без тишины и пауз.
         var speechTime: TimeInterval = 0
+        /// То же по порогу тихого режима (`SpeechMeter.quietThresholdDb`) — для
+        /// гейта шёпотных диктовок. Копится всегда, гейт выбирает по режиму.
+        var quietSpeechTime: TimeInterval = 0
         var finished = false
 
-        init(converter: AVAudioConverter, writer: WavWriter, targetFormat: AVAudioFormat) {
+        init(converter: AVAudioConverter, writer: WavWriter, targetFormat: AVAudioFormat, quiet: Bool) {
             self.converter = converter
             self.writer = writer
             self.targetFormat = targetFormat
+            self.quiet = quiet
         }
+    }
+
+    /// Итог записи.
+    struct Recording {
+        let url: URL
+        let duration: TimeInterval
+        /// Время активной речи (сек) без тишины и пауз — по обычному порогу.
+        let speechDuration: TimeInterval
+        /// То же по порогу тихого режима.
+        let quietSpeechDuration: TimeInterval
+        /// Запись шла в тихом режиме.
+        let quiet: Bool
     }
 
     private var session: Session?   // мутируется только внутри queue.sync
@@ -88,7 +108,9 @@ final class AudioRecorder {
     }
 
     /// Стартует запись во временный WAV-файл, возвращает его URL.
-    func start() throws -> URL {
+    /// `quiet` — тихий режим (шёпот): влияет только на уровень для панелей,
+    /// оба счётчика речи копятся всегда.
+    func start(quiet: Bool = false) throws -> URL {
         teardownEngine()
         discardSession()
 
@@ -111,7 +133,8 @@ final class AudioRecorder {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("doka-\(UUID().uuidString).wav")
         let writer = try WavWriter(url: url)
-        let newSession = Session(converter: converter, writer: writer, targetFormat: targetFormat)
+        let newSession = Session(converter: converter, writer: writer, targetFormat: targetFormat,
+                                 quiet: quiet)
         queue.sync { session = newSession }
 
         let queue = self.queue
@@ -145,10 +168,9 @@ final class AudioRecorder {
     }
 
     /// Останавливает запись, дожимает хвост конвертера и финализирует WAV.
-    /// `speechDuration` — время активной речи (сек) без тишины и пауз.
-    func stop() -> (url: URL, duration: TimeInterval, speechDuration: TimeInterval)? {
+    func stop() -> Recording? {
         teardownEngine()
-        var result: (url: URL, duration: TimeInterval, speechDuration: TimeInterval)?
+        var result: Recording?
         queue.sync {
             guard let s = session, !s.finished else {
                 session = nil
@@ -157,10 +179,11 @@ final class AudioRecorder {
             s.finished = true
             drain(s)
             let duration = s.writer.duration
-            let speechDuration = s.speechTime
             do {
                 try s.writer.finalize()
-                result = (s.writer.url, duration, speechDuration)
+                result = Recording(url: s.writer.url, duration: duration,
+                                   speechDuration: s.speechTime,
+                                   quietSpeechDuration: s.quietSpeechTime, quiet: s.quiet)
             } catch {
                 NSLog("DOKA: ошибка финализации WAV: \(error.localizedDescription)")
                 s.writer.cancelAndDelete()
@@ -216,12 +239,17 @@ final class AudioRecorder {
                 // калиброван под неё, а lifetime-агрегаты дашборда — под порог.
                 let db = 20 * log10(max(rms, 1e-7))
                 let speechLevel = max(0, min(1, (db + 50) / 50))
+                let seconds = Double(frames) / buffer.format.sampleRate
                 if speechLevel >= Self.speechLevelThreshold {
-                    session.speechTime += Double(frames) / buffer.format.sampleRate
+                    session.speechTime += seconds
+                }
+                if SpeechMeter.isQuietSpeech(db: db) {
+                    session.quietSpeechTime += seconds
                 }
 
                 // Уровень для панелей — своя кривая с быстрым подъёмом.
-                let target = Level.normalize(rms: rms, peak: peak)
+                let gain: Float = session.quiet ? SpeechMeter.quietDisplayGain : 1
+                let target = Level.normalize(rms: rms * gain, peak: min(1, peak * gain))
                 let response = target > session.smoothedLevel ? Level.attack : Level.release
                 session.smoothedLevel += (target - session.smoothedLevel) * response
                 let level = session.smoothedLevel

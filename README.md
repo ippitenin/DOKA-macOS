@@ -89,6 +89,9 @@ written in Russian.
   typing (measured by a built-in typing test), plus a daily chart.
 - **Sound processing** — microphone volume boost while recording, silence removal before
   upload, and system sounds on key transitions.
+- **Quiet mode** — dictate in a whisper when someone is asleep nearby or you can’t speak aloud.
+  A whisper is recognized almost as accurately as a normal voice, and DOKA stops mistaking it
+  for silence. Toggle it in Sound, from the menu bar menu or with its own hotkey.
 - **Dictionary** — case-insensitive replacement rules applied to every transcript. Rules match whole words: “doka” → “DOKA” no longer touches “document”; the per-rule “Inside words” switch brings back substring matching (e.g. “ё” → “е”). Optionally applied to file transcripts as well.
 
 ## Privacy

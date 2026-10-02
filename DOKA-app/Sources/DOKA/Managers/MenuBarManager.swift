@@ -11,6 +11,7 @@ final class MenuBarManager {
     private var cancellables = Set<AnyCancellable>()
     private let toggleItem = NSMenuItem()
     private let retryItem = NSMenuItem()
+    private let quietItem = NSMenuItem()
 
     init(controller: DictationController) {
         self.controller = controller
@@ -42,6 +43,13 @@ final class MenuBarManager {
         retryItem.isHidden = true
         menu.addItem(retryItem)
 
+        // Тихий режим (шёпот): галочка — текущее состояние настройки.
+        quietItem.title = L("menu.quietMode")
+        quietItem.target = self
+        quietItem.action = #selector(toggleQuietMode)
+        quietItem.setShortcut(for: .toggleQuietMode)
+        menu.addItem(quietItem)
+
         menu.addItem(.separator())
 
         // Сочетания задаются в «Клавишах» (setShortcut сам обновляет подпись
@@ -71,6 +79,9 @@ final class MenuBarManager {
         // поэтому берём значения из параметров, а не из контроллера.
         Publishers.CombineLatest(controller.$state, controller.$lastFailedDictation)
             .sink { [weak self] state, failed in self?.updateRetry(state: state, failed: failed) }
+            .store(in: &cancellables)
+        SettingsStore.shared.$quietMode
+            .sink { [weak self] on in self?.quietItem.state = on ? .on : .off }
             .store(in: &cancellables)
         update(for: controller.state)
     }
@@ -139,6 +150,10 @@ final class MenuBarManager {
 
     @objc private func retryFailed() {
         controller.retryLastFailedDictation()
+    }
+
+    @objc private func toggleQuietMode() {
+        controller.toggleQuietMode()
     }
 
     @objc private func openMain() {

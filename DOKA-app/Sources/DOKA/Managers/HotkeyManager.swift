@@ -16,6 +16,8 @@ extension KeyboardShortcuts.Name {
     static let openMainWindow = Self("openMainWindow")
     /// Открыть окно на секции «История». Без дефолта.
     static let openHistoryWindow = Self("openHistoryWindow")
+    /// Включить/выключить тихий режим (диктовка шёпотом). Без дефолта.
+    static let toggleQuietMode = Self("toggleQuietMode")
 }
 
 /// Захват кнопки мыши в «Клавишах»: пока пользователь назначает кнопку,
@@ -53,6 +55,9 @@ final class HotkeyManager {
         }
         KeyboardShortcuts.onKeyDown(for: .openHistoryWindow) {
             WindowManager.shared.showMain(section: .history)
+        }
+        KeyboardShortcuts.onKeyDown(for: .toggleQuietMode) { [weak controller] in
+            controller?.toggleQuietMode()
         }
         // Esc включается только на время записи (см. setEscapeEnabled).
         KeyboardShortcuts.disable(.cancelRecording)
