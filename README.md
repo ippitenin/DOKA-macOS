@@ -207,7 +207,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 531 checks in under a second, and
+Pure logic is covered by tests — `swift test` runs 551 checks in under a second, and
 CI runs them on every pull request along with the build and a localisation check. Audio
 capture, pasting, Keychain and the recorder panels need a real Mac with real permissions,
 so those are verified by a manual smoke pass; `CLAUDE.md` lists what to check per area.
