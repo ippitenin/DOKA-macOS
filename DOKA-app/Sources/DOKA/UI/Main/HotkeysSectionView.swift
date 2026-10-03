@@ -26,6 +26,11 @@ struct HotkeysSectionView: View {
                 SettingsRow(title: L("hotkeys.pasteLast")) {
                     KeyboardShortcuts.Recorder(for: .pasteLast)
                 }
+                CardDivider()
+                SettingsRow(title: L("hotkeys.quietMode"),
+                            help: L("hotkeys.quietMode.hint")) {
+                    KeyboardShortcuts.Recorder(for: .toggleQuietMode)
+                }
             }
 
             SettingsCard(header: L("hotkeys.card.window"),

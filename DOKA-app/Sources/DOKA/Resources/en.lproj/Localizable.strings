@@ -6,6 +6,7 @@
 "menu.stopDictation" = "Stop and transcribe";
 "menu.pasteLast" = "Paste last transcription";
 "menu.retryFailed" = "Retry failed dictation (%@)";
+"menu.quietMode" = "Quiet mode (whisper)";
 "menu.open" = "Open DOKA…";
 "menu.history" = "History…";
 "menu.quit" = "Quit DOKA";
@@ -51,6 +52,8 @@
 "error.noSpeech" = "No speech detected — check your microphone";
 "error.retryUnavailable" = "The recording to retry is no longer available";
 "dictation.retry.copied" = "Text transcribed and copied to the clipboard";
+"quietMode.on" = "Quiet mode on — you can dictate in a whisper";
+"quietMode.off" = "Quiet mode off";
 "error.localLoadFailed" = "Failed to load the model: %@";
 "transcribe.local.modelMissing" = "The local model isn’t downloaded. Get it in the Service section or choose a network service.";
 "transcribe.busy.analysis" = "AI analysis is running — wait for it to finish or cancel it";
@@ -147,6 +150,8 @@
 "sound.silenceRemoval.hint" = "Silence is cut out before processing: better accuracy, fewer hallucinations, faster long recordings.";
 "sound.skipSilent" = "Don’t send recordings without speech";
 "sound.skipSilent.hint" = "A recording with no detected speech isn’t sent for transcription: no charges and no “hallucinations” on silence. If your voice is quiet and dictations get dropped by mistake, turn this off. A dropped recording longer than a second can still be transcribed from the DOKA menu bar menu.";
+"sound.quietMode" = "Quiet mode (whisper)";
+"sound.quietMode.hint" = "For dictating in a whisper when someone is asleep nearby or you can’t speak aloud. A whisper is recognized almost as accurately as a normal voice, but it is much quieter and usually gets dropped as a recording without speech. In quiet mode DOKA reacts to quieter sound, doesn’t cut pauses and shows a stronger level on the panel. Whispered dictations aren’t counted in the dashboard’s “Speech speed”. You can also toggle it from the DOKA menu bar menu.";
 "sound.effectsCard" = "Sound Effects";
 "sound.cues" = "Recording start and stop sounds";
 "sound.volume" = "Volume";
@@ -215,6 +220,8 @@
 /* Shortcuts section */
 "hotkeys.toggle" = "Start/stop dictation:";
 "hotkeys.pasteLast" = "Paste last transcription:";
+"hotkeys.quietMode" = "Quiet mode (whisper):";
+"hotkeys.quietMode.hint" = "Turns whisper dictation on and off. The new mode applies from the next recording.";
 "hotkeys.escHint" = "Cancel recording — Esc (works while recording and transcribing).";
 "hotkeys.card.dictation" = "Dictation";
 "hotkeys.card.window" = "Window";
