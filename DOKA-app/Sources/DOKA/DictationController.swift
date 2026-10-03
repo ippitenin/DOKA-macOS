@@ -95,6 +95,7 @@ final class DictationController: ObservableObject {
     private enum Outcome {
         case succeeded          // текст в истории (вставка могла и не пройти)
         case failed(String)     // ошибка ДО записи в историю — есть что повторить
+        case gated(String)      // результат — галлюцинация на тишине: как отсев гейта
         case abandoned          // отмена/устаревшая задача — повторять нечего
     }
 
@@ -401,6 +402,17 @@ final class DictationController: ObservableObject {
             }
             let transcriptionTime = Date().timeIntervalSince(started)
             guard generation == gen else { return }   // отменено пользователем
+            // Весь результат — дежурная фраза Whisper на тишине («Thank you.»,
+            // «Продолжение следует...»): это пустая запись, прошедшая гейт, а не
+            // диктовка. Ведём как отсев гейта. Повтор из меню фильтр обходит —
+            // там пользователь сам просит распознать.
+            if case .live = source, HallucinationFilter.isHallucination(raw, quiet: audio.quiet) {
+                NSLog("DOKA: отброшена галлюцинация на тишине «%@» (запись %.2f с, речи %.2f с%@)",
+                      raw, audio.duration, audio.gateSpeechDuration, audio.quiet ? ", тихий режим" : "")
+                outcome = .gated(L("error.noSpeech"))
+                showError(L("error.noSpeech"), sound: .cancel)
+                return
+            }
             let text = ReplacementEngine.apply(raw, rules: settings.replacements)
             // Кодируем аудио в m4a ДО выхода (settle уберёт исходный WAV). id фиксируем заранее,
             // чтобы имя файла и запись истории гарантированно совпадали. Если сохранение аудио
@@ -462,6 +474,12 @@ final class DictationController: ObservableObject {
             if case .live = source { discardFailedDictation() }
         case .failed(let message):
             storeFailed(audio, message: message)
+        case .gated(let message):
+            if DictationGate.isRetryable(duration: audio.duration) {
+                storeFailed(audio, message: message, gated: true)
+            } else {
+                Self.removeFile(audio.url)
+            }
         case .abandoned:
             switch source {
             case .live:
