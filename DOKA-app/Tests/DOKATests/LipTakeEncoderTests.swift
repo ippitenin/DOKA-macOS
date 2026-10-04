@@ -23,7 +23,8 @@ final class LipTakeEncoderTests: XCTestCase {
     }
 
     /// Сырое видео 1280×720: кадры по меткам `times`, цвет растёт с номером кадра.
-    private func makeRawVideo(times: [Double], topWhiteRows: Int? = nil) throws -> URL {
+    private func makeRawVideo(times: [Double], topWhiteRows: Int? = nil, gray: ((Int) -> Int)? = nil,
+                              timeScale: CMTimeScale? = nil) throws -> URL {
         let url = folder.appendingPathComponent("raw.mp4")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -33,6 +34,7 @@ final class LipTakeEncoderTests: XCTestCase {
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: 1280, kCVPixelBufferHeightKey as String: 720
         ])
+        if let timeScale { input.mediaTimeScale = timeScale }
         writer.add(input)
         XCTAssertTrue(writer.startWriting())
         writer.startSession(atSourceTime: .zero)
@@ -49,10 +51,10 @@ final class LipTakeEncoderTests: XCTestCase {
                 memset(base, 0, CVPixelBufferGetDataSize(pixel))
                 memset(base, 255, rows * rowBytes)
             } else {
-                memset(base, Int32(i * 2 % 256), CVPixelBufferGetDataSize(pixel))
+                memset(base, Int32(gray?(i) ?? (i * 2 % 256)), CVPixelBufferGetDataSize(pixel))
             }
             CVPixelBufferUnlockBaseAddress(pixel, [])
-            XCTAssertTrue(adaptor.append(pixel, withPresentationTime: CMTime(seconds: t, preferredTimescale: 600)))
+            XCTAssertTrue(adaptor.append(pixel, withPresentationTime: CMTime(seconds: t, preferredTimescale: 1_000_000_000)))
         }
         input.markAsFinished()
         let done = expectation(description: "raw")
@@ -143,6 +145,43 @@ final class LipTakeEncoderTests: XCTestCase {
         let luma = CVPixelBufferGetBaseAddressOfPlane(pixel, 0)!.assumingMemoryBound(to: UInt8.self)
         let rowBytes = CVPixelBufferGetBytesPerRowOfPlane(pixel, 0)
         XCTAssertGreaterThan(luma[256 * rowBytes + 256], 200, "центр кропа должен быть белым (верх кадра)")
+    }
+
+    /// Каждый выходной кадр берёт ИМЕННО свой исходный: метки в журнале —
+    /// наносекунды с дрожанием камеры, а в файле они округлены масштабом
+    /// времени дорожки. Порог «на миллисекунду раньше цели» при грубом
+    /// масштабе перечитывал бы лишний кадр — видео опережало бы звук на кадр,
+    /// а число кадров осталось бы верным.
+    func testEachOutputFrameShowsItsScheduledSource() async throws {
+        let times = (0..<40).map { Double($0) / 30 + ($0.isMultiple(of: 2) ? 0.0013 : -0.0011) }
+        let gray: (Int) -> Int = { 20 + $0 * 5 }
+        let raw = try makeRawVideo(times: times, gray: gray, timeScale: 300)
+        let wav = try makeWav(seconds: 40.0 / 30)
+        let schedule = try XCTUnwrap(LipSync.schedule(times: times, duration: 40.0 / 30))
+        let output = folder.appendingPathComponent("clip.mp4.part")
+        try await LipTakeEncoder.encode(.init(rawVideo: raw, sourcePTS: times, schedule: schedule,
+                                              crop: CGRect(x: 384, y: 104, width: 512, height: 512),
+                                              audio: wav, output: output))
+        let asset = AVURLAsset(url: output, options: [AVURLAssetOverrideMIMETypeKey: "video/mp4"])
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let reader = try AVAssetReader(asset: asset)
+        let out = AVAssetReaderTrackOutput(track: try XCTUnwrap(tracks.first), outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        ])
+        reader.add(out)
+        XCTAssertTrue(reader.startReading())
+        var k = 0
+        while let sample = out.copyNextSampleBuffer() {
+            guard let pixel = CMSampleBufferGetImageBuffer(sample) else { continue }
+            CVPixelBufferLockBaseAddress(pixel, .readOnly)
+            let plane = CVPixelBufferGetBaseAddressOfPlane(pixel, 0)!.assumingMemoryBound(to: UInt8.self)
+            let luma = Double(plane[256 * CVPixelBufferGetBytesPerRowOfPlane(pixel, 0) + 256])
+            CVPixelBufferUnlockBaseAddress(pixel, .readOnly)
+            let expected = 16 + Double(gray(schedule.sourceIndex[k])) * 219 / 255
+            XCTAssertEqual(luma, expected, accuracy: 2.5, "выходной кадр \(k)")
+            k += 1
+        }
+        XCTAssertEqual(k, schedule.sourceIndex.count)
     }
 
     /// Отмена посреди кодирования не оставляет огрызок.

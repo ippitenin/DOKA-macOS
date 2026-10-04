@@ -68,7 +68,11 @@ final class LipMirrorVideoNSView: NSView {
         guard let preview = capture.previewLayer else { return }
         preview.removeFromSuperlayer()
         // Зеркало — отражение по горизонтали; в файл кадр идёт как есть.
-        preview.transform = CATransform3DMakeScale(-1, 1, 1)
+        // Если соединение превью уже отражает картинку само (автоматическое
+        // зеркалирование не успели выключить), второй раз не отражаем —
+        // иначе контур губ лёг бы на отражённое дважды лицо.
+        let alreadyMirrored = preview.connection?.isVideoMirrored ?? false
+        preview.transform = alreadyMirrored ? CATransform3DIdentity : CATransform3DMakeScale(-1, 1, 1)
         container.insertSublayer(preview, at: 0)
         self.preview = preview
         place(preview: LipMirrorGeometry.fillFrame(camera: cameraSize, container: container.bounds.size))

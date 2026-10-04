@@ -2,6 +2,20 @@ import AVFoundation
 import Combine
 import QuartzCore
 
+/// Камера-кандидат для губ (чистая модель выбора — проверяется тестами).
+struct LipCameraCandidate {
+    let isBuiltIn: Bool
+    let isSuspended: Bool
+}
+
+enum LipCameraChooser {
+    /// Индекс камеры: встроенная первой, затем любая; спящие не годятся.
+    static func pick(_ candidates: [LipCameraCandidate]) -> Int? {
+        let awake = candidates.indices.filter { !candidates[$0].isSuspended }
+        return awake.first { candidates[$0].isBuiltIn } ?? awake.first
+    }
+}
+
 /// Состояние камеры для зеркала губ.
 enum LipMirrorPhase: Equatable {
     case idle
@@ -259,8 +273,11 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
     /// настроенной сессии ничего не меняет. `completion(имя камеры | nil)`.
     func configure(previewLayer: AVCaptureVideoPreviewLayer, completion: @escaping @Sendable (String?) -> Void) {
         sessionQueue.async { [self] in
-            if configured {
-                completion(device?.localizedName)
+            // Настроенная сессия переиспользуется, пока её камера не уснула:
+            // у MacBook с закрытой крышкой встроенная камера остаётся в
+            // списке спящей, и `wasDisconnected` об этом не сообщает.
+            if configured, let device, !device.isSuspended {
+                completion(device.localizedName)
                 return
             }
             guard let device = Self.pickDevice(), let chosen = Self.pickFormat(device) else {
@@ -313,13 +330,16 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
 
     private enum CameraError: Error { case cannotAdd }
 
-    /// Встроенная камера первой, затем внешняя. Continuity Camera (iPhone) не
-    /// используем: для неё нужен отдельный ключ Info.plist, и она «уплывает»
-    /// вместе с телефоном.
+    /// Встроенная камера первой, затем внешняя; спящие (крышка закрыта)
+    /// пропускаются. Continuity Camera (iPhone) не используем: для неё нужен
+    /// отдельный ключ Info.plist, и она «уплывает» вместе с телефоном.
     private static func pickDevice() -> AVCaptureDevice? {
         let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .external],
                                                        mediaType: .video, position: .unspecified).devices
-        return devices.first { $0.deviceType == .builtInWideAngleCamera } ?? devices.first
+        let candidates = devices.map {
+            LipCameraCandidate(isBuiltIn: $0.deviceType == .builtInWideAngleCamera, isSuspended: $0.isSuspended)
+        }
+        return LipCameraChooser.pick(candidates).map { devices[$0] }
     }
 
     /// Ровно 1280×720 с 30 к/с, иначе наименьший формат от 720p с ≥ 25 к/с.
@@ -411,8 +431,10 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
         }
     }
 
-    /// Привести сессию к желаемому состоянию. Быстрые стоп → старт (короткое
-    /// нажатие и сразу новая запись) складываются в один итог без дёрганья.
+    /// Привести сессию к желаемому состоянию. Каждый блок sessionQueue сверяет
+    /// факт с желаемым, поэтому устаревший старт после стопа (и наоборот) не
+    /// выполнится. Между дублями камера действительно гаснет — так задумано:
+    /// индикатор горит только во время записи.
     private func reconcile() {
         if wantRunning, !session.isRunning, configured {
             guard let device, let format else { return }

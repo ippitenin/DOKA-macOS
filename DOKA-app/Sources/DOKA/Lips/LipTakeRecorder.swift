@@ -186,6 +186,9 @@ final class LipTakeRecorder {
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings,
                                            sourceFormatHint: format)
             input.expectsMediaDataInRealTime = true
+            // Точный масштаб времени дорожки: по умолчанию писатель берёт 1/600,
+            // и метки кадров в файле расходятся с журналом почти на миллисекунду.
+            input.mediaTimeScale = 90_000
             guard writer.canAdd(input) else { return false }
             writer.add(input)
             guard writer.startWriting() else {

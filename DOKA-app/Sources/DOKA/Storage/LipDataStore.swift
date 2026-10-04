@@ -165,6 +165,15 @@ final class LipDataStore: ObservableObject {
         }
 
         let plan = LipTakePlanner.plan(job: job, log: log)
+        // Диагностика каждого дубля — для замера холодной камеры и рассинхрона
+        // на живых диктовках (у отброшенных дублей сырьё удаляется).
+        let firstFrameDelay = log.frames.first.flatMap { frame in job.timing.map { frame.host - $0.wavHostStart } }
+        NSLog("DOKA: губы — дубль %@: %@; кадров %d, %.1f к/с, сброшено %d; первый кадр через %@ с, полезное видео %.2f–%.2f с, речь с %@ с; лицо %.0f%%, дрейф %.3f с",
+              id.uuidString, String(describing: plan.verdict), log.frames.count, plan.measuredFps,
+              log.droppedFrames, firstFrameDelay.map { String(format: "%.2f", $0) } ?? "?",
+              plan.schedule?.validFrom ?? 0, plan.schedule?.validTo ?? 0,
+              job.speechOnset.map { String(format: "%.2f", $0) } ?? "?",
+              plan.faceCoverage * 100, job.maxClockDrift)
         guard let meta = LipTakePlanner.meta(id: id, job: job, log: log, plan: plan,
                                              appVersion: Self.appVersion),
               let schedule = plan.schedule, let crop = plan.crop else {

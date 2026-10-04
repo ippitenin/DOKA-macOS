@@ -240,9 +240,12 @@ enum LipTakeEncoder {
         /// Номер следующего выходного кадра.
         private(set) var next = 0
         private(set) var failure: String?
-        /// Последний прочитанный исходный кадр и его метка.
+        /// Выбранный исходный кадр и его метка.
         private var lastSample: CMSampleBuffer?
         private var lastPTS = -Double.infinity
+        /// Следующий прочитанный, но ещё не выбранный кадр (просмотр вперёд).
+        private var pending: CMSampleBuffer?
+        private var pendingPTS = 0.0
         /// Готовый (кропнутый) кадр для текущего исходного индекса — повторы
         /// берут его же без повторной отрисовки.
         private var rendered: CVPixelBuffer?
@@ -258,13 +261,14 @@ enum LipTakeEncoder {
             let index = input.schedule.sourceIndex[k]
             if index != renderedIndex {
                 let target = input.sourcePTS[index]
-                // Читаем вперёд до нужной метки; выпавший кадр — берём последний прочитанный.
-                while lastPTS < target - 0.001, let sample = reader.copyNextSampleBuffer() {
-                    // Служебные буферы-маркеры без кадра пропускаем.
-                    guard CMSampleBufferGetNumSamples(sample) > 0,
-                          CMSampleBufferGetImageBuffer(sample) != nil else { continue }
-                    lastSample = sample
-                    lastPTS = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
+                // Берём кадр с БЛИЖАЙШЕЙ меткой: в журнале метки — наносекунды,
+                // а в файле они округлены масштабом времени дорожки, и порог
+                // «чуть раньше цели» при грубом масштабе перечитывал бы лишний
+                // кадр (видео на кадр впереди звука).
+                while peek(), lastSample == nil || abs(pendingPTS - target) <= abs(lastPTS - target) {
+                    lastSample = pending
+                    lastPTS = pendingPTS
+                    pending = nil
                 }
                 guard let sample = lastSample, let source = CMSampleBufferGetImageBuffer(sample) else {
                     failure = "no source frame for output \(k)"
@@ -283,6 +287,20 @@ enum LipTakeEncoder {
             }
             next = k + 1
             return true
+        }
+
+        /// Подготовить следующий кадр файла в `pending`; false — кадры кончились.
+        private func peek() -> Bool {
+            if pending != nil { return true }
+            while let sample = reader.copyNextSampleBuffer() {
+                // Служебные буферы-маркеры без кадра пропускаем.
+                guard CMSampleBufferGetNumSamples(sample) > 0,
+                      CMSampleBufferGetImageBuffer(sample) != nil else { continue }
+                pending = sample
+                pendingPTS = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
+                return true
+            }
+            return false
         }
 
         private func render(_ source: CVPixelBuffer) -> CVPixelBuffer? {
