@@ -265,10 +265,12 @@ final class RecorderPanelController {
             // кромки (на этом маке safeAreaInsets.top = 32, прежние +4
             // читались как «нотч заходит на пару пикселей»).
             let height = max(screen.safeAreaInsets.top, 32)
-            let width = notchWidth + NotchRecorderView.sideWidth * 2 + 20
+            // Плюс два плеча: плашка вытекает из кромки вогнутыми дугами
+            // (`EdgeFlowShape`), и они выступают за тело плашки.
+            let width = notchWidth + NotchRecorderView.sideWidth * 2 + 20 + 2 * DS.EdgePlate.shoulder
             return (CGSize(width: width, height: height), notchWidth)
         }
-        return (CGSize(width: 240, height: 36), 0)
+        return (CGSize(width: 240 + 2 * DS.EdgePlate.shoulder, height: 36), 0)
     }
 
     private static func screenUnderMouse() -> NSScreen? {

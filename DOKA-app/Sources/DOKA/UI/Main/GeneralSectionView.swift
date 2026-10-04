@@ -259,13 +259,10 @@ private struct StylePreviewCard: View {
         case .notch:
             // Чёрная плашка нотча — приклеена к верхней кромке «мини-экрана»
             // без отступа, как настоящая бровка у кромки экрана.
-            UnevenRoundedRectangle(
-                bottomLeadingRadius: 6,
-                bottomTrailingRadius: 6,
-                style: .continuous
-            )
+            // Плечи у кромки — как у живой плашки (`EdgeFlowShape`).
+            EdgeFlowShape(flatEdge: .top, shoulder: 3, corner: 6)
             .fill(.black)
-            .frame(width: 64, height: 16)
+            .frame(width: 70, height: 16)
             .overlay(
                 HStack(spacing: 7) {
                     PreviewBars(count: 4)

@@ -32,18 +32,12 @@ enum LipMirrorPlacement: Equatable {
     }
 }
 
-/// Край плашки, который прирастает к краю экрана (или к notch-плашке).
-enum LipMirrorEdge: Equatable {
-    case top
-    case bottom
-}
-
 struct LipMirrorLayout: Equatable {
     /// Рамка окна в координатах экрана (AppKit: начало снизу слева).
     let frame: CGRect
     /// Кадр видео внутри окна (SwiftUI: начало сверху слева).
     let video: CGRect
-    let flatEdge: LipMirrorEdge
+    let flatEdge: PlateEdge
 }
 
 /// Чистая геометрия зеркала губ.
@@ -51,7 +45,7 @@ enum LipMirrorGeometry {
     static let videoSize = CGSize(width: 224, height: 120)
     /// Вогнутые «плечи» у края экрана: плашка вытекает из кромки, а не
     /// приклеена к ней прямым углом.
-    static let shoulder: CGFloat = 10
+    static let shoulder: CGFloat = DS.EdgePlate.shoulder
     /// Скругление противоположного края.
     static let corner: CGFloat = 22
     static let padding: CGFloat = 12

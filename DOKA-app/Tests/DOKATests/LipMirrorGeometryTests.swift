@@ -60,6 +60,20 @@ final class LipMirrorGeometryTests: XCTestCase {
         XCTAssertEqual(layout.flatEdge, .top)
     }
 
+    /// Фейковая notch-плашка с плечами (260 pt): продолжение по-прежнему уже
+    /// её и заходит под неё на 2 pt.
+    @MainActor
+    func testBelowFakeNotchPanelWithShoulders() {
+        let size = RecorderPanelController.notchGeometry(for: nil).size
+        let fake = CGRect(x: screen.midX - size.width / 2, y: screen.maxY - size.height,
+                          width: size.width, height: size.height)
+        let layout = LipMirrorGeometry.layout(.belowNotchPanel, screen: screen, safeTop: 0, notchWidth: 0,
+                                              notchPanel: fake)
+        XCTAssertLessThanOrEqual(layout.frame.width, fake.width)
+        XCTAssertEqual(layout.frame.maxY, fake.minY + 2)
+        XCTAssertEqual(layout.frame.midX, fake.midX)
+    }
+
     /// «Нижний вырез»: прирастает к нижней кромке экрана, плоский низ.
     func testBottomEdgeSitsOnScreenBottom() {
         let layout = LipMirrorGeometry.layout(.bottomEdge, screen: screen, safeTop: 32, notchWidth: 200,
