@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import QuartzCore
+import os
 
 /// Камера-кандидат для губ (чистая модель выбора — проверяется тестами).
 struct LipCameraCandidate {
@@ -215,17 +216,28 @@ final class LipCapture: ObservableObject {
 /// Сессия камеры и маршрутизация кадров. Три последовательные очереди:
 /// `sessionQueue` — настройка, старт и стоп (`startRunning` блокирует на
 /// сотни мс, главному потоку этого нельзя); `videoQueue` — кадры и текущий
-/// дубль; `visionQueue` — поиск лица.
+/// дубль; `visionQueue` — поиск лица и ритм журнала.
+///
+/// Vision идёт на каждом кадре, который застал его свободным; в журнал лица
+/// результат попадает по `LipJournalCadence` (~15 Гц, как раньше).
 final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     let session = AVCaptureSession()
     let videoQueue = DispatchQueue(label: "com.pitenin.doka.lips.video", qos: .userInitiated)
     private let sessionQueue = DispatchQueue(label: "com.pitenin.doka.lips.session", qos: .userInitiated)
-    private let visionQueue = DispatchQueue(label: "com.pitenin.doka.lips.vision", qos: .userInitiated)
+    /// Не `private`: тесты дожидаются на ней конца Vision по кадру (и снятия
+    /// флага занятости), чтобы подать следующий кадр свободному Vision.
+    let visionQueue = DispatchQueue(label: "com.pitenin.doka.lips.vision", qos: .userInitiated)
     private let output = AVCaptureVideoDataOutput()
-    private let tracker = LipFaceTracker()
+    private let detector: any LipFaceDetecting
+    /// Vision занят кадром. Флаг под замком, а не состояние `videoQueue`:
+    /// ставит его кадр на `videoQueue`, а снимает сам блок `visionQueue` (в
+    /// `defer` — и при ошибке Vision), без перехода на `videoQueue` на
+    /// каждом кадре. Флаг, а не сам замок: unfair lock отпускает только
+    /// поток, который его взял.
+    private let visionGate = OSAllocatedUnfairLock(initialState: false)
 
     /// Результат Vision для зеркала: образец лица и размер кадра. Зовётся на
-    /// `videoQueue`, не чаще ~15 раз в секунду.
+    /// `videoQueue` на ритме журнала — не чаще ~15 раз в секунду.
     var onFace: (@Sendable (LipFaceSample, CGSize) -> Void)?
     /// Сырьё дубля дописано (не выброшенного). Зовётся на `videoQueue`.
     var onTakeCaptured: (@Sendable (LipTake) -> Void)?
@@ -242,12 +254,18 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
     // Состояние videoQueue.
     private var current: LipTakeRecorder?
     private var recorders: [UUID: LipTakeRecorder] = [:]
-    private var frameIndex = 0
-    private var visionBusy = false
+    private var frameStats = FrameStats()
+
+    // Состояние visionQueue.
+    private var cadence = LipJournalCadence()
+    private var visionStats = VisionStats()
 
     private var observers: [NSObjectProtocol] = []
 
-    override init() {
+    /// `detector` — шов для тестов. Конструктор не создаёт ни Vision, ни
+    /// Metal: `LipFaceTracker` заводит запрос только на первом кадре.
+    init(detector: any LipFaceDetecting = LipFaceTracker()) {
+        self.detector = detector
         super.init()
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVCaptureSession.runtimeErrorNotification,
@@ -377,16 +395,20 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
         videoQueue.async { [self] in
             current = recorder
             recorders[recorder.take.id] = recorder
-            frameIndex = 0
+            frameStats = FrameStats()
         }
         sessionQueue.async { [self] in
-            // Имя камеры и эффекты — ДО `startRunning`: он блокирует на сотни
-            // мс, и короткий дубль успел бы дописаться без них.
+            // Имя камеры, эффекты и номинал кадра — ДО `startRunning`: он
+            // блокирует на сотни мс, и короткий дубль успел бы дописаться без них.
             let name = device?.localizedName ?? ""
             let effects = currentEffects()
+            let frameDuration = format.map { CMTimeGetSeconds($0.frameDuration) }
             videoQueue.async {
                 recorder.camera = name
                 recorder.effects = effects
+            }
+            if let frameDuration {
+                visionQueue.async { [self] in cadence.frameDuration = frameDuration }
             }
             wantRunning = true
             reconcile()
@@ -397,14 +419,24 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
         videoQueue.async { [self] in
             guard let recorder = current else { return }
             current = nil
+            let frames = frameStats
             // Сначала дренируем Vision: результаты по последним кадрам должны
-            // попасть в журнал до финализации.
+            // попасть в журнал до финализации — их записи уже стоят в
+            // `videoQueue` раньше блока финализации.
             visionQueue.async { [self] in
+                // Сводка — здесь, на очереди Vision: её состояние, и
+                // `videoQueue` в это время уже принимает кадры следующего дубля.
+                let vision = (visionStats.take == recorder.take.id ? visionStats : VisionStats()).summary()
                 videoQueue.async { [self] in
                     recorder.finish { [self] ok in
                         recorders[recorder.take.id] = nil
-                        NSLog("DOKA: губы — дубль %@: кадров %d, %@", recorder.take.id.uuidString,
-                              recorder.frameCount, ok ? "записан" : "сбой")
+                        let span = (recorder.lastFrameHost ?? 0) - (recorder.firstFrameHost ?? 0)
+                        NSLog("DOKA: губы — дубль %@: кадров %d, %@; Vision %d из %d (p50 %.1f мс, p95 %.1f мс, ошибок %d), журнал лица %d (%.1f/с); сброшено камерой: опоздали %d, нет буферов %d, разрыв %d, без причины %d, прочие %d",
+                              recorder.take.id.uuidString, recorder.frameCount, ok ? "записан" : "сбой",
+                              vision.count, frames.seen, vision.p50, vision.p95, vision.failures,
+                              recorder.faceCount, span > 0 ? Double(recorder.faceCount) / span : 0,
+                              frames.droppedLate, frames.droppedOutOfBuffers, frames.droppedDiscontinuity,
+                              frames.droppedNoReason, frames.droppedOther)
                         // Сбойный дубль тоже идёт дальше: журнал записан, и
                         // причину посчитает обработчик.
                         if !recorder.isDiscarded { onTakeCaptured?(recorder.take) }
@@ -493,24 +525,51 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let recorder = current else { return }
+        guard current != nil else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let hostClock = CMClockGetHostTimeClock()
         let host = CMTimeGetSeconds(CMSyncConvertTime(pts, from: session.synchronizationClock ?? hostClock,
                                                       to: hostClock))
-        guard host >= recorder.acceptFromHost else { return }
-        recorder.append(sampleBuffer, host: host)
+        handleFrame(sampleBuffer, host: host)
+    }
 
-        // Лицо — на каждом втором кадре (15 Гц) и только если Vision свободен.
-        frameIndex += 1
-        guard frameIndex.isMultiple(of: 2), !visionBusy,
-              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        visionBusy = true
+    /// Кадр на хост-шкале: в сырьё дубля и, если Vision свободен, — в поиск
+    /// лица. Только на `videoQueue`; тесты подают кадры сюда без камеры.
+    func handleFrame(_ sampleBuffer: CMSampleBuffer, host: Double) {
+        dispatchPrecondition(condition: .onQueue(videoQueue))
+        guard let recorder = current, host >= recorder.acceptFromHost else { return }
+        recorder.append(sampleBuffer, host: host)
+        frameStats.seen += 1
+
+        // На `videoQueue` — только проба замка и `async`: кадры камеры не
+        // ждут ни Vision, ни журнала.
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
+              visionGate.withLock({ busy in
+                  guard !busy else { return false }
+                  busy = true
+                  return true
+              }) else { return }
         let size = CGSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
+        let take = recorder.take.id
         visionQueue.async { [self] in
-            let sample = tracker.detect(in: pixelBuffer)
+            defer { visionGate.withLock { $0 = false } }
+            let started = CACurrentMediaTime()
+            let sample: LipFaceSample
+            let failed: Bool
+            do {
+                sample = try detector.detect(in: pixelBuffer)
+                failed = false
+            } catch {
+                // Для журнала это кадр без лица — как и было, когда детектор
+                // глотал ошибку сам.
+                sample = .none
+                failed = true
+            }
+            visionStats.add(CACurrentMediaTime() - started, failed: failed, take: take)
+            // Журнал и зеркало — на прежнем ритме: запись в журнал встаёт в
+            // `videoQueue` раньше, чем блок финализации из `end()`.
+            guard cadence.admit(host: host, take: take) else { return }
             videoQueue.async { [self] in
-                visionBusy = false
                 recorder.addFace(sample, host: host)
                 onFace?(sample, size)
             }
@@ -519,6 +578,69 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
 
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        current?.noteDropped()
+        guard let recorder = current else { return }
+        recorder.noteDropped()
+        let reason = CMGetAttachment(sampleBuffer, key: kCMSampleBufferAttachmentKey_DroppedFrameReason,
+                                     attachmentModeOut: nil) as? String
+        frameStats.noteDropped(reason: reason)
+    }
+}
+
+/// Сводка кадров дубля для лога (в `capture.json` не идёт): сколько кадров
+/// пришло и почему камера сбрасывала остальные. «Опоздал» — не успела
+/// `videoQueue`, «нет буферов» — пул камеры держат Vision или кодер,
+/// «разрыв» — `Discontinuity`.
+///
+/// «Без причины» — отдельный счётчик: причину сброса SDK обещает только на
+/// iOS (`AVCaptureVideoDataOutput.h`), и на Mac камера может её не
+/// прикладывать. Свались такие сбросы в «прочие» — «нет буферов 0» в логе
+/// выглядело бы доказательством, хотя причину просто не узнать.
+private struct FrameStats {
+    var seen = 0
+    var droppedLate = 0
+    var droppedOutOfBuffers = 0
+    var droppedDiscontinuity = 0
+    var droppedNoReason = 0
+    /// Причина есть, но незнакомая.
+    var droppedOther = 0
+
+    mutating func noteDropped(reason: String?) {
+        guard let reason else {
+            droppedNoReason += 1
+            return
+        }
+        if reason == kCMSampleBufferDroppedFrameReason_FrameWasLate as String {
+            droppedLate += 1
+        } else if reason == kCMSampleBufferDroppedFrameReason_OutOfBuffers as String {
+            droppedOutOfBuffers += 1
+        } else if reason == kCMSampleBufferDroppedFrameReason_Discontinuity as String {
+            droppedDiscontinuity += 1
+        } else {
+            droppedOther += 1
+        }
+    }
+}
+
+/// Время Vision на кадр за дубль — для лога. Живёт на `visionQueue` и
+/// начинается заново с первым кадром следующего дубля.
+private struct VisionStats {
+    var take: UUID?
+    var seconds: [Double] = []
+    var failures = 0
+
+    mutating func add(_ duration: Double, failed: Bool, take: UUID) {
+        if take != self.take { self = VisionStats(take: take) }
+        seconds.append(duration)
+        if failed { failures += 1 }
+    }
+
+    /// Итог для лога: одна сортировка на оба перцентиля, мс; 0 — кадров не было.
+    func summary() -> (count: Int, p50: Double, p95: Double, failures: Int) {
+        let sorted = seconds.sorted()
+        func percentile(_ p: Double) -> Double {
+            guard !sorted.isEmpty else { return 0 }
+            return sorted[Int((p * Double(sorted.count - 1)).rounded())] * 1000
+        }
+        return (sorted.count, percentile(0.5), percentile(0.95), failures)
     }
 }
