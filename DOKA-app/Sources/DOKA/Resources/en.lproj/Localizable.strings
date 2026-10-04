@@ -364,6 +364,14 @@
 "lips.camera.denied" = "Access denied";
 "lips.camera.allow" = "Allow Access";
 "lips.camera.openSettings" = "Open Settings";
+"lips.mirror.header" = "Mirror";
+"lips.mirror.notchVariant" = "With the Notch style";
+"lips.mirror.notchVariant.hint" = "While recording, DOKA shows a mirror — a live view of your mouth that follows your face, so you can see your lips are in frame. With the other panel styles the mirror slides out of the notch at the top; with Notch you can extend the notch downward or show the mirror at the bottom edge of the screen.";
+"lips.mirror.variant.continuation" = "Extend the notch";
+"lips.mirror.variant.bottom" = "Bottom of the screen";
+"lips.mirror.warming" = "Camera…";
+"lips.mirror.noFace" = "Face not visible";
+"lips.mirror.unavailable" = "Camera unavailable";
 "lips.data.header" = "Data";
 "lips.data.footer" = "Face video is biometric data. It stays on this Mac, is never uploaded, and is never deleted automatically.";
 "lips.stats.pairs.title" = "Pairs";

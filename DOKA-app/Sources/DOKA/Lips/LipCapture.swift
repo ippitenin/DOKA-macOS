@@ -2,6 +2,17 @@ import AVFoundation
 import Combine
 import QuartzCore
 
+/// Состояние камеры для зеркала губ.
+enum LipMirrorPhase: Equatable {
+    case idle
+    /// Камера включается, кадров ещё нет.
+    case warming
+    case face
+    case noFace
+    /// Кадров нет — камеру забрали или она отключилась.
+    case unavailable
+}
+
 /// Камера эксперимента «Губы»: снимает лицо во время диктовки.
 ///
 /// Камера работает ТОЛЬКО на время записи: `beginTake` при старте диктовки,
@@ -24,6 +35,20 @@ final class LipCapture: ObservableObject {
     @Published private(set) var cameraName: String?
     /// Идёт дубль (камера снимает) — для зеркала.
     @Published private(set) var activeTake: LipTake?
+    /// Состояние для зеркала; публикуется только на смене, не покадрово.
+    @Published private(set) var phase: LipMirrorPhase = .idle
+    /// Лицо и размер кадра для зеркала, ~15 раз в секунду. Не @Published:
+    /// зеркало двигает слои само, без перерисовки SwiftUI на каждый кадр.
+    var onMouth: ((LipFaceSample, CGSize) -> Void)?
+
+    private var takeStartedAt = Date.distantPast
+    private var lastSampleAt: Date?
+    private var lastFaceAt: Date?
+    private var phaseTimer: Timer?
+    /// Лица нет дольше — «Лица не видно».
+    private static let faceLostAfter: TimeInterval = 0.5
+    /// Кадров нет дольше — «Камера недоступна».
+    private static let cameraLostAfter: TimeInterval = 2.5
 
     /// Перед дублем нужно столько свободного места: сырьё длинной диктовки —
     /// десятки мегабайт, и забивать диск до отказа ради пар нельзя.
@@ -36,6 +61,9 @@ final class LipCapture: ObservableObject {
         // Камера дописала сырьё дубля — событие для хранилища пар.
         engine.onTakeCaptured = { take in
             Task { @MainActor in LipDataStore.shared.captureFinished(take) }
+        }
+        engine.onFace = { sample, size in
+            Task { @MainActor in LipCapture.shared.handleFace(sample, size: size) }
         }
         // Включили сбор или выдали доступ — настроить сессию заранее, чтобы
         // старт дубля был только `startRunning`. @Published шлёт значение до
@@ -90,6 +118,11 @@ final class LipCapture: ObservableObject {
                                        queue: engine.videoQueue)
         engine.begin(recorder)
         activeTake = take
+        takeStartedAt = Date()
+        lastSampleAt = nil
+        lastFaceAt = nil
+        phase = .warming
+        startPhaseTimer()
         return take
     }
 
@@ -98,6 +131,7 @@ final class LipCapture: ObservableObject {
     func stopCamera() {
         guard activeTake != nil else { return }
         activeTake = nil
+        stopPhaseTimer()
         engine.end()
     }
 
@@ -108,7 +142,51 @@ final class LipCapture: ObservableObject {
 
     func shutdown() {
         activeTake = nil
+        stopPhaseTimer()
         engine.shutdown()
+    }
+
+    // MARK: - Фаза для зеркала
+
+    private func handleFace(_ sample: LipFaceSample, size: CGSize) {
+        guard activeTake != nil else { return }
+        let now = Date()
+        lastSampleAt = now
+        if sample.box != nil { lastFaceAt = now }
+        updatePhase(now: now)
+        onMouth?(sample, size)
+    }
+
+    private func updatePhase(now: Date) {
+        guard activeTake != nil else { return }
+        let next: LipMirrorPhase
+        if let last = lastSampleAt {
+            if now.timeIntervalSince(last) > Self.cameraLostAfter {
+                next = .unavailable
+            } else if let face = lastFaceAt, now.timeIntervalSince(face) <= Self.faceLostAfter {
+                next = .face
+            } else if now.timeIntervalSince(lastFaceAt ?? takeStartedAt) > Self.faceLostAfter {
+                next = .noFace
+            } else {
+                next = phase == .warming ? .warming : .noFace
+            }
+        } else {
+            next = now.timeIntervalSince(takeStartedAt) > Self.cameraLostAfter ? .unavailable : .warming
+        }
+        if next != phase { phase = next }
+    }
+
+    private func startPhaseTimer() {
+        stopPhaseTimer()
+        phaseTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+            Task { @MainActor in LipCapture.shared.updatePhase(now: Date()) }
+        }
+    }
+
+    private func stopPhaseTimer() {
+        phaseTimer?.invalidate()
+        phaseTimer = nil
+        phase = .idle
     }
 
     private static func hasFreeSpace() -> Bool {

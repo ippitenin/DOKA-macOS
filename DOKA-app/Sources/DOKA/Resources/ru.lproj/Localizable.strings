@@ -364,6 +364,14 @@
 "lips.camera.denied" = "Доступ запрещён";
 "lips.camera.allow" = "Разрешить доступ";
 "lips.camera.openSettings" = "Открыть настройки";
+"lips.mirror.header" = "Зеркало";
+"lips.mirror.notchVariant" = "При стиле «Нотч»";
+"lips.mirror.notchVariant.hint" = "Во время записи DOKA показывает зеркало — живой кадр рта, который следует за лицом: так видно, что губы в кадре. При остальных стилях панели зеркало выплывает из выреза сверху, а для «Нотча» можно выбрать: продолжить вырез вниз или показать зеркало у нижнего края экрана.";
+"lips.mirror.variant.continuation" = "Продолжение выреза";
+"lips.mirror.variant.bottom" = "Снизу экрана";
+"lips.mirror.warming" = "Камера…";
+"lips.mirror.noFace" = "Лица не видно";
+"lips.mirror.unavailable" = "Камера недоступна";
 "lips.data.header" = "Данные";
 "lips.data.footer" = "Видео лица — биометрические данные. Они хранятся только на этом Mac, никуда не отправляются и сами не удаляются.";
 "lips.stats.pairs.title" = "Пары";

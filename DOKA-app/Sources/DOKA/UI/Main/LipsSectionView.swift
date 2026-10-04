@@ -23,6 +23,18 @@ struct LipsSectionView: View {
                 }
             }
 
+            SettingsCard(header: L("lips.mirror.header")) {
+                SettingsRow(title: L("lips.mirror.notchVariant"), help: L("lips.mirror.notchVariant.hint")) {
+                    SettingsPopup(
+                        titles: LipMirrorNotchVariant.allCases.map(\.title),
+                        selectionIndex: Binding(
+                            get: { LipMirrorNotchVariant.allCases.firstIndex(of: settings.lipsMirrorNotchVariant) ?? 0 },
+                            set: { settings.lipsMirrorNotchVariant = LipMirrorNotchVariant.allCases[$0] }
+                        )
+                    )
+                }
+            }
+
             SettingsCard(header: L("lips.data.header"), footer: L("lips.data.footer")) {
                 SettingsRow(title: L("lips.stats.pairs.title")) {
                     Text(L("lips.stats.pairs", store.summary.voice, store.summary.whisper))

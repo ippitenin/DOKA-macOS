@@ -39,6 +39,8 @@ final class RecorderPanelController {
     /// Полноэкранная клик-сквозная подсветка краёв — только для стиля
     /// «Аврора» во время записи/распознавания.
     private var glowPanel: RecorderPanel?
+    /// Зеркало губ (эксперимент «Губы») — только пока камера снимает дубль.
+    private let mirror = LipMirrorController()
 
     /// NSAnimationContext, в отличие от SwiftUI, сам не уважает Reduce Motion.
     private var animationDurationScale: Double {
@@ -51,15 +53,18 @@ final class RecorderPanelController {
 
     func show() {
         let style = SettingsStore.shared.recorderStyle
+        let screen = Self.screenUnderMouse()
 
         // «Скрытая»: запись и распознавание идут без панели (статус виден
         // по иконке меню-бара). Ошибки показываем всегда — иначе они
-        // станут беззвучно-невидимыми.
+        // станут беззвучно-невидимыми. Зеркало губ при этом показывается:
+        // это индикатор камеры, а не панель записи.
         if style == .hidden {
             if case .error = controller.state {
                 // показываем панель в классическом виде
             } else {
                 hide()
+                syncMirror(style: style, screen: screen)
                 return
             }
         }
@@ -72,7 +77,6 @@ final class RecorderPanelController {
         if case .error = controller.state, effective == .aurora || effective == .mini {
             effective = .classic
         }
-        let screen = Self.screenUnderMouse()
 
         // Полноэкранная подсветка краёв: только «Аврора» и только пока идёт
         // запись/распознавание (на ошибке остаётся одна плашка). Показываем
@@ -133,10 +137,22 @@ final class RecorderPanelController {
                 panel.animator().alphaValue = 1
             }
         }
+        syncMirror(style: style, screen: screen)
+    }
+
+    /// Зеркало губ — пока идёт запись и камера снимает дубль; размещение —
+    /// по настроенному стилю панели (у «Нотча» — свой вариант).
+    private func syncMirror(style: RecorderStyle, screen: NSScreen?) {
+        if controller.state.isRecording, LipCapture.shared.activeTake != nil {
+            mirror.show(style: style, screen: screen)
+        } else {
+            mirror.dismiss()
+        }
     }
 
     func hide() {
         dismissGlow()
+        mirror.dismiss()
         guard let panel, panel.isVisible else { return }
         hideGeneration += 1
         let generation = hideGeneration
