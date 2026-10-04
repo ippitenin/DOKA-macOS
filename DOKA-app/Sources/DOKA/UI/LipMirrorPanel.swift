@@ -28,7 +28,12 @@ final class LipMirrorController {
                                               notchWidth: notch.notchWidth, notchPanel: notchPanel)
         hideGeneration += 1
         if let panel, panel.isVisible, panel.frame == layout.frame {
-            panel.alphaValue = 1
+            // Возможно, идёт анимация затухания: прямое присваивание она бы
+            // перетёрла и довела альфу до нуля — перебиваем её своей анимацией.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = DS.Anim.panelShow * animationDurationScale
+                panel.animator().alphaValue = 1
+            }
             return
         }
         // Вью пересоздаётся на каждом показе — так плашка каждый раз заново

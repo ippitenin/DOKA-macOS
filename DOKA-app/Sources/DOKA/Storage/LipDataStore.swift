@@ -21,6 +21,8 @@ final class LipDataStore: ObservableObject {
         var loaded = false
 
         var pairs: Int { voice + whisper }
+        /// Есть что стирать: пары, очередь, счётчики или байты сырья.
+        var hasData: Bool { pairs > 0 || pending > 0 || bytes > 0 || stats != LipStats() }
         var rejected: [(reason: LipRejectReason, count: Int)] {
             LipRejectReason.allCases.compactMap { reason in
                 let count = stats.rejected[reason.rawValue] ?? 0

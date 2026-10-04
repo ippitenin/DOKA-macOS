@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Главное окно приложения: сайдбар с секциями (Главная, Общие, Клавиши,
@@ -11,8 +12,29 @@ final class WindowManager {
     private var mainWindow: NSWindow?
     /// Делегат окна — держим сами: `NSWindow.delegate` слабый.
     private let windowDelegate = MainWindowDelegate()
+    private var cancellables: Set<AnyCancellable> = []
 
-    private init() {}
+    private init() {
+        // Минимальная высота окна зависит от числа пунктов сайдбара (раздел
+        // «Губы»): ставим её окну явно, а не надеемся на SwiftUI-рамку.
+        SettingsStore.shared.$lipsExperiment
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in self?.applyMinSize(lipsEnabled: enabled) }
+            .store(in: &cancellables)
+    }
+
+    private func applyMinSize(lipsEnabled: Bool) {
+        guard let window = mainWindow else { return }
+        let height = MainWindowLayout.minHeight(lipsEnabled: lipsEnabled)
+        window.minSize = NSSize(width: MainWindowLayout.minWidth, height: height)
+        // Окно ниже нового минимума — подрастить вниз, не сдвигая верх.
+        if window.frame.height < height {
+            var frame = window.frame
+            frame.origin.y -= height - frame.height
+            frame.size.height = height
+            window.setFrame(frame, display: true, animate: true)
+        }
+    }
 
     /// Открывает главное окно на указанной секции.
     func showMain(section: MainSection? = nil) {
@@ -118,7 +140,8 @@ final class WindowManager {
         // Размер должен быть рассчитан ДО центрирования, иначе окно
         // центрируется с нулевым размером и «вырастает» из верхней точки.
         window.setContentSize(NSSize(width: 900, height: 640))
-        window.minSize = NSSize(width: 840, height: 560)
+        window.minSize = NSSize(width: MainWindowLayout.minWidth,
+                                height: MainWindowLayout.minHeight(lipsEnabled: SettingsStore.shared.lipsExperiment))
         // Меню-бар-приложение: окно показывается на текущем Space
         // (в том числе поверх полноэкранных приложений), а не остаётся
         // на том рабочем столе, где его открыли в прошлый раз.

@@ -25,7 +25,8 @@ struct MainWindowView: View {
         }
         // Раздел «Губы» добавляет пункт сайдбара: на прежней минимальной
         // высоте нижний пункт обрезался бы краем окна.
-        .frame(minWidth: 840, minHeight: settings.lipsExperiment ? 608 : 560)
+        .frame(minWidth: MainWindowLayout.minWidth,
+               minHeight: MainWindowLayout.minHeight(lipsEnabled: settings.lipsExperiment))
         // Эксперимент выключили, пока открыт его раздел, — уходим в «Общие»
         // (тумблер живёт там, в «Расширенных»).
         .onChange(of: settings.lipsExperiment) { _, enabled in

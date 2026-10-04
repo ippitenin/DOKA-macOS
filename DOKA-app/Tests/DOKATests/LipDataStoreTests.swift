@@ -50,6 +50,21 @@ final class LipDataStoreTests: XCTestCase {
         }
     }
 
+    /// «Удалить всё» доступно, когда есть хоть что-то: остались только
+    /// счётчики отбраковки или байты сырья — их тоже должно быть можно стереть.
+    func testSummaryHasDataCountsCountersAndBytes() {
+        var summary = LipDataStore.Summary()
+        XCTAssertFalse(summary.hasData)
+        summary.stats.rejected["noFace"] = 2
+        XCTAssertTrue(summary.hasData)
+        summary = LipDataStore.Summary()
+        summary.bytes = 4096
+        XCTAssertTrue(summary.hasData)
+        summary = LipDataStore.Summary()
+        summary.stats.headMissing = 1
+        XCTAssertTrue(summary.hasData)
+    }
+
     /// Контроль: без удаления дубль с пустым текстом отбрасывается и считается.
     func testEmptyTextTakeIsCountedAsRejected() async throws {
         let store = LipDataStore(files: files)

@@ -64,9 +64,8 @@ final class LipCapture: ObservableObject {
     /// Кадров нет дольше — «Камера недоступна».
     private static let cameraLostAfter: TimeInterval = 2.5
 
-    /// Перед дублем нужно столько свободного места: сырьё длинной диктовки —
-    /// десятки мегабайт, и забивать диск до отказа ради пар нельзя.
-    private static let minFreeBytes: Int64 = 2 * 1024 * 1024 * 1024
+    /// Свободное место — кэш, опрашиваемый фоном: старт диктовки его только читает.
+    private let freeSpace = LipFreeSpace()
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -100,6 +99,7 @@ final class LipCapture: ObservableObject {
     func prepareIfEnabled() {
         guard SettingsStore.shared.lipsCaptureEnabled,
               AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
+        freeSpace.refresh()
         configure()
     }
 
@@ -122,7 +122,7 @@ final class LipCapture: ObservableObject {
     func beginTake() -> LipTake? {
         guard SettingsStore.shared.lipsCaptureEnabled,
               AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return nil }
-        guard Self.hasFreeSpace() else {
+        guard freeSpace.hasRoom else {
             NSLog("DOKA: губы — мало места на диске, дубль не начат")
             return nil
         }
@@ -153,6 +153,8 @@ final class LipCapture: ObservableObject {
         activeTake = nil
         stopPhaseTimer()
         engine.end()
+        // Дубль занял место — обновить кэш к следующей диктовке.
+        freeSpace.refresh()
     }
 
     func discard(_ take: LipTake) {
@@ -208,12 +210,6 @@ final class LipCapture: ObservableObject {
         phase = .idle
     }
 
-    private static func hasFreeSpace() -> Bool {
-        let url = AppDataFolder.defaultURL
-        let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        guard let free = values?.volumeAvailableCapacityForImportantUsage else { return true }
-        return free > minFreeBytes
-    }
 }
 
 /// Сессия камеры и маршрутизация кадров. Три последовательные очереди:
@@ -384,14 +380,16 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
             frameIndex = 0
         }
         sessionQueue.async { [self] in
-            wantRunning = true
-            reconcile()
+            // Имя камеры и эффекты — ДО `startRunning`: он блокирует на сотни
+            // мс, и короткий дубль успел бы дописаться без них.
             let name = device?.localizedName ?? ""
             let effects = currentEffects()
             videoQueue.async {
                 recorder.camera = name
                 recorder.effects = effects
             }
+            wantRunning = true
+            reconcile()
         }
     }
 
@@ -476,13 +474,19 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
         }
     }
 
+    /// Эффекты без запущенной сессии: глобальный тумблер пользователя ×
+    /// поддержка выбранным форматом (так их и включает система).
     private func currentEffects() -> LipCaptureLog.Effects {
-        LipCaptureLog.Effects(
-            centerStage: device?.isCenterStageActive ?? false,
-            portrait: device?.isPortraitEffectActive ?? false,
-            studioLight: device?.isStudioLightActive ?? false,
-            backgroundReplacement: device?.isBackgroundReplacementActive ?? false,
-            reactions: AVCaptureDevice.reactionEffectsEnabled && (device?.canPerformReactionEffects ?? false))
+        guard let f = format?.format else {
+            return LipCaptureLog.Effects(centerStage: false, portrait: false, studioLight: false,
+                                         backgroundReplacement: false, reactions: false)
+        }
+        return LipCaptureLog.Effects(
+            centerStage: AVCaptureDevice.isCenterStageEnabled && f.isCenterStageSupported,
+            portrait: AVCaptureDevice.isPortraitEffectEnabled && f.isPortraitEffectSupported,
+            studioLight: AVCaptureDevice.isStudioLightEnabled && f.isStudioLightSupported,
+            backgroundReplacement: AVCaptureDevice.isBackgroundReplacementEnabled && f.isBackgroundReplacementSupported,
+            reactions: AVCaptureDevice.reactionEffectsEnabled && f.reactionEffectsSupported)
     }
 
     // MARK: - Кадры (videoQueue)

@@ -81,6 +81,17 @@ enum MainSection: String, CaseIterable, Identifiable {
     }
 }
 
+/// Габариты главного окна — общий источник для SwiftUI и `NSWindow.minSize`.
+enum MainWindowLayout {
+    static let minWidth: CGFloat = 840
+
+    /// Раздел «Губы» добавляет пункт сайдбара: на прежней минимальной высоте
+    /// нижний пункт обрезался бы краем окна.
+    static func minHeight(lipsEnabled: Bool) -> CGFloat {
+        lipsEnabled ? 608 : 560
+    }
+}
+
 /// Состояние главного окна: активная секция.
 /// Живёт в WindowManager, чтобы менять секцию у уже открытого окна.
 @MainActor

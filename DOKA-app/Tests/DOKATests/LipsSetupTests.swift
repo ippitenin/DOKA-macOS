@@ -45,6 +45,13 @@ final class LipsSetupTests: XCTestCase {
         ])
     }
 
+    /// Окно и SwiftUI берут минимальную высоту из одного места: 12-й пункт
+    /// сайдбара на прежних 560 обрезался бы.
+    func testMainWindowMinHeight() {
+        XCTAssertEqual(MainWindowLayout.minHeight(lipsEnabled: false), 560)
+        XCTAssertEqual(MainWindowLayout.minHeight(lipsEnabled: true), 608)
+    }
+
     /// Включён — «Губы» встают в конец группы «Диктовка», остальное на месте.
     func testSidebarWithLipsAppendsSectionToDictationGroup() {
         let groups = MainSection.sidebarGroups(lipsEnabled: true)

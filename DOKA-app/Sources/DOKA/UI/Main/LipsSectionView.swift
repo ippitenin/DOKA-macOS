@@ -86,7 +86,7 @@ struct LipsSectionView: View {
                             .dsGlassButton()
                         Button(L("lips.deleteAll")) { confirmDeleteAll = true }
                             .dsGlassButton()
-                            .disabled(store.summary.pairs == 0 && store.summary.pending == 0)
+                            .disabled(!store.summary.hasData)
                         Spacer(minLength: 0)
                     }
                 }
@@ -100,8 +100,8 @@ struct LipsSectionView: View {
         }
         .alert(L("lips.deleteAll.title"), isPresented: $confirmDeleteAll) {
             Button(L("lips.deleteAll.confirm"), role: .destructive) {
-                // Посреди диктовки дубль ещё пишется — удалим после неё.
-                guard !DictationController.isActive else { return }
+                // Посреди диктовки тоже можно: её дубль при фиксации не найдёт
+                // своей папки и будет выброшен.
                 store.deleteAll()
             }
             Button(L("common.cancel"), role: .cancel) {}
