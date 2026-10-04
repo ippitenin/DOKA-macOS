@@ -43,6 +43,82 @@ final class LipSyncTests: XCTestCase {
         XCTAssertNil(LipSync.stableStart(times: t, lumas: t.map { _ in 100 }))
     }
 
+    // MARK: - Шкала WAV
+
+    /// Хост-время кадра переводится на шкалу WAV с поправкой на задержку
+    /// входа: у Bluetooth-микрофона звук буфера прозвучал раньше его метки.
+    func testWavTimesSubtractInputLatency() {
+        let timing = RecordingTiming(hostStart: 100.2, inputLatency: 0.2, speechOnset: nil, maxClockDrift: 0)
+        let t = LipSync.wavTimes(hosts: [100.0, 100.5, 101.0], timing: timing)
+        XCTAssertEqual(t[0], 0, accuracy: 1e-9)
+        XCTAssertEqual(t[1], 0.5, accuracy: 1e-9)
+        XCTAssertEqual(t[2], 1.0, accuracy: 1e-9)
+    }
+
+    // MARK: - Расписание выходных кадров
+
+    /// Ровные 30 к/с по шкале WAV — каждый выходной кадр берёт свой исходный.
+    func testScheduleIsIdentityOnSteadyStream() throws {
+        let schedule = try XCTUnwrap(LipSync.schedule(times: times(90), duration: 3.0))
+        XCTAssertEqual(schedule.sourceIndex, Array(0..<90))
+        XCTAssertEqual(schedule.validFrom, 0, accuracy: 1e-9)
+        XCTAssertEqual(schedule.validTo, 3.0, accuracy: 1e-6)
+    }
+
+    /// Камера уронила два кадра — дыру закрывают соседние, файл остаётся CFR.
+    func testScheduleFillsDroppedFrames() throws {
+        var t = times(90)
+        t.removeSubrange(10...11)
+        let schedule = try XCTUnwrap(LipSync.schedule(times: t, duration: 3.0))
+        XCTAssertEqual(schedule.sourceIndex.count, 90)
+        XCTAssertEqual(schedule.sourceIndex[9], 9)
+        XCTAssertTrue([9, 10].contains(schedule.sourceIndex[10]))   // 10 — бывший кадр 12
+        XCTAssertEqual(schedule.sourceIndex[12], 10)
+        XCTAssertEqual(schedule.sourceIndex, schedule.sourceIndex.sorted())
+    }
+
+    /// Камера в темноте отдаёт 15 к/с — каждый кадр повторяется дважды.
+    func testScheduleDuplicatesHalfRateSource() throws {
+        let schedule = try XCTUnwrap(LipSync.schedule(times: times(30, fps: 15), duration: 2.0))
+        XCTAssertEqual(schedule.sourceIndex.count, 60)
+        XCTAssertEqual(Set(schedule.sourceIndex).count, 30)
+    }
+
+    /// Дрожание меток ±5 мс расписание не ломает.
+    func testScheduleToleratesJitter() throws {
+        let t = times(90).enumerated().map { $0.element + ($0.offset.isMultiple(of: 2) ? 0.005 : -0.005) }
+        let schedule = try XCTUnwrap(LipSync.schedule(times: t, duration: 3.0))
+        XCTAssertEqual(schedule.sourceIndex, Array(0..<90))
+    }
+
+    /// Камера проснулась через полсекунды после микрофона: голова клипа —
+    /// повтор первого кадра, а `validFrom` честно говорит, где видео настоящее.
+    func testSchedulePadsHeadWhenCameraIsLate() throws {
+        let t = times(45).map { $0 + 0.5 }
+        let schedule = try XCTUnwrap(LipSync.schedule(times: t, duration: 2.0))
+        XCTAssertEqual(schedule.sourceIndex.count, 60)
+        XCTAssertEqual(Array(schedule.sourceIndex.prefix(15)), Array(repeating: 0, count: 15))
+        XCTAssertEqual(schedule.validFrom, 0.5, accuracy: 1e-9)
+    }
+
+    /// Видео кончилось раньше звука — хвост повторяет последний кадр.
+    func testSchedulePadsTail() throws {
+        let schedule = try XCTUnwrap(LipSync.schedule(times: times(45), duration: 2.0))
+        XCTAssertEqual(schedule.sourceIndex.last, 44)
+        XCTAssertEqual(schedule.validTo, 44.0 / 30 + 1.0 / 30, accuracy: 1e-9)
+    }
+
+    func testScheduleIsNilWithoutFrames() {
+        XCTAssertNil(LipSync.schedule(times: [], duration: 2.0))
+    }
+
+    /// Фактическая частота — по меткам кадров, а не по заявке камеры.
+    func testMeasuredFps() {
+        XCTAssertEqual(LipSync.measuredFps(times: times(91)), 30, accuracy: 1e-9)
+        XCTAssertEqual(LipSync.measuredFps(times: times(46, fps: 15)), 15, accuracy: 1e-9)
+        XCTAssertEqual(LipSync.measuredFps(times: [0.5]), 0)
+    }
+
     // MARK: - Журнал захвата
 
     /// `capture.json` переживает перезапуск приложения: обработчик читает его

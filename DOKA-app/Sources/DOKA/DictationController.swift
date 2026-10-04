@@ -374,7 +374,10 @@ final class DictationController: ObservableObject {
         // `settle` автомат не трогает: `failed` выставляется только при
         // `generation == gen`, так что устаревшая задача слот не перезапишет.
         var outcome = Outcome.abandoned
-        defer { settle(audio, source: source, outcome: outcome) }
+        // Подпись к дублю губ — только у живой диктовки, текст которой попал
+        // в историю (снимок на `outcome = .succeeded`).
+        var lipCaption: LipCaption?
+        defer { settle(audio, source: source, outcome: outcome, lipCaption: lipCaption) }
 
         // Маршрут распознавания: локальный движок или сетевой клиент.
         let route: ServiceRoute
@@ -468,6 +471,11 @@ final class DictationController: ObservableObject {
                          speechDuration: audio.statsSpeechDuration ?? 0)
             // Текст уже в истории: дальше повторять нечего, даже если вставка не пройдёт.
             outcome = .succeeded
+            // Подпись — сказанное (после фильтра галлюцинаций, ДО словаря замен).
+            if case .live = source, audio.lipTake != nil {
+                lipCaption = LipCaption(text: raw, language: language, provider: providerRaw,
+                                        model: modelTag, historyID: recordID)
+            }
 
             // Повтор идёт секунды — за это время пользователь мог уйти в другое
             // приложение. Вставлять туда нельзя: только буфер и сообщение.
@@ -497,12 +505,14 @@ final class DictationController: ObservableObject {
     // MARK: - Слот повтора
 
     /// Судьба записи по итогу попытки. Автомат не трогает — только файлы и слот.
-    private func settle(_ audio: RecordedDictation, source: DictationSource, outcome: Outcome) {
-        // Судьба дубля губ — ДО судьбы WAV. Пара — только у живой диктовки,
-        // текст которой попал в историю; всё остальное выбрасывается.
+    private func settle(_ audio: RecordedDictation, source: DictationSource, outcome: Outcome,
+                        lipCaption: LipCaption? = nil) {
+        // Судьба дубля губ — ДО судьбы WAV: фиксация берёт жёсткую ссылку на
+        // WAV, который ветка `.succeeded` ниже удалит. Пара — только у живой
+        // диктовки, текст которой попал в историю; всё остальное выбрасывается.
         if let take = audio.lipTake {
-            if case .succeeded = outcome, case .live = source {
-                NSLog("DOKA: губы — дубль %@ оставлен до обработки", take.id.uuidString)
+            if case .succeeded = outcome, case .live = source, let lipCaption {
+                LipDataStore.shared.commit(take, caption: lipCaption, audio: audio)
             } else {
                 LipCapture.shared.discard(take)
             }

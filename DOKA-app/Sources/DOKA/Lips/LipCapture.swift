@@ -33,6 +33,10 @@ final class LipCapture: ObservableObject {
 
     private init() {
         let settings = SettingsStore.shared
+        // Камера дописала сырьё дубля — событие для хранилища пар.
+        engine.onTakeCaptured = { take in
+            Task { @MainActor in LipDataStore.shared.captureFinished(take) }
+        }
         // Включили сбор или выдали доступ — настроить сессию заранее, чтобы
         // старт дубля был только `startRunning`. @Published шлёт значение до
         // записи в свойство — отсюда переход на следующий цикл.
@@ -99,6 +103,7 @@ final class LipCapture: ObservableObject {
 
     func discard(_ take: LipTake) {
         engine.discard(take)
+        LipDataStore.shared.forget(take)
     }
 
     func shutdown() {
@@ -129,6 +134,8 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
     /// Результат Vision для зеркала: образец лица и размер кадра. Зовётся на
     /// `videoQueue`, не чаще ~15 раз в секунду.
     var onFace: (@Sendable (LipFaceSample, CGSize) -> Void)?
+    /// Сырьё дубля дописано (не выброшенного). Зовётся на `videoQueue`.
+    var onTakeCaptured: (@Sendable (LipTake) -> Void)?
 
     // Состояние sessionQueue.
     private var device: AVCaptureDevice?
@@ -294,6 +301,9 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
                         recorders[recorder.take.id] = nil
                         NSLog("DOKA: губы — дубль %@: кадров %d, %@", recorder.take.id.uuidString,
                               recorder.frameCount, ok ? "записан" : "сбой")
+                        // Сбойный дубль тоже идёт дальше: журнал записан, и
+                        // причину посчитает обработчик.
+                        if !recorder.isDiscarded { onTakeCaptured?(recorder.take) }
                     }
                 }
             }

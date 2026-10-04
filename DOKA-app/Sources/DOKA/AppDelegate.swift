@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Эксперимент «Губы»: сессия камеры настраивается заранее (камера при
         // этом не включается), чтобы старт дубля был только `startRunning`.
         LipCapture.shared.prepareIfEnabled()
+        LipDataStore.shared.start(launch: launch)
 
         let permissions = PermissionsManager.shared
         permissions.refresh()
@@ -81,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // без flush готовая запись после перезапуска оказалась бы «прерванной».
         TranscriptHistoryStore.shared.flush()
         LipCapture.shared.shutdown()
+        LipDataStore.shared.prepareForTermination()
     }
 
     /// Повторный запуск (open/двойной клик в Finder) открывает главное окно.

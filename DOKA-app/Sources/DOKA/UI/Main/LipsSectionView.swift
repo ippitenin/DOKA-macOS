@@ -8,6 +8,8 @@ import SwiftUI
 struct LipsSectionView: View {
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var permissions = PermissionsManager.shared
+    @ObservedObject private var store = LipDataStore.shared
+    @State private var confirmDeleteAll = false
 
     var body: some View {
         SettingsForm(title: L("section.lips")) {
@@ -22,6 +24,40 @@ struct LipsSectionView: View {
             }
 
             SettingsCard(header: L("lips.data.header"), footer: L("lips.data.footer")) {
+                SettingsRow(title: L("lips.stats.pairs.title")) {
+                    Text(L("lips.stats.pairs", store.summary.voice, store.summary.whisper))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                if store.summary.pending > 0 {
+                    CardDivider()
+                    SettingsRow(title: L("lips.stats.pending")) {
+                        Text("\(store.summary.pending)")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                if !store.summary.rejected.isEmpty {
+                    CardDivider()
+                    SettingsRow(title: L("lips.stats.rejected"), help: L("lips.stats.rejected.hint")) {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            ForEach(store.summary.rejected, id: \.reason) { item in
+                                Text("\(item.reason.title) — \(item.count)")
+                            }
+                        }
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    }
+                }
+                if store.summary.stats.headMissing > 0 {
+                    CardDivider()
+                    SettingsRow(title: L("lips.stats.headMissing"), help: L("lips.stats.headMissing.hint")) {
+                        Text("\(store.summary.stats.headMissing)")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                CardDivider()
                 VStack(alignment: .leading, spacing: 10) {
                     Text(AppDataFolder.lipDataURL.path)
                         .font(.callout.monospaced())
@@ -29,9 +65,16 @@ struct LipsSectionView: View {
                         .truncationMode(.middle)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(usageText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                     HStack(spacing: 10) {
                         Button(L("advanced.revealInFinder")) { revealInFinder() }
                             .dsGlassButton()
+                        Button(L("lips.deleteAll")) { confirmDeleteAll = true }
+                            .dsGlassButton()
+                            .disabled(store.summary.pairs == 0 && store.summary.pending == 0)
                         Spacer(minLength: 0)
                     }
                 }
@@ -39,7 +82,20 @@ struct LipsSectionView: View {
                 .padding(.vertical, 10)
             }
         }
-        .onAppear { permissions.refresh() }
+        .onAppear {
+            permissions.refresh()
+            store.refreshSummary()
+        }
+        .alert(L("lips.deleteAll.title"), isPresented: $confirmDeleteAll) {
+            Button(L("lips.deleteAll.confirm"), role: .destructive) {
+                // Посреди диктовки дубль ещё пишется — удалим после неё.
+                guard !DictationController.isActive else { return }
+                store.deleteAll()
+            }
+            Button(L("common.cancel"), role: .cancel) {}
+        } message: {
+            Text(L("lips.deleteAll.message"))
+        }
         // Вернулись из Системных настроек — доступ к камере могли выдать.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             permissions.refresh()
@@ -64,6 +120,11 @@ struct LipsSectionView: View {
             }
             .dsGlassButton()
         }
+    }
+
+    private var usageText: String {
+        guard store.summary.loaded else { return L("lips.usage.calculating") }
+        return L("lips.usage", ByteCountFormatter.string(fromByteCount: store.summary.bytes, countStyle: .file))
     }
 
     private func revealInFinder() {
