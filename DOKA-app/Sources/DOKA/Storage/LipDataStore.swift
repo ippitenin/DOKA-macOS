@@ -31,8 +31,13 @@ final class LipDataStore: ObservableObject {
 
     @Published private(set) var summary = Summary()
 
-    private let files = LipDataFiles()
-    private let ioQueue = DispatchQueue(label: "com.pitenin.doka.lips.io", qos: .utility)
+    private let files: LipDataFiles
+    /// Весь дисковый I/O стора. Не private — тесты придерживают её, чтобы
+    /// воспроизвести гонки.
+    let ioQueue = DispatchQueue(label: "com.pitenin.doka.lips.io", qos: .utility)
+    /// Стирание корзины — отдельно от `ioQueue`: выход приложения ждёт только
+    /// `ioQueue`, и гигабайты после «Удалить всё» его не задержат.
+    private let cleanupQueue = DispatchQueue(label: "com.pitenin.doka.lips.cleanup", qos: .background)
     private var captured: Set<UUID> = []
     private var committed: Set<UUID> = []
     private var queue: [UUID] = []
@@ -40,7 +45,16 @@ final class LipDataStore: ObservableObject {
     /// Чей сейчас `worker`: отменённая задача, завершаясь позже, не должна
     /// затереть ссылку на новую.
     private var workerID = UUID()
+    /// Растёт на «Удалить всё»: worker, начавший обработку до удаления, после
+    /// любого ожидания видит чужую эпоху и ничего не пишет — иначе стёртое
+    /// воскресало бы (счётчик отбраковки, папка пары).
+    private var dataEpoch = 0
     private var started = false
+
+    /// `files` подменяют тесты; приложение работает через `shared` с папкой по умолчанию.
+    init(files: LipDataFiles = LipDataFiles()) {
+        self.files = files
+    }
 
     private static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
@@ -119,6 +133,13 @@ final class LipDataStore: ObservableObject {
         committed.remove(take.id)
     }
 
+    /// Поставить готовое сырьё в обработку напрямую (тесты; в приложении —
+    /// через встречу двух событий или уборку на старте).
+    func enqueueForProcessing(_ id: UUID) {
+        queue.append(id)
+        runNext()
+    }
+
     private func enqueueIfReady(_ id: UUID) {
         guard captured.contains(id), committed.contains(id) else { return }
         captured.remove(id)
@@ -149,6 +170,9 @@ final class LipDataStore: ObservableObject {
 
     private func process(_ id: UUID) async {
         let files = self.files
+        let epoch = dataEpoch
+        /// Можно ли ещё писать: задача не отменена и данные не стирали.
+        func current() -> Bool { !Task.isCancelled && epoch == dataEpoch }
         let inputs: (LipJob, LipCaptureLog)? = await withCheckedContinuation { continuation in
             ioQueue.async {
                 guard let job = files.readJob(id), let log = files.readCaptureLog(id) else {
@@ -158,6 +182,7 @@ final class LipDataStore: ObservableObject {
                 continuation.resume(returning: (job, log))
             }
         }
+        guard current() else { return }
         guard let (job, log) = inputs else {
             // Сырьё пропало или битое — выбросить, без счётчика: это не решение по паре.
             ioQueue.async { files.reject(id: id) }
@@ -181,18 +206,22 @@ final class LipDataStore: ObservableObject {
             return
         }
 
+        let output = await onIO { files.clipPartURL(id) }
+        guard current() else { return }
         let input = LipTakeEncoder.Input(rawVideo: files.rawVideoURL(id), sourcePTS: plan.sourcePTS,
                                          schedule: schedule, crop: crop.rect, audio: files.audioURL(id),
-                                         output: await onIO { files.clipPartURL(id) })
+                                         output: output)
         do {
             try await LipTakeEncoder.encode(input)
         } catch is CancellationError {
             return   // выход из приложения: сырьё остаётся до следующего запуска
         } catch {
+            guard current() else { return }
             NSLog("DOKA: губы — кодирование дубля %@ не удалось: %@", id.uuidString, error.localizedDescription)
             record(id, rejected: .encodeFailed)
             return
         }
+        guard current() else { return }
 
         let headMissing: Bool
         if case .keep(let missing) = plan.verdict { headMissing = missing } else { headMissing = false }
@@ -252,11 +281,16 @@ final class LipDataStore: ObservableObject {
         worker?.cancel()
         worker = nil
         workerID = UUID()
+        dataEpoch += 1
         queue.removeAll()
         captured.removeAll()
         committed.removeAll()
         let files = self.files
-        ioQueue.async { files.deleteAll() }
+        let cleanupQueue = self.cleanupQueue
+        ioQueue.async {
+            files.deleteAll()
+            cleanupQueue.async { files.emptyTrash() }
+        }
         refreshSummary()
     }
 }

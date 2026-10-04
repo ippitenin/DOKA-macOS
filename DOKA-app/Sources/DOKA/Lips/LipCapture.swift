@@ -73,8 +73,14 @@ final class LipCapture: ObservableObject {
     private init() {
         let settings = SettingsStore.shared
         // Камера дописала сырьё дубля — событие для хранилища пар.
+        // Оба события приходят из одной последовательной видео-очереди и на
+        // главный поток — через FIFO `DispatchQueue.main`: «записан» всегда
+        // раньше «выброшен», и хранилище не держит id выброшенных дублей.
         engine.onTakeCaptured = { take in
-            Task { @MainActor in LipDataStore.shared.captureFinished(take) }
+            DispatchQueue.main.async { MainActor.assumeIsolated { LipDataStore.shared.captureFinished(take) } }
+        }
+        engine.onTakeDiscarded = { take in
+            DispatchQueue.main.async { MainActor.assumeIsolated { LipDataStore.shared.forget(take) } }
         }
         engine.onFace = { sample, size in
             Task { @MainActor in LipCapture.shared.handleFace(sample, size: size) }
@@ -151,7 +157,6 @@ final class LipCapture: ObservableObject {
 
     func discard(_ take: LipTake) {
         engine.discard(take)
-        LipDataStore.shared.forget(take)
     }
 
     func shutdown() {
@@ -228,6 +233,9 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
     var onFace: (@Sendable (LipFaceSample, CGSize) -> Void)?
     /// Сырьё дубля дописано (не выброшенного). Зовётся на `videoQueue`.
     var onTakeCaptured: (@Sendable (LipTake) -> Void)?
+    /// Выброшен дубль, о котором уже сообщили `onTakeCaptured` (и только
+    /// такой). Зовётся на `videoQueue` — строго после `onTakeCaptured`.
+    var onTakeDiscarded: (@Sendable (LipTake) -> Void)?
 
     // Состояние sessionQueue.
     private var device: AVCaptureDevice?
@@ -415,11 +423,14 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
     func discard(_ take: LipTake) {
         videoQueue.async { [self] in
             if let recorder = recorders[take.id] {
+                // Ещё не дописан: «записан» уже не придёт, и забывать нечего.
                 if current === recorder { current = nil }
                 recorders[take.id] = nil
                 recorder.discard()
             } else {
+                // Дописан и о нём сообщили — теперь сообщить, что выброшен.
                 try? FileManager.default.removeItem(at: take.folder)
+                onTakeDiscarded?(take)
             }
         }
     }

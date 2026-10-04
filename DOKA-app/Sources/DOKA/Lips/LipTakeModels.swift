@@ -4,9 +4,16 @@ import Foundation
 /// звука (`RecordedDictation.lipTake`) до решения о её судьбе.
 struct LipTake: Equatable, Hashable {
     let id: UUID
+    /// Корень сырья; тесты подставляют временную папку.
+    let pendingRoot: URL
+
+    init(id: UUID, pendingRoot: URL = LipTake.pendingRoot) {
+        self.id = id
+        self.pendingRoot = pendingRoot
+    }
 
     /// Папка сырья дубля: `LipData/pending/<id>/`.
-    var folder: URL { Self.pendingRoot.appendingPathComponent(id.uuidString, isDirectory: true) }
+    var folder: URL { pendingRoot.appendingPathComponent(id.uuidString, isDirectory: true) }
     var rawVideoURL: URL { folder.appendingPathComponent("raw.mp4") }
     var captureLogURL: URL { folder.appendingPathComponent("capture.json") }
 

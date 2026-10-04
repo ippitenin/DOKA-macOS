@@ -151,8 +151,10 @@ final class LipDataFilesTests: XCTestCase {
         XCTAssertGreaterThan(summary.bytes, 0)
     }
 
-    /// «Удалить всё» стирает пары, сырьё и счётчики, но корень остаётся.
-    func testDeleteAllKeepsRoot() throws {
+    /// «Удалить всё» на очереди ввода-вывода только переименовывает в корзину:
+    /// стирание гигабайтов там задержало бы выход приложения (оно ждёт эту
+    /// очередь). Пары и счётчики исчезают сразу, корень остаётся.
+    func testDeleteAllOnlyMovesToTrash() throws {
         try commitTake(UUID(), mode: .voice)
         _ = try makePending(UUID(), files: ["raw.mp4"])
         files.writeStats(LipStats(rejected: ["noFace": 3], headMissing: 2))
@@ -160,6 +162,10 @@ final class LipDataFilesTests: XCTestCase {
         XCTAssertTrue(fm.fileExists(atPath: root.path))
         XCTAssertEqual(files.summary().voice, 0)
         XCTAssertEqual(files.readStats(), LipStats())
+        let left = (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
+        XCTAssertFalse(left.isEmpty)
+        XCTAssertTrue(left.allSatisfy { $0.contains(".deleting-") }, "\(left)")
+        files.emptyTrash()
         XCTAssertEqual((try? fm.contentsOfDirectory(atPath: root.path)) ?? [], [])
     }
 

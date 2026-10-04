@@ -143,12 +143,14 @@ final class LipDataFiles: @unchecked Sendable {
     }
 
     /// «Удалить всё»: пары, сырьё, счётчики. Сам корень остаётся — на него
-    /// может смотреть симлинк инструмента обучения.
+    /// может смотреть симлинк инструмента обучения. Здесь — только мгновенные
+    /// переименования в корзину: стирание гигабайтов на очереди ввода-вывода
+    /// задержало бы выход приложения. Корзину стирает `emptyTrash` отдельно
+    /// (вызывающий — фоном), недостёртое добьёт уборка на старте.
     func deleteAll() {
-        trash(takesRoot)
-        trash(pendingRoot)
+        moveToTrash(takesRoot)
+        moveToTrash(pendingRoot)
         try? fm.removeItem(at: statsURL)
-        emptyTrash()
     }
 
     func readStats() -> LipStats {
@@ -184,17 +186,26 @@ final class LipDataFiles: @unchecked Sendable {
     /// Удаление — сначала мгновенный rename в корзину, потом стирание: прерванное
     /// стирание не оставит полупустую папку, похожую на живую.
     private func trash(_ url: URL) {
-        guard fm.fileExists(atPath: url.path) else { return }
-        let target = url.deletingLastPathComponent()
-            .appendingPathComponent("\(url.lastPathComponent).deleting-\(UUID().uuidString)")
-        if (try? fm.moveItem(at: url, to: target)) != nil {
-            try? fm.removeItem(at: target)
-        } else {
-            try? fm.removeItem(at: url)
+        if let moved = moveToTrash(url) {
+            try? fm.removeItem(at: moved)
         }
     }
 
-    private func emptyTrash() {
+    /// Переименовать в корзину; nil — нечего переносить. Не вышло переименовать —
+    /// стереть на месте.
+    @discardableResult
+    private func moveToTrash(_ url: URL) -> URL? {
+        guard fm.fileExists(atPath: url.path) else { return nil }
+        let target = url.deletingLastPathComponent()
+            .appendingPathComponent("\(url.lastPathComponent).deleting-\(UUID().uuidString)")
+        if (try? fm.moveItem(at: url, to: target)) != nil { return target }
+        try? fm.removeItem(at: url)
+        return nil
+    }
+
+    /// Стереть корзину. Трогает только `*.deleting-*`, поэтому её можно звать
+    /// с любой очереди параллельно с очередью ввода-вывода.
+    func emptyTrash() {
         for parent in [root, pendingRoot, takesRoot] {
             for item in children(parent) where item.lastPathComponent.contains(".deleting-") {
                 try? fm.removeItem(at: item)
