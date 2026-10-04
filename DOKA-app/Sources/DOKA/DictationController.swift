@@ -12,6 +12,18 @@ struct RecordedDictation: Equatable {
     var quiet = false
     /// Время речи по порогу тихого режима (`SpeechMeter.quietThresholdDb`).
     var quietSpeechDuration: TimeInterval = 0
+    /// Хост-время старта и начало речи — для сшивки с видео губ.
+    var timing: RecordingTiming? = nil
+    /// Дубль камеры эксперимента «Губы»; nil — сбор выключен или камера не
+    /// взлетела. Судьбу дубля решает `settle` вместе с судьбой WAV.
+    var lipTake: LipTake? = nil
+
+    /// Копия без дубля — для слота повтора: повтор пар не даёт.
+    var withoutLipTake: RecordedDictation {
+        var copy = self
+        copy.lipTake = nil
+        return copy
+    }
 
     /// Речь для гейта тишины: шёпот почти целиком ниже обычного порога.
     var gateSpeechDuration: TimeInterval { quiet ? quietSpeechDuration : speechDuration }
@@ -82,6 +94,9 @@ final class DictationController: ObservableObject {
     private var errorDismissTask: Task<Void, Never>?
     private var transcriptionTask: Task<Void, Never>?
     private var generation = 0
+    /// Дубль камеры текущей записи: забирается в `finishRecording`, иначе
+    /// (Esc, ошибка) выбрасывается при уходе из записи.
+    private var activeLipTake: LipTake?
 
     /// Откуда запись: только что надиктована или взята из слота повтора.
     private enum DictationSource {
@@ -276,12 +291,21 @@ final class DictationController: ObservableObject {
             LocalEngineManager.shared.unloadLLM()
         }
 
+        // Камера — раньше аудиодвижка: она прогревается дольше, и так
+        // выигрывает у него 50–150 мс. Нет сбора или камеры — дубля нет,
+        // диктовка от этого не зависит.
+        let lipTake = settings.lipsCaptureEnabled ? LipCapture.shared.beginTake() : nil
         do {
             _ = try recorder.start(quiet: settings.quietMode)
         } catch {
+            if let lipTake {
+                LipCapture.shared.stopCamera()
+                LipCapture.shared.discard(lipTake)
+            }
             showError(error.localizedDescription)
             return
         }
+        activeLipTake = lipTake
         if settings.micAutoBoost {
             micBooster.beginBoost()
         }
@@ -291,7 +315,10 @@ final class DictationController: ObservableObject {
 
     private func finishRecording() {
         guard state.isRecording else { return }
+        let lipTake = activeLipTake
+        activeLipTake = nil
         guard let result = recorder.stop() else {
+            if let lipTake { LipCapture.shared.discard(lipTake) }
             showError(L("error.saveRecordingFailed"))
             return
         }
@@ -302,12 +329,15 @@ final class DictationController: ObservableObject {
                                       speechDuration: result.speechDuration,
                                       microphone: recorder.currentInputDeviceName,
                                       quiet: result.quiet,
-                                      quietSpeechDuration: result.quietSpeechDuration)
+                                      quietSpeechDuration: result.quietSpeechDuration,
+                                      timing: result.timing,
+                                      lipTake: lipTake)
 
         switch DictationGate.decide(duration: audio.duration,
                                     speechDuration: audio.gateSpeechDuration,
                                     speechGateEnabled: settings.skipSilentRecordings) {
         case .tooShort:
+            if let lipTake { LipCapture.shared.discard(lipTake) }
             Self.removeFile(audio.url)
             transition(to: .idle)
             return
@@ -316,9 +346,11 @@ final class DictationController: ObservableObject {
             // галлюцинации Whisper. Лог — для калибровки порога.
             NSLog("DOKA: гейт тишины — запись %.2f с, речи %.2f с%@, на распознавание не отправлена",
                   audio.duration, audio.gateSpeechDuration, audio.quiet ? " (тихий режим)" : "")
+            // Пара «губы + текст» без текста не бывает.
+            if let lipTake { LipCapture.shared.discard(lipTake) }
             if DictationGate.isRetryable(duration: audio.duration) {
                 // Возможно, просто тихий голос: запись можно распознать всё равно.
-                storeFailed(audio, message: L("error.noSpeech"), gated: true)
+                storeFailed(audio.withoutLipTake, message: L("error.noSpeech"), gated: true)
             } else {
                 Self.removeFile(audio.url)
             }
@@ -342,7 +374,10 @@ final class DictationController: ObservableObject {
         // `settle` автомат не трогает: `failed` выставляется только при
         // `generation == gen`, так что устаревшая задача слот не перезапишет.
         var outcome = Outcome.abandoned
-        defer { settle(audio, source: source, outcome: outcome) }
+        // Подпись к дублю губ — только у живой диктовки, текст которой попал
+        // в историю (снимок на `outcome = .succeeded`).
+        var lipCaption: LipCaption?
+        defer { settle(audio, source: source, outcome: outcome, lipCaption: lipCaption) }
 
         // Маршрут распознавания: локальный движок или сетевой клиент.
         let route: ServiceRoute
@@ -436,6 +471,11 @@ final class DictationController: ObservableObject {
                          speechDuration: audio.statsSpeechDuration ?? 0)
             // Текст уже в истории: дальше повторять нечего, даже если вставка не пройдёт.
             outcome = .succeeded
+            // Подпись — сказанное (после фильтра галлюцинаций, ДО словаря замен).
+            if case .live = source, audio.lipTake != nil {
+                lipCaption = LipCaption(text: raw, language: language, provider: providerRaw,
+                                        model: modelTag, historyID: recordID)
+            }
 
             // Повтор идёт секунды — за это время пользователь мог уйти в другое
             // приложение. Вставлять туда нельзя: только буфер и сообщение.
@@ -465,7 +505,20 @@ final class DictationController: ObservableObject {
     // MARK: - Слот повтора
 
     /// Судьба записи по итогу попытки. Автомат не трогает — только файлы и слот.
-    private func settle(_ audio: RecordedDictation, source: DictationSource, outcome: Outcome) {
+    private func settle(_ audio: RecordedDictation, source: DictationSource, outcome: Outcome,
+                        lipCaption: LipCaption? = nil) {
+        // Судьба дубля губ — ДО судьбы WAV: фиксация берёт жёсткую ссылку на
+        // WAV, который ветка `.succeeded` ниже удалит. Пара — только у живой
+        // диктовки, текст которой попал в историю; всё остальное выбрасывается.
+        if let take = audio.lipTake {
+            if case .succeeded = outcome, case .live = source, let lipCaption {
+                LipDataStore.shared.commit(take, caption: lipCaption, audio: audio)
+            } else {
+                LipCapture.shared.discard(take)
+            }
+        }
+        // В слот повтора дубль не попадает: повтор пар не даёт.
+        let audio = audio.withoutLipTake
         switch outcome {
         case .succeeded:
             Self.removeFile(audio.url)
@@ -550,6 +603,13 @@ final class DictationController: ObservableObject {
         // громкость микрофона возвращается к прежней. Без буста — no-op.
         if state.isRecording, !newState.isRecording {
             micBooster.endBoost()
+            // Камера гаснет вместе с записью. Дубль, который никто не забрал
+            // (Esc, ошибка), выбрасывается.
+            LipCapture.shared.stopCamera()
+            if let take = activeLipTake {
+                activeLipTake = nil
+                LipCapture.shared.discard(take)
+            }
         }
         state = newState
         Self.isActive = newState.isRecording || newState == .transcribing

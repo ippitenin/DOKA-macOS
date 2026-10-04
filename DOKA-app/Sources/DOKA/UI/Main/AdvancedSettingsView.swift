@@ -39,6 +39,7 @@ struct AdvancedSettingsView: View {
                 SectionHeader(title: L("general.advanced"))
                     .padding(.bottom, 2)
                 appCard
+                labCard
                 dataFolderCard
                 transcriptsCard
             }
@@ -96,6 +97,17 @@ struct AdvancedSettingsView: View {
             SettingsRow(title: L("advanced.openAtLaunch"),
                         help: L("advanced.openAtLaunch.hint")) {
                 SettingsSwitch(isOn: $settings.openWindowAtLaunch)
+            }
+        }
+    }
+
+    /// Эксперименты: пока одна строка — «Чтение по губам», которая показывает
+    /// раздел «Губы» в сайдбаре.
+    private var labCard: some View {
+        SettingsCard(header: L("advanced.labCard")) {
+            SettingsRow(title: L("advanced.lipsExperiment"),
+                        help: L("advanced.lipsExperiment.hint")) {
+                SettingsSwitch(isOn: $settings.lipsExperiment)
             }
         }
     }

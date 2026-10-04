@@ -1,7 +1,9 @@
 import AppKit
 import AVFoundation
 
-/// Состояние разрешений: микрофон и Универсальный доступ (Accessibility).
+/// Состояние разрешений: микрофон и Универсальный доступ (Accessibility),
+/// плюс камера эксперимента «Губы» — она в `allGranted` НЕ входит: диктовке
+/// камера не нужна, и онбординг не должен её требовать.
 @MainActor
 final class PermissionsManager: ObservableObject {
     static let shared = PermissionsManager()
@@ -11,6 +13,10 @@ final class PermissionsManager: ObservableObject {
     /// доступ можно включить только в Системных настройках.
     @Published var micDenied: Bool
     @Published var axTrusted: Bool
+    /// Камера — только для сбора пар «губы + текст». Запрашивается из раздела
+    /// «Губы» по кнопке, никогда посреди диктовки.
+    @Published var cameraAuthorized: Bool
+    @Published var cameraDenied: Bool
 
     private var pollTimer: Timer?
 
@@ -19,6 +25,9 @@ final class PermissionsManager: ObservableObject {
         micAuthorized = status == .authorized
         micDenied = status == .denied || status == .restricted
         axTrusted = AXIsProcessTrusted()
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        cameraAuthorized = camera == .authorized
+        cameraDenied = camera == .denied || camera == .restricted
     }
 
     var allGranted: Bool { micAuthorized && axTrusted }
@@ -28,6 +37,9 @@ final class PermissionsManager: ObservableObject {
         micAuthorized = status == .authorized
         micDenied = status == .denied || status == .restricted
         axTrusted = AXIsProcessTrusted()
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        cameraAuthorized = camera == .authorized
+        cameraDenied = camera == .denied || camera == .restricted
     }
 
     func requestMicrophone() async -> Bool {
@@ -53,6 +65,17 @@ final class PermissionsManager: ObservableObject {
 
     func openMicrophoneSettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
+        NSWorkspace.shared.open(url)
+    }
+
+    func requestCamera() async -> Bool {
+        let granted = await AVCaptureDevice.requestAccess(for: .video)
+        refresh()
+        return granted
+    }
+
+    func openCameraSettings() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")!
         NSWorkspace.shared.open(url)
     }
 

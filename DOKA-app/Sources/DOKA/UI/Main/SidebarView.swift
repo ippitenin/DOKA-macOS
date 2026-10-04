@@ -4,16 +4,13 @@ import SwiftUI
 /// Фон даёт стеклянная плашка в MainWindowView, ширина фиксированная.
 struct SidebarView: View {
     @ObservedObject var state: MainWindowState
+    @ObservedObject private var settings = SettingsStore.shared
     @Namespace private var selectionNS
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Смысловые группы секций: первая — без заголовка,
-    /// дальше — как Favourites/Locations в Finder.
-    private static let groups: [(titleKey: String?, sections: [MainSection])] = [
-        (nil, [.home, .dashboard]),
-        ("sidebar.group.dictation", [.transcribe, .library, .history, .dictionary]),
-        ("sidebar.group.settings", [.general, .sound, .hotkeys, .service])
-    ]
+    private var groups: [(titleKey: String?, sections: [MainSection])] {
+        MainSection.sidebarGroups(lipsEnabled: settings.lipsExperiment)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -22,7 +19,7 @@ struct SidebarView: View {
             Spacer().frame(height: 54)
 
             VStack(alignment: .leading, spacing: 18) {
-                ForEach(Array(Self.groups.enumerated()), id: \.offset) { _, group in
+                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                     VStack(alignment: .leading, spacing: 2) {
                         if let titleKey = group.titleKey {
                             Text(L(titleKey))

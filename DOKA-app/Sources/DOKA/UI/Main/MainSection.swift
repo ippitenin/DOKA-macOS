@@ -12,6 +12,7 @@ enum MainSection: String, CaseIterable, Identifiable {
     case history
     case transcribe  // транскрибация загруженного аудио/видеофайла
     case library     // библиотека транскрибаций файлов: поиск, запись, плеер
+    case lips        // эксперимент «Губы»: сбор пар «губы + текст» (виден только при включённом эксперименте)
 
     var id: String { rawValue }
 
@@ -27,6 +28,7 @@ enum MainSection: String, CaseIterable, Identifiable {
         case .history: return L("section.history")
         case .transcribe: return L("section.transcribeAudio")
         case .library: return L("section.library")
+        case .lips: return L("section.lips")
         }
     }
 
@@ -42,6 +44,7 @@ enum MainSection: String, CaseIterable, Identifiable {
         case .history: return "clock.fill"
         case .transcribe: return "waveform"
         case .library: return "books.vertical.fill"
+        case .lips: return "mouth.fill"
         }
     }
 
@@ -59,7 +62,33 @@ enum MainSection: String, CaseIterable, Identifiable {
         case .history: return Color(red: 0.40, green: 0.61, blue: 0.66)
         case .transcribe: return Color(red: 0.62, green: 0.45, blue: 0.66)
         case .library: return Color(red: 0.76, green: 0.47, blue: 0.40)
+        case .lips: return Color(red: 0.36, green: 0.62, blue: 0.70)
         }
+    }
+
+    /// Смысловые группы сайдбара: первая — без заголовка, дальше — как
+    /// Favourites/Locations в Finder. «Губы» — эксперимент, раздел есть только
+    /// при включённом тумблере в «Расширенных» и встаёт в конец «Диктовки»,
+    /// не сдвигая остальные пункты.
+    static func sidebarGroups(lipsEnabled: Bool) -> [(titleKey: String?, sections: [MainSection])] {
+        var dictation: [MainSection] = [.transcribe, .library, .history, .dictionary]
+        if lipsEnabled { dictation.append(.lips) }
+        return [
+            (nil, [.home, .dashboard]),
+            ("sidebar.group.dictation", dictation),
+            ("sidebar.group.settings", [.general, .sound, .hotkeys, .service])
+        ]
+    }
+}
+
+/// Габариты главного окна — общий источник для SwiftUI и `NSWindow.minSize`.
+enum MainWindowLayout {
+    static let minWidth: CGFloat = 840
+
+    /// Раздел «Губы» добавляет пункт сайдбара: на прежней минимальной высоте
+    /// нижний пункт обрезался бы краем окна.
+    static func minHeight(lipsEnabled: Bool) -> CGFloat {
+        lipsEnabled ? 608 : 560
     }
 }
 

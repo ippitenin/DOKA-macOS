@@ -121,6 +121,25 @@ enum DS {
         ]
     }
 
+    /// Плашки, вытекающие из кромки экрана (`EdgeFlowShape`): notch-плашка
+    /// панели записи и зеркало губ — с одинаковыми плечами.
+    enum EdgePlate {
+        static let shoulder: CGFloat = 10
+    }
+
+    /// Зеркало губ (эксперимент «Губы»): холодная sci-fi-гамма контура на
+    /// чёрной плашке — в родстве с палитрой «Мини», без тёплых акцентов.
+    enum Lips {
+        /// Контур губ — ледяной голубой.
+        static let contour = Color(red: 0.55, green: 0.94, blue: 1.00)
+        /// Ключевые точки контура — бирюза.
+        static let dot = Color(red: 0.04, green: 0.84, blue: 0.80)
+        /// Тонкая кромка кадра видео.
+        static let rim = Color.white.opacity(0.14)
+        /// Подписи состояний поверх кадра.
+        static let caption = Color.white.opacity(0.78)
+    }
+
     /// Тёплая палитра полноэкранной подсветки краёв («Аврора», `ScreenGlowView`):
     /// персик → янтарь → коралл.
     enum ScreenGlow {

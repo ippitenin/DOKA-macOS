@@ -33,6 +33,10 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DOKA records your voice from the microphone for speech recognition and text pasting.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>DOKA films your lips during dictation only if you turn on “Learn lips”; the video stays on this Mac to train lip reading.</string>
+	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
+	<false/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026</string>
 </dict>

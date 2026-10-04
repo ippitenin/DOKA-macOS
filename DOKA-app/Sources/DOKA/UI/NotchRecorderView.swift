@@ -21,6 +21,10 @@ struct NotchRecorderView: View {
 
     /// Ширина боковой зоны контента (слева и справа от выреза).
     static let sideWidth: CGFloat = 120
+    /// Плечи у кромки экрана — за пределами тела плашки.
+    private let shoulder = DS.EdgePlate.shoulder
+    /// Тело плашки (без плеч) — по нему раскладывается контент.
+    private var bodyWidth: CGFloat { size.width - 2 * shoulder }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -30,7 +34,7 @@ struct NotchRecorderView: View {
                        height: size.height)
 
             content
-                .frame(width: size.width, height: size.height)
+                .frame(width: bodyWidth, height: size.height)
                 .opacity(expanded ? 1 : 0)
                 // Каскад: контент догоняет плашку с небольшой задержкой.
                 .animation(
@@ -53,21 +57,17 @@ struct NotchRecorderView: View {
         }
     }
 
-    /// В свёрнутом виде плашка прячется за вырезом (или ужимается в точку).
+    /// В свёрнутом виде плашка прячется за вырезом (или ужимается в точку);
+    /// плечи остаются по бокам и раскрываются вместе с ней.
     private var collapsedWidth: CGFloat {
-        hasNotch ? notchWidth : 60
+        (hasNotch ? notchWidth : 60) + 2 * shoulder
     }
 
-    /// Скруглены только нижние углы — верх плоский и сливается с верхней
-    /// кромкой экрана (бровка), и у выреза, и в эмуляции на экране без выреза.
-    private var shape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 0,
-            bottomLeadingRadius: 14,
-            bottomTrailingRadius: 14,
-            topTrailingRadius: 0,
-            style: .continuous
-        )
+    /// Верх плоский и вытекает из кромки экрана вогнутыми плечами, низ
+    /// скруглён — и у выреза, и в эмуляции на экране без выреза. Та же форма,
+    /// что у зеркала губ.
+    private var shape: EdgeFlowShape {
+        EdgeFlowShape(flatEdge: .top, shoulder: shoulder, corner: 14)
     }
 
     /// Контент по бокам выреза; в эмуляции — одной строкой по центру.

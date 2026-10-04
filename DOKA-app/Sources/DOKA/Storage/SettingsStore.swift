@@ -108,6 +108,9 @@ final class SettingsStore: ObservableObject {
         static let analysisTemplateID = "analysisTemplateID"
         static let analysisLanguage = "analysisLanguage"
         static let autoAnalysis = "autoAnalysis"
+        static let lipsExperiment = "lipsExperiment"
+        static let lipsLearn = "lipsLearn"
+        static let lipsMirrorNotchVariant = "lipsMirrorNotchVariant"
     }
 
     @Published var language: String {
@@ -248,6 +251,25 @@ final class SettingsStore: ObservableObject {
     @Published var applyDictionaryToFiles: Bool {
         didSet { defaults.set(applyDictionaryToFiles, forKey: Key.applyDictionaryToFiles) }
     }
+    /// Эксперимент «Чтение по губам» («Расширенные»): показывает раздел «Губы»
+    /// в сайдбаре. По умолчанию выключен — пока собранные пары нечем читать,
+    /// никто не снимает себя впустую.
+    @Published var lipsExperiment: Bool {
+        didSet { defaults.set(lipsExperiment, forKey: Key.lipsExperiment) }
+    }
+    /// «Учить губы»: во время каждой диктовки камера снимает лицо, и
+    /// распознанный текст становится подписью к видео (пара для обучения
+    /// чтения по губам). Камера работает только во время записи.
+    @Published var lipsLearn: Bool {
+        didSet { defaults.set(lipsLearn, forKey: Key.lipsLearn) }
+    }
+    /// Сбор пар действует, только пока включён и эксперимент, и «Учить губы»:
+    /// выключенный эксперимент прячет раздел, а с ним и сбор.
+    var lipsCaptureEnabled: Bool { lipsExperiment && lipsLearn }
+    /// Где зеркало губ при стиле панели «Нотч» — оба варианта на пробу.
+    @Published var lipsMirrorNotchVariant: LipMirrorNotchVariant {
+        didSet { defaults.set(lipsMirrorNotchVariant.rawValue, forKey: Key.lipsMirrorNotchVariant) }
+    }
     /// Плашку библиотеки «записи теперь хранятся всегда» закрыли.
     @Published var libraryRetentionNoticeDismissed: Bool {
         didSet { defaults.set(libraryRetentionNoticeDismissed, forKey: Key.libraryRetentionNoticeDismissed) }
@@ -347,11 +369,17 @@ final class SettingsStore: ObservableObject {
             Key.quietMode: false,
             Key.applyDictionaryToFiles: false,
             Key.saveTranscriptAudio: true,
-            Key.notifyFileTranscription: true
+            Key.notifyFileTranscription: true,
+            Key.lipsExperiment: false,
+            Key.lipsLearn: false
         ])
         notifyFileTranscription = defaults.bool(forKey: Key.notifyFileTranscription)
         skipSilentRecordings = defaults.bool(forKey: Key.skipSilentRecordings)
         quietMode = defaults.bool(forKey: Key.quietMode)
+        lipsExperiment = defaults.bool(forKey: Key.lipsExperiment)
+        lipsLearn = defaults.bool(forKey: Key.lipsLearn)
+        lipsMirrorNotchVariant = defaults.string(forKey: Key.lipsMirrorNotchVariant)
+            .flatMap(LipMirrorNotchVariant.init(rawValue:)) ?? .continuation
         applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
         libraryRetentionNoticeDismissed = defaults.bool(forKey: Key.libraryRetentionNoticeDismissed)
         saveTranscriptAudio = defaults.bool(forKey: Key.saveTranscriptAudio)

@@ -4,6 +4,7 @@ import SwiftUI
 /// плашка сайдбара и контент выбранной секции.
 struct MainWindowView: View {
     @ObservedObject var state: MainWindowState
+    @ObservedObject private var settings = SettingsStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -22,7 +23,15 @@ struct MainWindowView: View {
             }
             .ignoresSafeArea()
         }
-        .frame(minWidth: 840, minHeight: 560)
+        // Раздел «Губы» добавляет пункт сайдбара: на прежней минимальной
+        // высоте нижний пункт обрезался бы краем окна.
+        .frame(minWidth: MainWindowLayout.minWidth,
+               minHeight: MainWindowLayout.minHeight(lipsEnabled: settings.lipsExperiment))
+        // Эксперимент выключили, пока открыт его раздел, — уходим в «Общие»
+        // (тумблер живёт там, в «Расширенных»).
+        .onChange(of: settings.lipsExperiment) { _, enabled in
+            if !enabled && state.section == .lips { state.section = .general }
+        }
     }
 
     private var sectionContent: some View {
@@ -49,6 +58,12 @@ struct MainWindowView: View {
                     TranscribeAudioSectionView()
                 case .library:
                     LibrarySectionView()
+                case .lips:
+                    if settings.lipsExperiment {
+                        LipsSectionView()
+                    } else {
+                        GeneralSectionView()
+                    }
                 }
             }
             // Разные identity у секций — иначе SwiftUI не проигрывает transition.
