@@ -61,11 +61,21 @@ final class LipTakeVerdictTests: XCTestCase {
         XCTAssertEqual(rejected, .reject(.noFace))
     }
 
-    /// Полезного видео с лицом меньше полутора секунд.
+    /// Полезного видео меньше полутора секунд, хотя лицо было всё время —
+    /// это «слишком коротко», а не «лица не видно»: иначе владелец чинил бы
+    /// свет вместо длины фразы.
     func testTooLittleUsefulVideoIsRejected() {
         let rejected = LipTakeVerdict.decide(facts {
             $0.duration = 1.2; $0.validTo = 1.2; $0.speechOnset = 0.3
             $0.faceSamples = $0.faceSamples.filter { $0.t < 1.2 }
+        })
+        XCTAssertEqual(rejected, .reject(.tooShort))
+    }
+
+    /// Окно видео длинное, но лицо в кадре меньше половины времени — «лица не видно».
+    func testShortFaceTimeInLongWindowIsNoFace() {
+        let rejected = LipTakeVerdict.decide(facts {
+            $0.faceSamples = $0.faceSamples.map { LipFaceMark(t: $0.t, hasFace: $0.t < 2.0) }
         })
         XCTAssertEqual(rejected, .reject(.noFace))
     }

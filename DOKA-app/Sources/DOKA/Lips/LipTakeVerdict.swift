@@ -28,6 +28,8 @@ enum LipRejectReason: String, Codable, CaseIterable {
     case cameraFailed
     case syncLost
     case lowFps
+    /// Полезного видео меньше полутора секунд — фраза короче, чем нужно модели.
+    case tooShort
     case noFace
     case faceTooSmall
     case lateCamera
@@ -39,6 +41,7 @@ enum LipRejectReason: String, Codable, CaseIterable {
         case .cameraFailed: return L("lips.reject.cameraFailed")
         case .syncLost: return L("lips.reject.syncLost")
         case .lowFps: return L("lips.reject.lowFps")
+        case .tooShort: return L("lips.reject.tooShort")
         case .noFace: return L("lips.reject.noFace")
         case .faceTooSmall: return L("lips.reject.faceTooSmall")
         case .lateCamera: return L("lips.reject.lateCamera")
@@ -74,9 +77,12 @@ enum LipTakeVerdict: Equatable {
         if !f.timingKnown || f.maxClockDrift > maxClockDrift { return .reject(.syncLost) }
         if f.measuredFps < minFps { return .reject(.lowFps) }
 
+        // Сначала длина окна, потом лицо: короткая фраза при хорошем свете — это
+        // «слишком коротко», а не «лица не видно».
+        let window = max(0, f.validTo - f.validFrom)
+        if window < minUsefulSeconds { return .reject(.tooShort) }
         let coverage = faceCoverage(f.faceSamples, validFrom: f.validFrom, validTo: f.validTo)
-        let useful = max(0, f.validTo - f.validFrom) * coverage
-        if coverage < minFaceCoverage || useful < minUsefulSeconds { return .reject(.noFace) }
+        if coverage < minFaceCoverage || window * coverage < minUsefulSeconds { return .reject(.noFace) }
         if f.faceInOutputPx < minFacePx { return .reject(.faceTooSmall) }
 
         let speechStart = f.speechOnset ?? 0

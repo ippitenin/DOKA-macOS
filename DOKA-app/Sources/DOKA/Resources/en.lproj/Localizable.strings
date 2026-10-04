@@ -391,6 +391,7 @@
 "lips.reject.cameraFailed" = "Camera failure";
 "lips.reject.syncLost" = "Sync lost";
 "lips.reject.lowFps" = "Low frame rate";
+"lips.reject.tooShort" = "Too short";
 "lips.reject.noFace" = "Face not visible";
 "lips.reject.faceTooSmall" = "Face too far";
 "lips.reject.lateCamera" = "Camera too late";

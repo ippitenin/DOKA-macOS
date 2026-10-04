@@ -167,6 +167,16 @@ enum LipTakeEncoder {
             writer.cancelWriting()
             throw EncoderError.writerFailed(frames.failure ?? writer.error?.localizedDescription ?? "writer failed")
         }
+        // Ридер, упавший посреди файла, выглядит как конец данных: без этих
+        // проверок пара сохранилась бы с застывшим видео или оборванным звуком.
+        guard videoReader.status != .failed, audioReader.status != .failed else {
+            writer.cancelWriting()
+            throw EncoderError.writerFailed("reader failed: \((videoReader.error ?? audioReader.error)?.localizedDescription ?? "?")")
+        }
+        guard pipe.audioSeconds >= Double(total) / LipSync.outputFps - 0.1 else {
+            writer.cancelWriting()
+            throw EncoderError.writerFailed(String(format: "audio shorter than video: %.2f s", pipe.audioSeconds))
+        }
         writer.endSession(atSourceTime: CMTime(value: CMTimeValue(total), timescale: fps))
         await writer.finishWriting()
         guard writer.status == .completed else {
@@ -187,6 +197,8 @@ enum LipTakeEncoder {
         let cancelled: OSAllocatedUnfairLock<Bool>
         private var videoDone = false
         private var audioDone = false
+        /// Сколько секунд звука записано — сверка с длиной видео.
+        private(set) var audioSeconds = 0.0
 
         init(writer: AVAssetWriter, videoInput: AVAssetWriterInput, audioInput: AVAssetWriterInput,
              audioOutput: AVAssetReaderTrackOutput, frames: VideoFrames, total: Int,
@@ -227,6 +239,7 @@ enum LipTakeEncoder {
                     audioInput.markAsFinished()
                     return true
                 }
+                audioSeconds += CMTimeGetSeconds(CMSampleBufferGetDuration(sample))
             }
             return false
         }
@@ -269,6 +282,13 @@ enum LipTakeEncoder {
                     lastSample = pending
                     lastPTS = pendingPTS
                     pending = nil
+                }
+                // Кадр из журнала обязан быть в файле. Дальше полукадра — значит,
+                // ридер кончился раньше журнала (сбой, обрезанный файл), и повтор
+                // последнего кадра дал бы пару с застывшим видео.
+                guard abs(lastPTS - target) <= 0.5 / LipSync.outputFps else {
+                    failure = String(format: "missing source frame at %.3f s (nearest %.3f s)", target, lastPTS)
+                    return false
                 }
                 guard let sample = lastSample, let source = CMSampleBufferGetImageBuffer(sample) else {
                     failure = "no source frame for output \(k)"

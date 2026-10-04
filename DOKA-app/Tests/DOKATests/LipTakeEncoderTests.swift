@@ -184,6 +184,40 @@ final class LipTakeEncoderTests: XCTestCase {
         XCTAssertEqual(k, schedule.sourceIndex.count)
     }
 
+    /// Сырой файл кончился раньше журнала (сбой ридера, обрезанный файл):
+    /// повторять последний кадр до конца — значит сохранить пару с застывшим
+    /// видео. Плохая пара хуже отсутствующей — кодирование обязано упасть.
+    func testRawShorterThanLogFails() async throws {
+        let times = (0..<60).map { Double($0) / 30 }
+        let raw = try makeRawVideo(times: Array(times.prefix(40)))
+        let wav = try makeWav(seconds: 2.0)
+        let schedule = try XCTUnwrap(LipSync.schedule(times: times, duration: 2.0))
+        let output = folder.appendingPathComponent("clip.mp4.part")
+        do {
+            try await LipTakeEncoder.encode(.init(rawVideo: raw, sourcePTS: times, schedule: schedule,
+                                                  crop: CGRect(x: 0, y: 0, width: 720, height: 720),
+                                                  audio: wav, output: output))
+            XCTFail("кодирование обязано упасть: кадров в файле меньше, чем в журнале")
+        } catch {}
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+    }
+
+    /// Звука меньше, чем видео по расписанию: дорожка оборвалась бы молча.
+    func testAudioShorterThanScheduleFails() async throws {
+        let times = (0..<90).map { Double($0) / 30 }
+        let raw = try makeRawVideo(times: times)
+        let wav = try makeWav(seconds: 1.0)
+        let schedule = try XCTUnwrap(LipSync.schedule(times: times, duration: 3.0))
+        let output = folder.appendingPathComponent("clip.mp4.part")
+        do {
+            try await LipTakeEncoder.encode(.init(rawVideo: raw, sourcePTS: times, schedule: schedule,
+                                                  crop: CGRect(x: 0, y: 0, width: 720, height: 720),
+                                                  audio: wav, output: output))
+            XCTFail("кодирование обязано упасть: звук короче видео")
+        } catch {}
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+    }
+
     /// Отмена посреди кодирования не оставляет огрызок.
     func testCancellationRemovesPartialOutput() async throws {
         let times = (0..<300).map { Double($0) / 30 }

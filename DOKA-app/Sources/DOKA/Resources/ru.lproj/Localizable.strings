@@ -391,6 +391,7 @@
 "lips.reject.cameraFailed" = "Сбой камеры";
 "lips.reject.syncLost" = "Сбой синхронизации";
 "lips.reject.lowFps" = "Мало кадров в секунду";
+"lips.reject.tooShort" = "Слишком коротко";
 "lips.reject.noFace" = "Лица не видно";
 "lips.reject.faceTooSmall" = "Лицо слишком далеко";
 "lips.reject.lateCamera" = "Камера не успела";
