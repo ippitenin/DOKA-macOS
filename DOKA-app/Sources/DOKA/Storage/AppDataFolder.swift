@@ -23,6 +23,24 @@ enum AppDataFolder {
     static let modelsURL: URL = defaultURL
         .appendingPathComponent(modelsFolderName, isDirectory: true)
 
+    /// Пары «губы + текст» эксперимента чтения по губам. ФИКСИРОВАННАЯ, как
+    /// модели: датасет читает внешний инструмент обучения по постоянному
+    /// пути, и перенос «Папки данных» не должен ни увозить его, ни стирать.
+    private static let lipDataFolderName = "LipData"
+    static let lipDataURL: URL = defaultURL
+        .appendingPathComponent(lipDataFolderName, isDirectory: true)
+
+    /// Подпапки, которые живут в Application Support при любой «Папке данных»:
+    /// перенос их пропускает, а при возврате на путь по умолчанию они не
+    /// считаются «непустой целью».
+    static let fixedFolderNames: Set<String> = [modelsFolderName, lipDataFolderName]
+
+    /// Мешает ли содержимое существующей цели переносу. Служебный мусор Finder
+    /// и фиксированные папки содержимым не считаются.
+    static func blocksMigration(targetContents: [String]) -> Bool {
+        targetContents.contains { $0 != ".DS_Store" && !fixedFolderNames.contains($0) }
+    }
+
     /// Действующая папка данных. Кастомный путь учитывается, только если
     /// папка реально существует (том мог быть отключён, папку могли удалить)
     /// — иначе тихий фолбэк на дефолт, приложение не должно умирать.
@@ -132,22 +150,22 @@ enum AppDataFolder {
         let targetExisted = fm.fileExists(atPath: targetPath)
         if targetExisted {
             let contents = (try? fm.contentsOfDirectory(atPath: targetPath)) ?? []
-            // Служебный мусор Finder и фиксированная папка моделей не считаются
-            // содержимым: возврат на путь по умолчанию не должен спотыкаться
-            // о Models (и тем более стирать её).
-            guard contents.filter({ $0 != ".DS_Store" && $0 != modelsFolderName }).isEmpty else {
+            // Служебный мусор Finder и фиксированные папки (Models, LipData) не
+            // считаются содержимым: возврат на путь по умолчанию не должен
+            // спотыкаться о них (и тем более стирать их).
+            guard !blocksMigration(targetContents: contents) else {
                 throw MigrationError.targetNotEmpty
             }
         }
 
-        // Копирование по элементам (не папкой целиком): подпапка Models
-        // пропускается — модели живут в фиксированном месте и не должны
-        // ни уезжать при переносе, ни стираться при откате.
+        // Копирование по элементам (не папкой целиком): фиксированные подпапки
+        // (Models, LipData) пропускаются — они живут на постоянном месте и не
+        // должны ни уезжать при переносе, ни стираться при откате.
         var copied: [URL] = []
         do {
             try fm.createDirectory(at: target, withIntermediateDirectories: true)
             let items = try fm.contentsOfDirectory(atPath: source.path)
-            for name in items where name != modelsFolderName {
+            for name in items where !fixedFolderNames.contains(name) {
                 let destination = target.appendingPathComponent(name)
                 // Запоминаем ДО копирования: FileManager не разматывает
                 // частичную копию сам, и упавший на середине элемент иначе не
@@ -172,16 +190,17 @@ enum AppDataFolder {
         } else {
             UserDefaults.standard.set(targetPath, forKey: pathKey)
         }
-        // Старую папку убираем best-effort (кроме Models): данные уже в целости
-        // на новом месте. Если внутри осталась только Models — папка живёт дальше.
+        // Старую папку убираем best-effort (кроме фиксированных): данные уже в
+        // целости на новом месте. Если внутри осталась фиксированная подпапка —
+        // папка живёт дальше.
         do {
             let leftovers = try fm.contentsOfDirectory(atPath: source.path)
-            for name in leftovers where name != modelsFolderName {
+            for name in leftovers where !fixedFolderNames.contains(name) {
                 try fm.removeItem(at: source.appendingPathComponent(name))
             }
-            // Всё, кроме Models, удалено выше (сбой бросил бы в catch):
-            // не было Models — папка пуста и убирается целиком.
-            if !leftovers.contains(modelsFolderName) {
+            // Всё, кроме фиксированных, удалено выше (сбой бросил бы в catch):
+            // их не было — папка пуста и убирается целиком.
+            if !leftovers.contains(where: fixedFolderNames.contains) {
                 try fm.removeItem(at: source)
             }
         } catch {

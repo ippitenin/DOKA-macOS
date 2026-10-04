@@ -105,6 +105,9 @@
 "advanced.showDock.hint" = "Включено — DOKA видна в Dock и Cmd+Tab, пока работает. Выключено — только меню-бар.";
 "advanced.openAtLaunch" = "Открывать окно при запуске";
 "advanced.openAtLaunch.hint" = "При старте DOKA открывается это окно. Выключите для тихого запуска в меню-баре.";
+"advanced.labCard" = "Эксперименты";
+"advanced.lipsExperiment" = "Чтение по губам";
+"advanced.lipsExperiment.hint" = "Показывает раздел «Губы»: DOKA снимает губы во время диктовки и копит пары «видео + текст» для будущего чтения по губам. Пока это только сбор данных — читать по губам DOKA ещё не умеет.";
 "advanced.dataFolder" = "Папка данных";
 "advanced.dataFolder.footer" = "Здесь DOKA хранит историю, статистику и аудиозаписи. API-ключи остаются в Связке ключей.";
 "advanced.revealInFinder" = "Показать в Finder";
@@ -352,6 +355,17 @@
 /* Секция «Транскрибация» */
 "section.transcribeAudio" = "Транскрибация";
 "section.library" = "Библиотека";
+"section.lips" = "Губы";
+"lips.capture.header" = "Сбор";
+"lips.learn" = "Учить губы";
+"lips.learn.hint" = "Во время каждой диктовки камера снимает лицо, а распознанный текст становится подписью к видео. Камера включается только на время записи. Всё хранится только на этом Mac.";
+"lips.camera.title" = "Камера";
+"lips.camera.authorized" = "Доступ разрешён";
+"lips.camera.denied" = "Доступ запрещён";
+"lips.camera.allow" = "Разрешить доступ";
+"lips.camera.openSettings" = "Открыть настройки";
+"lips.data.header" = "Данные";
+"lips.data.footer" = "Видео лица — биометрические данные. Они хранятся только на этом Mac, никуда не отправляются и сами не удаляются.";
 "transcribe.dropHint" = "Перетащите сюда аудио или видеофайл";
 "transcribe.choose" = "Выбрать файл…";
 "transcribe.remove" = "Убрать файл";

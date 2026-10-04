@@ -1,1 +1,2 @@
 NSMicrophoneUsageDescription = "DOKA records your voice from the microphone for speech recognition and text pasting.";
+NSCameraUsageDescription = "DOKA films your lips during dictation only if you turn on “Learn lips”; the video stays on this Mac to train lip reading.";

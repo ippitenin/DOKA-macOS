@@ -105,6 +105,9 @@
 "advanced.showDock.hint" = "On — DOKA appears in the Dock and Cmd+Tab while running. Off — menu bar only.";
 "advanced.openAtLaunch" = "Open window at launch";
 "advanced.openAtLaunch.hint" = "This window opens when DOKA starts. Turn off for a quiet menu-bar start.";
+"advanced.labCard" = "Experiments";
+"advanced.lipsExperiment" = "Lip reading";
+"advanced.lipsExperiment.hint" = "Shows the Lips section: DOKA films your lips while you dictate and collects “video + text” pairs for future lip reading. For now this only collects data — DOKA can’t read lips yet.";
 "advanced.dataFolder" = "Data folder";
 "advanced.dataFolder.footer" = "DOKA keeps history, statistics and audio recordings here. API keys stay in the Keychain.";
 "advanced.revealInFinder" = "Reveal in Finder";
@@ -352,6 +355,17 @@
 /* Transcribe Audio section */
 "section.transcribeAudio" = "Transcribe Audio";
 "section.library" = "Library";
+"section.lips" = "Lips";
+"lips.capture.header" = "Collection";
+"lips.learn" = "Learn lips";
+"lips.learn.hint" = "During every dictation the camera films your face, and the recognized text becomes the caption for the video. The camera is on only while recording. Everything stays on this Mac.";
+"lips.camera.title" = "Camera";
+"lips.camera.authorized" = "Access granted";
+"lips.camera.denied" = "Access denied";
+"lips.camera.allow" = "Allow Access";
+"lips.camera.openSettings" = "Open Settings";
+"lips.data.header" = "Data";
+"lips.data.footer" = "Face video is biometric data. It stays on this Mac, is never uploaded, and is never deleted automatically.";
 "transcribe.dropHint" = "Drag an audio or video file here";
 "transcribe.choose" = "Choose File…";
 "transcribe.remove" = "Remove file";
