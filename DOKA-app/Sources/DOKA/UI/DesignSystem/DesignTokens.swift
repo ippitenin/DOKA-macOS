@@ -134,6 +134,16 @@ enum DS {
         static let contour = Color(red: 0.55, green: 0.94, blue: 1.00)
         /// Ключевые точки контура — бирюза.
         static let dot = Color(red: 0.04, green: 0.84, blue: 0.80)
+        /// Полоса губ между контурами — полупрозрачная «маска».
+        static let fill = contour.opacity(0.10)
+        /// Сетка между внешним и внутренним контуром.
+        static let mesh = contour.opacity(0.40)
+        /// Пунктирный ореол вокруг рта.
+        static let halo = contour.opacity(0.32)
+        /// Узлы сетки — светлее линий.
+        static let node = Color(red: 0.80, green: 0.98, blue: 1.00).opacity(0.75)
+        /// Угловые скобки вокруг рта.
+        static let bracket = contour.opacity(0.75)
         /// Тонкая кромка кадра видео.
         static let rim = Color.white.opacity(0.14)
         /// Подписи состояний поверх кадра.

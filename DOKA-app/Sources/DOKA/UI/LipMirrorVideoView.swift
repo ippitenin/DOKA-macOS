@@ -4,7 +4,7 @@ import QuartzCore
 import SwiftUI
 
 /// Живой кадр рта в зеркале: общий слой превью камеры, растянутый так, что
-/// рот всегда в центре (кадр следует за лицом), и контур губ поверх.
+/// рот всегда в центре (кадр следует за лицом), и маска-сетка губ поверх.
 /// Слоями двигаем сами на каждом результате трекера — SwiftUI в этом не
 /// участвует (15 перерисовок в секунду ему не нужны).
 struct LipMirrorVideoView: NSViewRepresentable {
@@ -19,9 +19,9 @@ struct LipMirrorVideoView: NSViewRepresentable {
 
 final class LipMirrorVideoNSView: NSView {
     private let container = CALayer()
-    private let contour = CAShapeLayer()
-    private let dots = CAShapeLayer()
+    private let mask = LipMeshOverlay()
     private var smoother = LipMirrorSmoother()
+    private var meshSmoother = LipMeshSmoother()
     private weak var preview: AVCaptureVideoPreviewLayer?
     /// Последний известный размер кадра камеры.
     private var cameraSize = CGSize(width: 1280, height: 720)
@@ -39,18 +39,7 @@ final class LipMirrorVideoNSView: NSView {
         container.isGeometryFlipped = true
         root.addSublayer(container)
 
-        contour.fillColor = nil
-        contour.strokeColor = NSColor(DS.Lips.contour).cgColor
-        contour.lineWidth = 1.2
-        contour.lineJoin = .round
-        contour.shadowColor = NSColor(DS.Lips.contour).cgColor
-        contour.shadowRadius = 4
-        contour.shadowOpacity = 0.9
-        contour.shadowOffset = .zero
-        dots.fillColor = NSColor(DS.Lips.dot).cgColor
-        dots.strokeColor = nil
-        container.addSublayer(contour)
-        container.addSublayer(dots)
+        mask.install(in: container)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) не используется") }
@@ -77,6 +66,7 @@ final class LipMirrorVideoNSView: NSView {
         self.preview = preview
         place(preview: LipMirrorGeometry.fillFrame(camera: cameraSize, container: container.bounds.size))
         smoother.reset()
+        meshSmoother.reset()
         capture.onMouth = { [weak self] sample, size in self?.update(sample, cameraSize: size) }
     }
 
@@ -98,13 +88,13 @@ final class LipMirrorVideoNSView: NSView {
             let frame = LipMirrorGeometry.previewFrame(mouth: mouth, camera: cameraSize, container: bounds,
                                                        mirrored: true)
             place(preview: frame)
-            drawContour(sample, frame: frame)
+            drawMask(sample, frame: frame)
         } else if sample.box == nil {
-            // Лица нет — показываем всю сцену, контур прячем.
+            // Лица нет — показываем всю сцену, маску прячем.
             smoother.reset()
+            meshSmoother.reset()
             place(preview: LipMirrorGeometry.fillFrame(camera: cameraSize, container: bounds))
-            contour.path = nil
-            dots.path = nil
+            mask.hide()
         }
         CATransaction.commit()
     }
@@ -116,21 +106,14 @@ final class LipMirrorVideoNSView: NSView {
         preview.position = CGPoint(x: frame.midX, y: frame.midY)
     }
 
-    private func drawContour(_ sample: LipFaceSample, frame: CGRect) {
+    /// Губы не сложились в сетку (нет внутреннего контура) — остаётся прежняя маска.
+    private func drawMask(_ sample: LipFaceSample, frame: CGRect) {
+        guard let raw = LipMesh.make(outer: sample.outerLips, inner: sample.innerLips) else { return }
+        let lips = meshSmoother.update(raw)
         let scale = frame.width / max(cameraSize.width, 1)
-        func map(_ p: CGPoint) -> CGPoint {
-            CGPoint(x: frame.minX + (cameraSize.width - p.x) * scale, y: frame.minY + p.y * scale)
+        let width = cameraSize.width
+        mask.show(lips) { p in
+            CGPoint(x: frame.minX + (width - p.x) * scale, y: frame.minY + p.y * scale)
         }
-        let path = CGMutablePath()
-        for points in [sample.outerLips, sample.innerLips] where points.count > 2 {
-            path.addLines(between: points.map(map))
-            path.closeSubpath()
-        }
-        contour.path = path
-        let dotPath = CGMutablePath()
-        for p in sample.outerLips.map(map) {
-            dotPath.addEllipse(in: CGRect(x: p.x - 1.6, y: p.y - 1.6, width: 3.2, height: 3.2))
-        }
-        dots.path = dotPath
     }
 }
