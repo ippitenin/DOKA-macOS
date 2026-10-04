@@ -76,12 +76,25 @@ final class AudioRecorder {
         /// гейта шёпотных диктовок. Копится всегда, гейт выбирает по режиму.
         var quietSpeechTime: TimeInterval = 0
         var finished = false
+        /// Метки времени для сшивки с камерой (эксперимент «Губы»).
+        /// Задержка входа; читается после старта движка (до него она бывает 0).
+        var inputLatency: TimeInterval = 0
+        /// Секунды звука, полученные до текущего буфера (по входной частоте).
+        var elapsed: TimeInterval = 0
+        var onset = SpeechOnsetTracker()
+        var drift = HostClockDriftTracker()
 
         init(converter: AVAudioConverter, writer: WavWriter, targetFormat: AVAudioFormat, quiet: Bool) {
             self.converter = converter
             self.writer = writer
             self.targetFormat = targetFormat
             self.quiet = quiet
+        }
+
+        var timing: RecordingTiming? {
+            guard let hostStart = drift.hostStart else { return nil }
+            return RecordingTiming(hostStart: hostStart, inputLatency: inputLatency,
+                                   speechOnset: onset.onset, maxClockDrift: drift.maxDrift)
         }
     }
 
@@ -95,6 +108,9 @@ final class AudioRecorder {
         let quietSpeechDuration: TimeInterval
         /// Запись шла в тихом режиме.
         let quiet: Bool
+        /// Хост-время старта и начало речи — для сшивки с видео губ; nil —
+        /// движок не дал хост-времени.
+        let timing: RecordingTiming?
     }
 
     private var session: Session?   // мутируется только внутри queue.sync
@@ -140,10 +156,10 @@ final class AudioRecorder {
         let queue = self.queue
         // 1024 кадра — ~21 мс при 48 кГц: панели получают уровень ~47 раз в секунду.
         // На 4096 (~85 мс) реакция на голос заметно запаздывала.
-        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, when in
             // Сессия захвачена по значению: «хвостовые» колбэки старой сессии
             // после finished=true просто отбрасываются.
-            queue.async { self?.process(buffer: buffer, in: newSession) }
+            queue.async { self?.process(buffer: buffer, when: when, in: newSession) }
         }
 
         engine.prepare()
@@ -155,6 +171,8 @@ final class AudioRecorder {
             throw RecorderError.engineStartFailed(error)
         }
         self.engine = engine
+        let latency = input.presentationLatency
+        queue.sync { newSession.inputLatency = latency }
 
         // Смена/пропажа аудиоустройства (подключили AirPods и т.п.).
         configObserver = NotificationCenter.default.addObserver(
@@ -183,7 +201,8 @@ final class AudioRecorder {
                 try s.writer.finalize()
                 result = Recording(url: s.writer.url, duration: duration,
                                    speechDuration: s.speechTime,
-                                   quietSpeechDuration: s.quietSpeechTime, quiet: s.quiet)
+                                   quietSpeechDuration: s.quietSpeechTime, quiet: s.quiet,
+                                   timing: s.timing)
             } catch {
                 NSLog("DOKA: ошибка финализации WAV: \(error.localizedDescription)")
                 s.writer.cancelAndDelete()
@@ -219,8 +238,15 @@ final class AudioRecorder {
     }
 
     // Выполняется на queue.
-    private func process(buffer: AVAudioPCMBuffer, in session: Session) {
+    private func process(buffer: AVAudioPCMBuffer, when: AVAudioTime, in session: Session) {
         guard !session.finished else { return }
+
+        // Хост-время буфера — шкала, по которой видео губ сшивается с WAV.
+        let bufferStart = session.elapsed
+        if when.isHostTimeValid {
+            session.drift.feed(host: AVAudioTime.seconds(forHostTime: when.hostTime), elapsed: bufferStart)
+        }
+        session.elapsed += Double(buffer.frameLength) / buffer.format.sampleRate
 
         // Уровень: RMS и пик по первому каналу исходного float-буфера.
         if let channel = buffer.floatChannelData?[0] {
@@ -240,12 +266,16 @@ final class AudioRecorder {
                 let db = 20 * log10(max(rms, 1e-7))
                 let speechLevel = max(0, min(1, (db + 50) / 50))
                 let seconds = Double(frames) / buffer.format.sampleRate
-                if speechLevel >= Self.speechLevelThreshold {
+                let isSpeech = speechLevel >= Self.speechLevelThreshold
+                let isQuietSpeech = SpeechMeter.isQuietSpeech(db: db)
+                if isSpeech {
                     session.speechTime += seconds
                 }
-                if SpeechMeter.isQuietSpeech(db: db) {
+                if isQuietSpeech {
                     session.quietSpeechTime += seconds
                 }
+                // Начало речи — по порогу того режима, в котором идёт запись.
+                session.onset.feed(isSpeech: session.quiet ? isQuietSpeech : isSpeech, at: bufferStart)
 
                 // Уровень для панелей — своя кривая с быстрым подъёмом.
                 let gain: Float = session.quiet ? SpeechMeter.quietDisplayGain : 1
