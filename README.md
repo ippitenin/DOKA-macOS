@@ -92,6 +92,11 @@ written in Russian.
 - **Quiet mode** — dictate in a whisper when someone is asleep nearby or you can’t speak aloud.
   A whisper is recognized almost as accurately as a normal voice, and DOKA stops mistaking it
   for silence. Toggle it in Sound, from the menu bar menu or with its own hotkey.
+- **Lips (experiment)** — collects “lip video + text” pairs for future lip reading. Turn it on
+  in General → Advanced; it is off by default. The camera runs only while you dictate, and the
+  recognized text becomes the caption for the video. While recording, a mirror slides out of
+  the screen notch: a live view of your mouth that follows your face, with the lip contour
+  drawn on top. For now this only collects data — DOKA can’t read lips yet.
 - **Dictionary** — case-insensitive replacement rules applied to every transcript. Rules match whole words: “doka” → “DOKA” no longer touches “document”; the per-rule “Inside words” switch brings back substring matching (e.g. “ё” → “е”). Optionally applied to file transcripts as well.
 
 ## Privacy
@@ -109,6 +114,10 @@ Everything else stays local. Transcript history, statistics and the transcriptio
 live in `~/Library/Application Support/DOKA`. Storing dictation audio is **off by default**;
 when enabled, recordings are kept locally as m4a and pruned on a schedule you choose. API
 keys live in the macOS Keychain, never in config files.
+
+The Lips experiment films your face only if you turn it on yourself. Face video is biometric
+data: it is stored in `~/Library/Application Support/DOKA/LipData`, never uploaded and never
+deleted automatically. You can erase all of it with one button in the Lips section.
 
 ## Requirements
 
