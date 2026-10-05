@@ -765,3 +765,10 @@
 "analysis.templates.cite" = "Timestamps";
 "analysis.templates.builtinReadonly" = "Built-in templates are read-only. Click “Duplicate” to edit a copy.";
 "analysis.templates.empty" = "Select a template on the left";
+"analysis.templates.import" = "Import…";
+"analysis.templates.import.help" = "DOKA and Memento templates in JSON; you can pick several files at once";
+"analysis.templates.import.prompt" = "Import";
+"analysis.templates.import.failedTitle" = "Couldn’t import";
+"analysis.templates.import.notTemplate" = "not an analysis template";
+"analysis.templates.import.unreadable" = "the file can’t be read";
+"analysis.templates.export" = "Export…";

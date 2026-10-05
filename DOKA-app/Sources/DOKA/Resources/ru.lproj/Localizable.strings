@@ -765,3 +765,10 @@
 "analysis.templates.cite" = "Тайм-коды";
 "analysis.templates.builtinReadonly" = "Встроенный шаблон только для просмотра. Нажмите «Сделать копию», чтобы изменить его.";
 "analysis.templates.empty" = "Выберите шаблон слева";
+"analysis.templates.import" = "Импортировать…";
+"analysis.templates.import.help" = "Шаблоны DOKA и Memento в формате JSON, можно несколько файлов сразу";
+"analysis.templates.import.prompt" = "Импортировать";
+"analysis.templates.import.failedTitle" = "Не удалось импортировать";
+"analysis.templates.import.notTemplate" = "это не шаблон анализа";
+"analysis.templates.import.unreadable" = "файл не читается";
+"analysis.templates.export" = "Экспортировать…";
