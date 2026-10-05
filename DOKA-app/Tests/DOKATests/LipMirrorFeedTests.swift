@@ -15,9 +15,15 @@ final class LipMirrorFeedTests: XCTestCase {
     private let target = LipMirrorTarget(size: CGSize(width: 224, height: 120), scale: 2, reduceMotion: false)
     private let take = UUID()
 
+    /// Картинка 1×1 — ящику её содержимое безразлично.
+    private static let image = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                         space: CGColorSpaceCreateDeviceRGB(),
+                                         bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue)!.makeImage()!
+
     private func frame(take: UUID? = nil, target: LipMirrorTarget? = nil, host: Double = CACurrentMediaTime())
         -> LipMirrorFrame {
-        LipMirrorFrame(take: take ?? self.take, target: target ?? self.target, host: host, image: nil, paths: nil)
+        LipMirrorFrame(take: take ?? self.take, target: target ?? self.target, host: host, image: Self.image,
+                       paths: nil)
     }
 
     /// Прокрутить главную очередь: всё, что `post` поставил раньше, доставлено.

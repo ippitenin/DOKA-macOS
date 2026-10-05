@@ -25,17 +25,6 @@ struct LipFaceSample: Equatable {
     var confidence: Float = 0
 
     static let none = LipFaceSample(box: nil, count: 0, outerLips: [], innerLips: [])
-
-    /// Прямоугольник рта по внешнему контуру губ; nil — губ не нашлось.
-    var mouthRect: CGRect? {
-        guard let first = outerLips.first else { return nil }
-        var minX = first.x, maxX = first.x, minY = first.y, maxY = first.y
-        for p in outerLips.dropFirst() {
-            minX = min(minX, p.x); maxX = max(maxX, p.x)
-            minY = min(minY, p.y); maxY = max(maxY, p.y)
-        }
-        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-    }
 }
 
 /// Поиск лица в кадре. Шов для тестов: движок камеры знает детектор только

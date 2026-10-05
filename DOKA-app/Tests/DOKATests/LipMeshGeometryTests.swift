@@ -6,7 +6,8 @@ import XCTest
 /// размера, сплайн вместо ломаной, сетка между внешним и внутренним контуром.
 ///
 /// Зачем: узлы сетки должны соответствовать друг другу между кадрами Vision
-/// (их сглаживают по одному) — поэтому число узлов не должно зависеть от
+/// (точки сглаживаются до сетки, и узел кадра N должен быть тем же узлом в
+/// кадре N+1) — поэтому число узлов не должно зависеть от
 /// того, сколько точек отдал Vision. У известных созвездий уголки берутся по
 /// таблице индексов и не перескакивают; всё остальное (эллипсы с произвольной
 /// фазой обхода ниже) идёт запасным путём — уголки и верх/низ по координатам,
@@ -583,42 +584,5 @@ final class LipMeshGeometryTests: XCTestCase {
             XCTAssertEqual(curve[j * steps].x, node.x, accuracy: 1e-6)
             XCTAssertEqual(curve[j * steps].y, node.y, accuracy: 1e-6)
         }
-    }
-
-    // MARK: - Сглаживание
-
-    /// Сглаживатель догоняет цель постепенно и сохраняет форму сетки.
-    func testSmootherFollowsGradually() throws {
-        var smoother = LipMeshSmoother()
-        let a = try XCTUnwrap(LipMesh.make(outer: ellipse(rx: 60, ry: 24, count: 14),
-                                           inner: ellipse(rx: 40, ry: 8, count: 10)))
-        let b = try XCTUnwrap(LipMesh.make(outer: ellipse(center: CGPoint(x: 700, y: 480), rx: 60, ry: 24, count: 14),
-                                           inner: ellipse(center: CGPoint(x: 700, y: 480), rx: 40, ry: 8, count: 10)))
-        XCTAssertEqual(smoother.update(a), a)
-        let first = smoother.update(b)
-        XCTAssertGreaterThan(first.outer[0].x, a.outer[0].x)
-        XCTAssertLessThan(first.outer[0].x, b.outer[0].x)
-        XCTAssertEqual(first.outer.count, ringSize)
-        XCTAssertEqual(first.keypoints.count, b.keypoints.count)
-        // Кольца сглаживаются вместе с контурами, а не прыгают к цели.
-        let mid = LipMesh.samplesPerLip / 2
-        XCTAssertGreaterThan(first.bands[0][mid].x, a.bands[0][mid].x)
-        XCTAssertLessThan(first.bands[0][mid].x, b.bands[0][mid].x)
-        var last = first
-        for _ in 0..<30 { last = smoother.update(b) }
-        XCTAssertEqual(last.outer[0].x, b.outer[0].x, accuracy: 0.01)
-    }
-
-    /// Сменилось число точек Vision — сглаживать не с чем, берётся новая сетка.
-    func testSmootherRestartsWhenShapeChanges() throws {
-        var smoother = LipMeshSmoother()
-        let a = try XCTUnwrap(LipMesh.make(outer: ellipse(rx: 60, ry: 24, count: 14),
-                                           inner: ellipse(rx: 40, ry: 8, count: 10)))
-        let b = try XCTUnwrap(LipMesh.make(outer: ellipse(center: CGPoint(x: 700, y: 480), rx: 60, ry: 24, count: 10),
-                                           inner: ellipse(center: CGPoint(x: 700, y: 480), rx: 40, ry: 8, count: 6)))
-        _ = smoother.update(a)
-        XCTAssertEqual(smoother.update(b), b)
-        smoother.reset()
-        XCTAssertEqual(smoother.update(a), a)
     }
 }

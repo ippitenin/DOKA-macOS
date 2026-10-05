@@ -2,12 +2,14 @@ import CoreGraphics
 import XCTest
 @testable import DOKA
 
-/// Геометрия зеркала губ: где плашка, где кадр рта, как он следует за лицом.
+/// Геометрия зеркала губ: где плашка, какая часть кадра в ней видна и как
+/// точки кадра ложатся в окно.
 ///
 /// Зачем: зеркало «вытекает» из выреза или нижней кромки — плашка обязана
-/// прирастать к краю экрана ровно, не залезать видео под физический вырез и
-/// не дрожать за каждым пикселем бокса. Отражение — только на экране: рот
-/// в зеркале должен оказаться в центре именно отражённой картинки.
+/// прирастать к краю экрана ровно и не залезать видео под физический вырез.
+/// Картинку рисует Core Image (`ciTransform`), маску — `map`: они обязаны
+/// давать одно и то же отображение региона в окно, иначе маска съедет с
+/// губ. Следование за лицом — в `LipMirrorCameraTests`.
 final class LipMirrorGeometryTests: XCTestCase {
 
     /// MacBook с вырезом: экран 1512×982, вырез 200 pt, высота 32.
@@ -94,30 +96,6 @@ final class LipMirrorGeometryTests: XCTestCase {
         }
     }
 
-    // MARK: - Кадр рта
-
-    /// Рот в центре контейнера и занимает ~1/2,2 его ширины.
-    func testViewportCentersMouth() {
-        let mouth = CGRect(x: 600, y: 450, width: 100, height: 40)   // центр 650, 470
-        let container = CGSize(width: 220, height: 120)
-        let frame = LipMirrorGeometry.previewFrame(mouth: mouth, camera: CGSize(width: 1280, height: 720),
-                                                   container: container, mirrored: false)
-        let scale = frame.width / 1280
-        XCTAssertEqual(frame.minX + 650 * scale, 110, accuracy: 0.01)
-        XCTAssertEqual(frame.minY + 470 * scale, 60, accuracy: 0.01)
-        XCTAssertEqual(100 * scale, 220 / 2.2, accuracy: 0.01)
-        XCTAssertEqual(frame.height / frame.width, 720.0 / 1280, accuracy: 1e-6)
-    }
-
-    /// В зеркале рот тоже в центре — но уже отражённой картинки.
-    func testViewportMirroredCentersMirroredMouth() {
-        let mouth = CGRect(x: 300, y: 450, width: 100, height: 40)   // центр 350
-        let frame = LipMirrorGeometry.previewFrame(mouth: mouth, camera: CGSize(width: 1280, height: 720),
-                                                   container: CGSize(width: 220, height: 120), mirrored: true)
-        let scale = frame.width / 1280
-        XCTAssertEqual(frame.minX + (1280 - 350) * scale, 110, accuracy: 0.01)
-    }
-
     // MARK: - Сцена и перенос точек
 
     /// Сцена — наибольший прямоугольник с аспектом окна по центру кадра.
@@ -179,30 +157,5 @@ final class LipMirrorGeometryTests: XCTestCase {
                 XCTAssertEqual(ci.y, size.height - mapped.y, accuracy: 1e-9, "\(p) \(mirrored)")
             }
         }
-    }
-
-    // MARK: - Сглаживание
-
-    /// Мелкое дрожание бокса (меньше мёртвой зоны) кадр не двигает.
-    func testSmootherIgnoresJitter() {
-        var smoother = LipMirrorSmoother()
-        let base = CGRect(x: 600, y: 450, width: 100, height: 40)
-        _ = smoother.update(base)
-        let next = smoother.update(base.offsetBy(dx: 1, dy: -1))
-        XCTAssertEqual(next, base)
-    }
-
-    /// Поворот головы — кадр догоняет плавно, а не прыжком.
-    func testSmootherFollowsMovementGradually() throws {
-        var smoother = LipMirrorSmoother()
-        let base = CGRect(x: 600, y: 450, width: 100, height: 40)
-        _ = smoother.update(base)
-        let moved = base.offsetBy(dx: 100, dy: 0)
-        let first = try XCTUnwrap(smoother.update(moved))
-        XCTAssertGreaterThan(first.midX, base.midX)
-        XCTAssertLessThan(first.midX, moved.midX)
-        var last = first
-        for _ in 0..<40 { last = smoother.update(moved) ?? last }
-        XCTAssertEqual(last.midX, moved.midX, accuracy: 2)
     }
 }

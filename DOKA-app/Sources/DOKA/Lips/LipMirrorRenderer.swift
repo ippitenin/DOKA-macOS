@@ -9,6 +9,12 @@ import Metal
 /// чтобы движок можно было проверить с фальшивым рендерером.
 protocol LipMirrorRendering: AnyObject {
     func render(_ pixelBuffer: CVPixelBuffer, region: CGRect, size: CGSize, mirrored: Bool) -> CGImage?
+    /// Холостой прогон до первого дубля; движок зовёт его один раз за процесс.
+    func prewarm()
+}
+
+extension LipMirrorRendering {
+    func prewarm() {}
 }
 
 /// Рендер зеркала через Core Image. Сам не синхронизирован: вызовы не

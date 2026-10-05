@@ -21,15 +21,16 @@ struct LipMirrorTarget: Equatable {
     }
 }
 
-/// Кадр зеркала: картинка и маска одного кадра камеры. `image == nil` —
-/// рендер не удался, `paths == nil` — губ нет (и удержание кончилось).
+/// Кадр зеркала: картинка и маска одного кадра камеры. Кадр без картинки
+/// (рендер не удался) не публикуется; `paths == nil` — губ нет (и удержание
+/// кончилось).
 /// `@unchecked Sendable`: `CGImage` и `CGPath` неизменяемы.
 struct LipMirrorFrame: @unchecked Sendable {
     let take: UUID
     let target: LipMirrorTarget
     /// Host-время кадра камеры, с — от него считается латентность показа.
     let host: Double
-    let image: CGImage?
+    let image: CGImage
     let paths: LipMeshPaths?
 }
 

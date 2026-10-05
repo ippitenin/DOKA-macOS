@@ -285,33 +285,3 @@ struct LipMeshCalibrator {
         return result
     }
 }
-
-/// Сглаживание маски между кадрами Vision: экспоненциальное среднее по каждому
-/// узлу. Губы на речи двигаются быстро, поэтому отклик высокий — сетка
-/// перестаёт дрожать, но не отстаёт от артикуляции.
-struct LipMeshSmoother {
-    static let response: CGFloat = 0.6
-
-    private(set) var current: LipMesh?
-
-    mutating func update(_ mesh: LipMesh) -> LipMesh {
-        // Другое число точек Vision — узлы не соответствуют, сглаживать не с чем.
-        guard let previous = current, previous.keypoints.count == mesh.keypoints.count,
-              previous.outer.count == mesh.outer.count else {
-            current = mesh
-            return mesh
-        }
-        func mix(_ a: [CGPoint], _ b: [CGPoint]) -> [CGPoint] {
-            zip(a, b).map { p, q in
-                CGPoint(x: p.x + (q.x - p.x) * Self.response, y: p.y + (q.y - p.y) * Self.response)
-            }
-        }
-        let bands = previous.bands.count == mesh.bands.count ? zip(previous.bands, mesh.bands).map(mix) : mesh.bands
-        let next = LipMesh(outer: mix(previous.outer, mesh.outer), inner: mix(previous.inner, mesh.inner),
-                           bands: bands, keypoints: mix(previous.keypoints, mesh.keypoints))
-        current = next
-        return next
-    }
-
-    mutating func reset() { current = nil }
-}
