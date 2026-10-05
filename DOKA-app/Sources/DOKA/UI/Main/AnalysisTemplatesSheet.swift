@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Редактор шаблонов анализа: слева список (встроенные только для чтения,
 /// свои — правятся), справа разделы. Модальный `.sheet`, а не окно: нужен
@@ -12,6 +14,8 @@ struct AnalysisTemplatesSheet: View {
     @State private var selectedID: String?
     @State private var draft: AnalysisTemplate?
     @State private var deleting: AnalysisTemplate?
+    /// Файлы, которые не удалось импортировать, строками «имя: причина».
+    @State private var importFailures: [String] = []
 
     private var builtins: [AnalysisTemplate] { BuiltinAnalysisTemplate.all }
 
@@ -68,6 +72,10 @@ struct AnalysisTemplatesSheet: View {
         Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
     }
 
+    private var importFailedPresented: Binding<Bool> {
+        Binding(get: { !importFailures.isEmpty }, set: { if !$0 { importFailures = [] } })
+    }
+
     // MARK: - Шапка
 
     /// Как у «Распознать заново»: крупный заголовок, пояснение и крестик.
@@ -117,11 +125,28 @@ struct AnalysisTemplatesSheet: View {
             }
             .dsGlassButton()
             .focusEffectDisabled()
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+            Button {
+                importTemplates()
+            } label: {
+                Label(L("analysis.templates.import"), systemImage: "square.and.arrow.down")
+                    .frame(maxWidth: .infinity)
+            }
+            .dsGlassButton()
+            .focusEffectDisabled()
+            .help(L("analysis.templates.import.help"))
             .padding(10)
         }
         .frame(width: 230)
         .frame(maxHeight: .infinity)
         .glassSurface()
+        // Свой алерт на списке, а не на корне: там уже висит алерт удаления.
+        .alert(L("analysis.templates.import.failedTitle"), isPresented: importFailedPresented) {
+            Button(L("common.ok")) {}
+        } message: {
+            Text(importFailures.joined(separator: "\n"))
+        }
     }
 
     private func group(_ title: String, _ items: [AnalysisTemplate], locked: Bool) -> some View {
@@ -344,6 +369,9 @@ struct AnalysisTemplatesSheet: View {
                     selectedID = copy.id
                 }
                 .dsGlassButton()
+                Button(L("analysis.templates.export")) { export(template) }
+                    .dsGlassButton()
+                    .disabled(template.validationError != nil)
                 if !template.isBuiltin {
                     Button(L("analysis.templates.delete"), role: .destructive) { deleting = template }
                         .dsGlassButton()
@@ -402,6 +430,70 @@ struct AnalysisTemplatesSheet: View {
         }
         self.draft = nil
         selectedID = draft.id
+    }
+
+    // MARK: - Импорт и экспорт
+
+    /// Файлы шаблонов DOKA и Memento, можно несколько сразу. Импортированные
+    /// сохраняются сразу, совпавшие имена получают пометку « (2)». Панель —
+    /// `NSOpenPanel`, а не `.fileImporter`: этот шит сам открыт поверх
+    /// другого вью, а вложенные модальные окна SwiftUI обслуживает ненадёжно.
+    private func importTemplates() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.json]
+        panel.prompt = L("analysis.templates.import.prompt")
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task {
+            // Чтение — вне главного потока: файл может лежать в iCloud.
+            let files = await Task.detached {
+                urls.map { url in (url, try? Data(contentsOf: url)) }
+            }.value
+            applyImport(files)
+        }
+    }
+
+    private func applyImport(_ files: [(URL, Data?)]) {
+        var names = AnalysisTemplateNames((builtins + settings.analysisTemplates).map(\.name))
+        var imported: [AnalysisTemplate] = []
+        var failures: [String] = []
+        for (url, data) in files {
+            let reason: String
+            if let data {
+                do {
+                    let templates = try AnalysisTemplateTransfer.parse(
+                        data, fallbackName: url.deletingPathExtension().lastPathComponent)
+                    for var template in templates {
+                        template.name = names.claim(template.name)
+                        imported.append(template)
+                    }
+                    continue
+                } catch AnalysisTemplateTransfer.ImportError.invalid(let message) {
+                    reason = message
+                } catch {
+                    reason = L("analysis.templates.import.notTemplate")
+                }
+            } else {
+                reason = L("analysis.templates.import.unreadable")
+            }
+            failures.append("\(url.lastPathComponent): \(reason)")
+        }
+        if let first = imported.first {
+            settings.analysisTemplates.append(contentsOf: imported)
+            draft = nil
+            selectedID = first.id
+        }
+        importFailures = failures
+    }
+
+    /// Выбранный шаблон (и встроенный — его текстом на языке интерфейса) —
+    /// в JSON; несохранённая правка уезжает такой, какой её видно.
+    private func export(_ template: AnalysisTemplate) {
+        guard let data = try? AnalysisTemplateTransfer.exportData(template),
+              let text = String(data: data, encoding: .utf8) else { return }
+        TextFileSaver.save(text, suggestedName: LibraryExport.sanitizedFileName(template.name) + ".json")
     }
 
     private func move(_ index: Int, by offset: Int) {

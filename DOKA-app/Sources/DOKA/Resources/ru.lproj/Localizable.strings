@@ -489,6 +489,7 @@
 "transcribe.format.timestampsSpeakers" = "С тайм-кодами и спикерами";
 "transcribe.analysisFormat.markdown" = "Markdown";
 "transcribe.analysisFormat.plain" = "Обычный текст";
+"transcribe.analysisFormat.pdf" = "PDF";
 "transcribe.supported.title" = "Поддерживаемые форматы";
 "transcribe.supported.audio" = "Аудио: WAV, MP3, M4A, FLAC, OGG, Opus, AIFF, ASF";
 "transcribe.supported.video" = "Видео: MP4, MOV, AVI, MKV";
@@ -719,6 +720,8 @@
 "analysis.source.nexara" = "Nexara";
 "analysis.source.nexaraTitle" = "Анализ Nexara";
 "analysis.source.local" = "%@ · на этом Mac";
+"analysis.pdf.recorded" = "Запись: %@";
+"analysis.pdf.analysis" = "Анализ: %@";
 "analysis.progress.loading" = "Подготовка модели…";
 "analysis.progress.reading" = "Читаю расшифровку… %ld %%";
 "analysis.progress.part" = "Часть %ld из %ld · %ld %%";
@@ -762,3 +765,10 @@
 "analysis.templates.cite" = "Тайм-коды";
 "analysis.templates.builtinReadonly" = "Встроенный шаблон только для просмотра. Нажмите «Сделать копию», чтобы изменить его.";
 "analysis.templates.empty" = "Выберите шаблон слева";
+"analysis.templates.import" = "Импортировать…";
+"analysis.templates.import.help" = "Шаблоны DOKA и Memento в формате JSON, можно несколько файлов сразу";
+"analysis.templates.import.prompt" = "Импортировать";
+"analysis.templates.import.failedTitle" = "Не удалось импортировать";
+"analysis.templates.import.notTemplate" = "это не шаблон анализа";
+"analysis.templates.import.unreadable" = "файл не читается";
+"analysis.templates.export" = "Экспортировать…";

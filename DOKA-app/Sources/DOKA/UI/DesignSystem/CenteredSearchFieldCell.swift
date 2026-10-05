@@ -28,17 +28,23 @@ final class CenteredSearchFieldCell: NSSearchFieldCell {
         centered(super.drawingRect(forBounds: rect), in: rect)
     }
 
-    /// Текст — между левой кромкой и крестиком (без крестика — правой
-    /// кромкой), с одинаковым отступом по обе стороны.
+    /// Текст — по центру ВСЕГО поля: правый отступ (крестик или 4 pt без
+    /// него) зеркалится слева. Так же с версии 3.1 центрирует текст на
+    /// macOS 27 и сам `RecorderCocoa` (его `layout()` двигает подвью поля,
+    /// только если справа отступ больше, чем слева, — после нашей ячейки
+    /// это уже не так, и правки не складываются). Прежняя центровка «между
+    /// левой кромкой и крестиком» разъехалась бы с рекордерами клавиш: у
+    /// них текст по центру поля, у рекордера мыши — левее.
     private func centered(_ system: NSRect, in bounds: NSRect) -> NSRect {
         guard searchButtonCell == nil else { return system }
         // У пустого поля система отдаёт крестику прямоугольник нулевой
         // ширины у правой кромки — такой крестик считается отсутствующим.
         let cancel = cancelButtonCell != nil ? cancelButtonRect(forBounds: bounds) : .zero
         let right = cancel.width > 0 ? cancel.minX : bounds.maxX - Self.inset
+        let sideInset = max(Self.inset, bounds.maxX - right)
         var rect = system
-        rect.origin.x = bounds.minX + Self.inset
-        rect.size.width = max(0, right - rect.origin.x)
+        rect.origin.x = bounds.minX + sideInset
+        rect.size.width = max(0, bounds.width - sideInset * 2)
         return rect
     }
 }

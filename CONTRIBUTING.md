@@ -79,11 +79,13 @@ not on a particular translation.
   blind `swift package update`.** A bump is verified with a full `./build.sh` and a manual
   smoke pass over the affected local models — `swift build` alone will not catch a release
   regression.
-  - **WhisperKit stays on the 0.18.x line** and **FluidAudio is pinned `exact: "0.15.5"`.**
-    Both pins date from the universal (arm64 + x86_64) build, which newer versions broke.
-    DOKA is now built for arm64 only, so that reason is gone, but moving either one is a
-    separate change with its own smoke pass. FluidAudio’s “patch” releases are not patches
-    (0.15.5 → 0.15.7 is 237 files) — that is why its pin is exact.
+  - **WhisperKit stays on the 1.1.x line** (`.upToNextMinor`) and **FluidAudio is pinned
+    `exact: "0.17.5"`** (with its `NemoTextProcessing` trait turned off — that is why the
+    manifest is tools-version 6.2). The old pins (WhisperKit 0.18.x, FluidAudio 0.15.5) date
+    from the universal (arm64 + x86_64) build, which newer versions broke. DOKA is now built
+    for arm64 only, so that reason is gone, but moving either one is a separate change with
+    its own smoke pass. FluidAudio’s “patch” releases are not patches (0.15.5 → 0.15.7 is
+    237 files) — that is why its pin is exact.
   - **llama.cpp is a `binaryTarget` pinned to one release (`b11146` = v0.5.0) by url + checksum.**
     Upstream ships several releases a day and changes the C API without semver. Its macOS
     slice is universal; `build.sh` strips x86_64 from it. Moving it means a new checksum, a
