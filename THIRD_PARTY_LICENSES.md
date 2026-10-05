@@ -45,21 +45,19 @@ SOFTWARE.
 
 | Component | Version | License | Source |
 |---|---|---|---|
-| KeyboardShortcuts | 2.4.0 | MIT | https://github.com/sindresorhus/KeyboardShortcuts |
-| WhisperKit (argmax-oss-swift) | 0.18.0 | MIT | https://github.com/argmaxinc/argmax-oss-swift |
+| KeyboardShortcuts | 3.1.0 | MIT | https://github.com/sindresorhus/KeyboardShortcuts |
+| WhisperKit (argmax-oss-swift) | 1.1.0 | MIT | https://github.com/argmaxinc/argmax-oss-swift |
 | FluidAudio | 0.17.5 | Apache-2.0 | https://github.com/FluidInference/FluidAudio |
 | swift-argument-parser | 1.8.2 | Apache-2.0 | https://github.com/apple/swift-argument-parser |
-| swift-asn1 | 1.7.1 | Apache-2.0 | https://github.com/apple/swift-asn1 |
-| swift-collections | 1.6.0 | Apache-2.0 | https://github.com/apple/swift-collections |
-| swift-crypto | 4.5.1 | Apache-2.0 | https://github.com/apple/swift-crypto |
-| swift-jinja | 2.4.2 | Apache-2.0 | https://github.com/huggingface/swift-jinja |
-| swift-transformers | 1.1.9 | Apache-2.0 | https://github.com/huggingface/swift-transformers |
-| yyjson | 0.12.0 | MIT | https://github.com/ibireme/yyjson |
 
 FluidAudio bundles its own third-party components (`fastcluster`, `vbx`); their licenses
 ship with the package in `ThirdPartyLicenses/`. Its optional `NemoTextProcessing` engine
 (a prebuilt static library from [text-processing-rs](https://github.com/FluidInference/text-processing-rs),
 Apache-2.0) is disabled through the package trait and is not linked into DOKA.
+
+Since 1.0, argmax-oss-swift no longer depends on swift-transformers: it incorporates Hub and
+Tokenizers sources derived from it (see the attribution below and the `NOTICES` file shipped
+with the package).
 
 ## Models
 
@@ -88,81 +86,22 @@ The GGUF build of *Qwen3.5-4B* is a quantization by
 
 ## NOTICE files (Apache-2.0 §4(d))
 
-Two dependencies ship a `NOTICE` file whose contents must travel with any distribution that
-includes them.
+None of the current dependencies ships an Apache `NOTICE` file. (swift-crypto and swift-asn1,
+whose NOTICE files used to be reproduced here, left the dependency tree with WhisperKit 1.x.)
 
-### swift-crypto
-
-```
-                            The SwiftCrypto Project
-                            =======================
-
-Please visit the SwiftCrypto web site for more information:
-
-  * https://github.com/apple/swift-crypto
-
-Copyright 2019 The SwiftCrypto Project
-
-The SwiftCrypto Project licenses this file to you under the Apache License,
-version 2.0 (the "License"); you may not use this file except in compliance
-with the License. You may obtain a copy of the License at:
-
-  https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-License for the specific language governing permissions and limitations
-under the License.
-
-Also, please refer to each LICENSE.<component>.txt file, which is located in
-the 'license' directory of the distribution file, for the license terms of the
-components that this product depends on.
-```
-
-### swift-asn1
+### Attribution: swift-transformers inside argmax-oss-swift
 
 ```
-                            The SwiftASN1 Project
-                            =====================
+Portions of Argmax OSS (under Sources/ArgmaxCore/External) are derived from the
+swift-transformers project:
 
-Please visit the SwiftASN1 web site for more information:
+  https://github.com/huggingface/swift-transformers
 
-  * https://github.com/apple/swift-asn1
+Copyright 2022 Hugging Face SAS.
 
-Copyright 2022 The SwiftASN1 Project
+These files have been modified by Argmax, Inc. Modifications are marked in the
+source with "Argmax-modification:" comments, and each derived file retains its
+original copyright notice in the file header.
 
-The SwiftASN1 Project licenses this file to you under the Apache License,
-version 2.0 (the "License"); you may not use this file except in compliance
-with the License. You may obtain a copy of the License at:
-
-  https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-License for the specific language governing permissions and limitations
-under the License.
-
-Also, please refer to each LICENSE.txt file, which is located in
-the 'license' directory of the distribution file, for the license terms of the
-components that this product depends on.
-
----
-
-This product contains derivations of various scripts from SwiftNIO.
-
-  * LICENSE (Apache License 2.0):
-    * https://www.apache.org/licenses/LICENSE-2.0
-  * HOMEPAGE:
-    * https://github.com/apple/swift-nio
-
----
-
-This product contains derivations of various scripts from Swift OpenAPI Generator.
-
-  * LICENSE (Apache License 2.0):
-    * https://www.apache.org/licenses/LICENSE-2.0
-  * HOMEPAGE:
-    * https://github.com/apple/swift-openapi-generator
+Licensed under the Apache License, Version 2.0.
 ```

@@ -12,15 +12,18 @@ let package = Package(
     defaultLocalization: "en",   // язык отката для неподдерживаемых языков системы
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0"),
         // Локальные модели распознавания: Whisper через WhisperKit (Argmax OSS SDK)
         // и Parakeet V3 через FluidAudio. Обе — CoreML/ANE, macOS 15+.
-        // Линия 0.18.x — последняя без бага мультиарх-сборки SPM (в 1.x два
-        // executable-продукта argmax-cli/whisperkit-cli делят один таргет
-        // ArgmaxCLI → «duplicate key found» при --arch arm64 --arch x86_64).
-        // С отказа от Intel сборка только arm64, и эта причина пина снята:
-        // обновление возможно, но отдельно — с release-сборкой и smoke Whisper.
-        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", .upToNextMinor(from: "0.18.0")),
+        // Линия 1.1.x. В 1.x два executable-продукта argmax-cli/whisperkit-cli
+        // делят таргет ArgmaxCLI, и мультиарх-сборка SPM (--arch arm64 --arch
+        // x86_64) падала с «duplicate key found» — поэтому DOKA долго сидела на
+        // 0.18.x; с отказа от Intel сборка только arm64, и причина снята.
+        // С 1.0 Hub/Tokenizers из swift-transformers встроены в ArgmaxCore —
+        // отдельной зависимости на swift-transformers у WhisperKit больше нет.
+        // Минорную версию поднимать отдельной правкой: release-сборка и smoke
+        // Whisper Local (диктовка, файл, отмена).
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", .upToNextMinor(from: "1.1.0")),
         // ТОЧНЫЙ пин, а не линия: у FluidAudio «патч» не означает патч (между
         // 0.15.5 и 0.15.7 — 237 файлов и +28 000 строк). Обновлён с 0.15.5 на
         // 0.17.5 (5.10.2026): наш код собрался без правок; живой стенд —

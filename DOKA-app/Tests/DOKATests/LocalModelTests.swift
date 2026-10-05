@@ -177,8 +177,8 @@ final class LocalModelTests: XCTestCase {
                        "ссылка на main — хэш перестанет сходиться при обновлении репозитория")
     }
 
-    /// Окно контекста на маке с малой ОЗУ вдвое короче: длинное окно вместе
-    /// с вычислительными буферами уводит систему в своп.
+    /// Окно контекста на маке с малой ОЗУ короче основного, и ни одно не
+    /// превышает потолок спеки.
     func testContextLimitNeverExceedsMaxContext() {
         let spec = LLMModelSpec.current
         XCTAssertLessThanOrEqual(spec.contextLimit, spec.maxContext)
