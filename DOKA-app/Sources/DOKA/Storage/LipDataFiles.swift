@@ -21,29 +21,33 @@ final class LipDataFiles: @unchecked Sendable {
     private let fm = FileManager.default
 
     /// Дубль готов к обработке, когда есть все четыре файла.
-    static let readyFiles = ["raw.mp4", "capture.json", "audio.wav", "job.json"]
+    static let readyFiles = [LipDataLayout.rawVideo, LipDataLayout.captureLog, LipDataLayout.audio,
+                             LipDataLayout.job]
 
     init(root: URL = AppDataFolder.lipDataURL) {
         self.root = root
     }
 
-    var pendingRoot: URL { root.appendingPathComponent("pending", isDirectory: true) }
-    var takesRoot: URL { root.appendingPathComponent("takes", isDirectory: true) }
-    private var statsURL: URL { root.appendingPathComponent("stats.json") }
+    var pendingRoot: URL { root.appendingPathComponent(LipDataLayout.pending, isDirectory: true) }
+    var takesRoot: URL { root.appendingPathComponent(LipDataLayout.takes, isDirectory: true) }
+    private var statsURL: URL { root.appendingPathComponent(LipDataLayout.stats) }
 
     func pendingFolder(_ id: UUID) -> URL { pendingRoot.appendingPathComponent(id.uuidString, isDirectory: true) }
     func takeFolder(_ id: UUID) -> URL { takesRoot.appendingPathComponent(id.uuidString, isDirectory: true) }
 
-    func rawVideoURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent("raw.mp4") }
-    func audioURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent("audio.wav") }
-    private func jobURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent("job.json") }
-    private func captureURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent("capture.json") }
+    func rawVideoURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent(LipDataLayout.rawVideo) }
+    func audioURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent(LipDataLayout.audio) }
+    private func jobURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent(LipDataLayout.job) }
+    private func captureURL(_ id: UUID) -> URL { pendingFolder(id).appendingPathComponent(LipDataLayout.captureLog) }
+    private func clipURL(_ id: UUID) -> URL { takeFolder(id).appendingPathComponent(LipDataLayout.clip) }
+    private func metaURL(_ id: UUID) -> URL { takeFolder(id).appendingPathComponent(LipDataLayout.meta) }
+    private static let clipPartName = LipDataLayout.clip + ".part"
 
     /// Куда кодировать клип; папка пары создаётся здесь.
     func clipPartURL(_ id: UUID) -> URL {
         let folder = takeFolder(id)
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("clip.mp4.part")
+        return folder.appendingPathComponent(Self.clipPartName)
     }
 
     // MARK: - Сырьё
@@ -88,16 +92,14 @@ final class LipDataFiles: @unchecked Sendable {
     /// false — сырья уже нет (пока кодировалось, удалили всё): клип выбрасывается.
     @discardableResult
     func commit(id: UUID, meta: LipTakeMeta) throws -> Bool {
-        let folder = takeFolder(id)
         guard fm.fileExists(atPath: pendingFolder(id).path) else {
-            trash(folder)
+            trash(takeFolder(id))
             return false
         }
-        let clip = folder.appendingPathComponent("clip.mp4")
+        let clip = clipURL(id)
         try? fm.removeItem(at: clip)
         try fm.moveItem(at: clipPartURL(id), to: clip)
-        try LipTakeMeta.encoder.encode(meta).write(to: folder.appendingPathComponent("meta.json"),
-                                                   options: .atomic)
+        try LipTakeMeta.encoder.encode(meta).write(to: metaURL(id), options: .atomic)
         trash(pendingFolder(id))
         return true
     }
@@ -105,9 +107,8 @@ final class LipDataFiles: @unchecked Sendable {
     /// Дубль не стал парой — сырьё и недописанный клип уходят.
     func reject(id: UUID) {
         trash(pendingFolder(id))
-        let folder = takeFolder(id)
-        if !fm.fileExists(atPath: folder.appendingPathComponent("meta.json").path) {
-            trash(folder)
+        if !fm.fileExists(atPath: metaURL(id).path) {
+            trash(takeFolder(id))
         }
     }
 
@@ -127,8 +128,8 @@ final class LipDataFiles: @unchecked Sendable {
             }
         }
         for folder in children(takesRoot) {
-            let meta = folder.appendingPathComponent("meta.json")
-            let part = folder.appendingPathComponent("clip.mp4.part")
+            let meta = folder.appendingPathComponent(LipDataLayout.meta)
+            let part = folder.appendingPathComponent(Self.clipPartName)
             if fm.fileExists(atPath: meta.path) {
                 if fm.fileExists(atPath: part.path), isOlder(part, than: launch) {
                     try? fm.removeItem(at: part)
@@ -169,7 +170,7 @@ final class LipDataFiles: @unchecked Sendable {
     func summary() -> (voice: Int, whisper: Int, silent: Int, bytes: Int64) {
         var voice = 0, whisper = 0, silent = 0
         for folder in children(takesRoot) {
-            guard let data = try? Data(contentsOf: folder.appendingPathComponent("meta.json")),
+            guard let data = try? Data(contentsOf: folder.appendingPathComponent(LipDataLayout.meta)),
                   let mode = try? LipTakeMeta.decoder.decode(ModeOnly.self, from: data).mode else { continue }
             switch mode {
             case .voice: voice += 1

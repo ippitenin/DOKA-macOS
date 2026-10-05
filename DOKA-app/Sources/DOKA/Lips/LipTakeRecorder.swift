@@ -17,8 +17,7 @@ final class LipTakeRecorder {
     private let queue: DispatchQueue
 
     var camera = ""
-    var effects = LipCaptureLog.Effects(centerStage: false, portrait: false, studioLight: false,
-                                        backgroundReplacement: false, reactions: false)
+    var effects = LipCaptureLog.Effects.none
 
     private var writer: AVAssetWriter?
     private var input: AVAssetWriterInput?

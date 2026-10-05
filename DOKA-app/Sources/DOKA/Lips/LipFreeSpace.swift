@@ -22,9 +22,7 @@ final class LipFreeSpace: @unchecked Sendable {
 
     /// Последнее известное значение; nil — ещё не опрашивали или том не ответил.
     var value: Int64? {
-        lock.lock()
-        defer { lock.unlock() }
-        return cached
+        lock.withLock { cached }
     }
 
     /// Хватает ли места. Неизвестно — не мешаем диктовке.
@@ -37,9 +35,7 @@ final class LipFreeSpace: @unchecked Sendable {
     func refresh(completion: (@Sendable () -> Void)? = nil) {
         queue.async { [self] in
             let bytes = probe()
-            lock.lock()
-            cached = bytes
-            lock.unlock()
+            lock.withLock { cached = bytes }
             completion?()
         }
     }

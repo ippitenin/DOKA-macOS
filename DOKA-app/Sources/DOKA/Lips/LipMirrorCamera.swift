@@ -95,13 +95,13 @@ struct LipMirrorCamera {
     static func fix(corners: (left: CGPoint, right: CGPoint)?, eyes: [CGPoint], box: CGRect?) -> Fix? {
         guard let corners else { return nil }
         let m = CGPoint(x: (corners.left.x + corners.right.x) / 2, y: (corners.left.y + corners.right.y) / 2)
-        let sorted = eyes.count == 2 ? eyes.sorted { $0.x < $1.x } : []
-        let eyeDistance = sorted.isEmpty ? 0 : hypot(sorted[1].x - sorted[0].x, sorted[1].y - sorted[0].y)
+        let pair = LipFaceSample.eyesLeftToRight(eyes)
+        let eyeDistance = pair.map { hypot($0.right.x - $0.left.x, $0.right.y - $0.left.y) } ?? 0
         let d: CGFloat
         var normal = CGPoint(x: 0, y: 1)
         // Глаза ближе пикселя — вырожденный случай, как без глаз.
-        if eyeDistance >= 1 {
-            let e1 = sorted[0], e2 = sorted[1]
+        if eyeDistance >= 1, let pair {
+            let e1 = pair.left, e2 = pair.right
             d = eyeDistance
             let u = CGPoint(x: (e2.x - e1.x) / d, y: (e2.y - e1.y) / d)
             normal = CGPoint(x: -u.y, y: u.x)
@@ -259,28 +259,4 @@ struct LipMirrorCamera {
         centerYFilter.reset()
         logWidthFilter.reset()
     }
-}
-
-/// Сетка губ переживает одиночные промахи Vision: без неё маска мигала бы.
-/// Сетка — в пикселях КАМЕРЫ, поэтому удержанная показывается через текущее
-/// окно и едет вместе с ним.
-struct LipMaskHold {
-    /// Дольше, с, — маска гаснет.
-    static let hold: TimeInterval = 0.15
-
-    private var stored: (mesh: LipMesh, time: Double)?
-
-    mutating func update(_ mesh: LipMesh?, at t: Double) -> LipMesh? {
-        if let mesh {
-            stored = (mesh, t)
-            return mesh
-        }
-        guard let stored, t - stored.time <= Self.hold else {
-            stored = nil
-            return nil
-        }
-        return stored.mesh
-    }
-
-    mutating func reset() { stored = nil }
 }
