@@ -489,6 +489,7 @@
 "transcribe.format.timestampsSpeakers" = "With timestamps and speakers";
 "transcribe.analysisFormat.markdown" = "Markdown";
 "transcribe.analysisFormat.plain" = "Plain text";
+"transcribe.analysisFormat.pdf" = "PDF";
 "transcribe.supported.title" = "Supported formats";
 "transcribe.supported.audio" = "Audio: WAV, MP3, M4A, FLAC, OGG, Opus, AIFF, ASF";
 "transcribe.supported.video" = "Video: MP4, MOV, AVI, MKV";
@@ -719,6 +720,8 @@
 "analysis.source.nexara" = "Nexara";
 "analysis.source.nexaraTitle" = "Nexara analysis";
 "analysis.source.local" = "%@ · on this Mac";
+"analysis.pdf.recorded" = "Recording: %@";
+"analysis.pdf.analysis" = "Analysis: %@";
 "analysis.progress.loading" = "Preparing the model…";
 "analysis.progress.reading" = "Reading the transcript… %ld%%";
 "analysis.progress.part" = "Part %ld of %ld · %ld%%";
@@ -762,3 +765,10 @@
 "analysis.templates.cite" = "Timestamps";
 "analysis.templates.builtinReadonly" = "Built-in templates are read-only. Click “Duplicate” to edit a copy.";
 "analysis.templates.empty" = "Select a template on the left";
+"analysis.templates.import" = "Import…";
+"analysis.templates.import.help" = "DOKA and Memento templates in JSON; you can pick several files at once";
+"analysis.templates.import.prompt" = "Import";
+"analysis.templates.import.failedTitle" = "Couldn’t import";
+"analysis.templates.import.notTemplate" = "not an analysis template";
+"analysis.templates.import.unreadable" = "the file can’t be read";
+"analysis.templates.export" = "Export…";

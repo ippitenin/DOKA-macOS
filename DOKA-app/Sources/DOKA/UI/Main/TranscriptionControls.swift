@@ -177,8 +177,9 @@ enum SaveFormat: String, Identifiable, CaseIterable {
     }
 }
 
-/// Формат сохранения LLM-анализа в файл. Markdown — сырой ответ как есть;
-/// обычный текст — без символов разметки. (PDF сознательно отложен.)
+/// Текстовый формат сохранения LLM-анализа в файл. Markdown — сырой ответ
+/// как есть; обычный текст — без символов разметки. PDF — не текст, у него
+/// отдельный пункт меню и свой генератор (`AnalysisPDF`).
 enum AnalysisSaveFormat: String, Identifiable, CaseIterable {
     case markdown, plain
 
