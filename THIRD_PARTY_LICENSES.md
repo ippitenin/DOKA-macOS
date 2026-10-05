@@ -47,7 +47,7 @@ SOFTWARE.
 |---|---|---|---|
 | KeyboardShortcuts | 2.4.0 | MIT | https://github.com/sindresorhus/KeyboardShortcuts |
 | WhisperKit (argmax-oss-swift) | 0.18.0 | MIT | https://github.com/argmaxinc/argmax-oss-swift |
-| FluidAudio | 0.15.5 | Apache-2.0 | https://github.com/FluidInference/FluidAudio |
+| FluidAudio | 0.17.5 | Apache-2.0 | https://github.com/FluidInference/FluidAudio |
 | swift-argument-parser | 1.8.2 | Apache-2.0 | https://github.com/apple/swift-argument-parser |
 | swift-asn1 | 1.7.1 | Apache-2.0 | https://github.com/apple/swift-asn1 |
 | swift-collections | 1.6.0 | Apache-2.0 | https://github.com/apple/swift-collections |
@@ -57,7 +57,9 @@ SOFTWARE.
 | yyjson | 0.12.0 | MIT | https://github.com/ibireme/yyjson |
 
 FluidAudio bundles its own third-party components (`fastcluster`, `vbx`); their licenses
-ship with the package in `ThirdPartyLicenses/`.
+ship with the package in `ThirdPartyLicenses/`. Its optional `NemoTextProcessing` engine
+(a prebuilt static library from [text-processing-rs](https://github.com/FluidInference/text-processing-rs),
+Apache-2.0) is disabled through the package trait and is not linked into DOKA.
 
 ## Models
 

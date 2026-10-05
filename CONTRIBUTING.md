@@ -79,7 +79,8 @@ not on a particular translation.
   blind `swift package update`.** A bump is verified with a full `./build.sh` and a manual
   smoke pass over the affected local models — `swift build` alone will not catch a release
   regression.
-  - **WhisperKit stays on the 0.18.x line** and **FluidAudio is pinned `exact: "0.15.5"`.**
+  - **WhisperKit stays on the 0.18.x line** and **FluidAudio is pinned `exact: "0.17.5"`** (with its
+    `NemoTextProcessing` trait turned off — that is why the manifest is tools-version 6.2).
     Both pins date from the universal (arm64 + x86_64) build, which newer versions broke.
     DOKA is now built for arm64 only, so that reason is gone, but moving either one is a
     separate change with its own smoke pass. FluidAudio’s “patch” releases are not patches
