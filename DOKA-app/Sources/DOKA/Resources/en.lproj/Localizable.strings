@@ -489,6 +489,7 @@
 "transcribe.format.timestampsSpeakers" = "With timestamps and speakers";
 "transcribe.analysisFormat.markdown" = "Markdown";
 "transcribe.analysisFormat.plain" = "Plain text";
+"transcribe.analysisFormat.pdf" = "PDF";
 "transcribe.supported.title" = "Supported formats";
 "transcribe.supported.audio" = "Audio: WAV, MP3, M4A, FLAC, OGG, Opus, AIFF, ASF";
 "transcribe.supported.video" = "Video: MP4, MOV, AVI, MKV";
@@ -719,6 +720,8 @@
 "analysis.source.nexara" = "Nexara";
 "analysis.source.nexaraTitle" = "Nexara analysis";
 "analysis.source.local" = "%@ · on this Mac";
+"analysis.pdf.recorded" = "Recording: %@";
+"analysis.pdf.analysis" = "Analysis: %@";
 "analysis.progress.loading" = "Preparing the model…";
 "analysis.progress.reading" = "Reading the transcript… %ld%%";
 "analysis.progress.part" = "Part %ld of %ld · %ld%%";
