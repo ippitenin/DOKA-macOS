@@ -241,9 +241,8 @@ Mac, и он одинаково доступен записям любого п�
   внутри `DOKA.app/Contents/Frameworks`)
 - [WhisperKit / argmax-oss-swift](https://github.com/argmaxinc/argmax-oss-swift) — MIT
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) — Apache-2.0
-- [swift-transformers](https://github.com/huggingface/swift-transformers),
-  [swift-jinja](https://github.com/huggingface/swift-jinja) и пакеты `swift-*` от Apple — Apache-2.0
-- [yyjson](https://github.com/ibireme/yyjson) — MIT
+- код Hub и Tokenizers из [swift-transformers](https://github.com/huggingface/swift-transformers)
+  (встроен в argmax-oss-swift) и `swift-argument-parser` от Apple — Apache-2.0
 
 Модели скачиваются пользователем во время работы и в репозиторий не входят:
 
