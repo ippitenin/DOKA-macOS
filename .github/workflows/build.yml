@@ -18,8 +18,8 @@ concurrency:
 jobs:
   build:
     name: Сборка и проверки
-    runs-on: macos-26   # нужен Xcode 26: swift-collections объявлен как tools-version 6.2,
-                        # а glassEffect/.buttonStyle(.glass) требуют SDK macOS 26.
+    runs-on: macos-26   # нужен Xcode 26: glassEffect/.buttonStyle(.glass) требуют SDK macOS 26
+                        # (swift-collections на tools-version 6.2 ушла вместе с WhisperKit 0.18).
                         # macos-14 в GitHub Actions больше не поддерживается.
     timeout-minutes: 45
     defaults:
@@ -35,7 +35,7 @@ jobs:
           swift --version
           version=$(swift -version 2>&1 | sed -nE 's/.*Swift version ([0-9]+)\.([0-9]+).*/\1\2/p' | head -1)
           if [[ -z "$version" || "$version" -lt 62 ]]; then
-            echo "::error::Нужен Swift 6.2+ (Xcode 26): swift-collections объявлен как swift-tools-version 6.2"
+            echo "::error::Нужен Swift 6.2+ (Xcode 26): код использует SDK macOS 26 (Liquid Glass)"
             exit 1
           fi
 

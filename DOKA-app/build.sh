@@ -34,6 +34,11 @@ done
 ./scripts/build-shaders.sh
 
 echo "==> Сборка release (swift build, arm64)…"
+# Ресурсные бандлы ушедших зависимостей SwiftPM из каталога продуктов НЕ
+# удаляет, а цикл «*.bundle» ниже увёз бы их в приложение: после перехода на
+# WhisperKit 1.x в DOKA.app так оставались бандлы swift-crypto и
+# swift-transformers. Бандлы — выход сборки, нужные SwiftPM создаст заново.
+rm -rf "$(swift build -c release --arch arm64 --show-bin-path)"/*.bundle
 swift build -c release --arch arm64
 
 # Каталог продуктов спрашиваем у самого SwiftPM: он зависит от версии

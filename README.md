@@ -241,9 +241,8 @@ Full list with versions and required notices: [`THIRD_PARTY_LICENSES.md`](THIRD_
   in `DOKA.app/Contents/Frameworks`)
 - [WhisperKit / argmax-oss-swift](https://github.com/argmaxinc/argmax-oss-swift) — MIT
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) — Apache-2.0
-- [swift-transformers](https://github.com/huggingface/swift-transformers),
-  [swift-jinja](https://github.com/huggingface/swift-jinja) and Apple’s `swift-*` packages — Apache-2.0
-- [yyjson](https://github.com/ibireme/yyjson) — MIT
+- Hub and Tokenizers code from [swift-transformers](https://github.com/huggingface/swift-transformers)
+  (vendored inside argmax-oss-swift) and Apple’s `swift-argument-parser` — Apache-2.0
 
 Models are downloaded by the user at runtime and are not part of this repository:
 
