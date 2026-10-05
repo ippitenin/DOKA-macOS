@@ -8,7 +8,7 @@ let package = Package(
     // swift-tools-version 6.0, а манифест объявлен как 5.9.
     platforms: [.macOS("15.0")],
     dependencies: [
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0"),
         // Локальные модели распознавания: Whisper через WhisperKit (Argmax OSS SDK)
         // и Parakeet V3 через FluidAudio. Обе — CoreML/ANE, macOS 15+.
         // Линия 0.18.x — последняя без бага мультиарх-сборки SPM (в 1.x два
