@@ -1,12 +1,16 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
+// 6.2, а не прежний 5.9 — ради ТРЕЙТОВ: только манифест 6.2+ может отключить
+// трейт зависимости (см. FluidAudio ниже; на 6.1 синтаксис принимается, но
+// бинарный таргет всё равно линкуется — проверено апстримом). Язык при этом
+// остаётся Swift 5 (`swiftLanguageModes` внизу): Swift 6 включил бы строгую
+// проверку конкурентности на весь код приложения. Тулчейн 6.2 = Xcode 26,
+// он и так обязателен (SDK macOS 26 для Liquid Glass).
 import PackageDescription
 
 let package = Package(
     name: "DOKA",
     defaultLocalization: "en",   // язык отката для неподдерживаемых языков системы
-    // Строковая форма, а не `.v15`: тот кейс появился только в
-    // swift-tools-version 6.0, а манифест объявлен как 5.9.
-    platforms: [.macOS("15.0")],
+    platforms: [.macOS(.v15)],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0"),
         // Локальные модели распознавания: Whisper через WhisperKit (Argmax OSS SDK)
@@ -20,31 +24,27 @@ let package = Package(
         // Минорную версию поднимать отдельной правкой: release-сборка и smoke
         // Whisper Local (диктовка, файл, отмена).
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", .upToNextMinor(from: "1.1.0")),
-        // ТОЧНЫЙ пин, а не линия: у FluidAudio «патч» не означает патч. Между
-        // 0.15.5 и 0.15.7 — 237 файлов и +28 000 строк, включая новые бэкенды
-        // TTS/VAD/ASR и бинарный артефакт NemoTextProcessing.xcframework.
+        // ТОЧНЫЙ пин, а не линия: у FluidAudio «патч» не означает патч (между
+        // 0.15.5 и 0.15.7 — 237 файлов и +28 000 строк). Обновлён с 0.15.5 на
+        // 0.17.5 (5.10.2026): наш код собрался без правок; живой стенд —
+        // Parakeet (диктовка и файл) и офлайновый диаризатор дают на 0.17.5 те
+        // же результаты, что на 0.15.5. Заодно пришли проброс отмены в
+        // диаризатор, учёт лимита спикеров и «отменённая закачка не стартует».
         //
-        // Проверено на 0.15.7 (12.09.2026): debug собирается, 531 тест зелёный,
-        // `swift build -c release --arch arm64` собирается, а
-        // `swift build -c release --arch arm64 --arch x86_64` ПАДАЕТ:
-        //     ld: library not found for -ltext_processing_rs
-        // Срез `macos-arm64_x86_64` в самом xcframework есть — ломается
-        // мультиарх-путь SwiftPM, ровно как у WhisperKit 1.x выше. Пока DOKA
-        // раздавалась universal, 0.15.7 для нас была нерабочей; с отказа от
-        // Intel (сборка только arm64) эта причина снята, но пин остаётся до
-        // отдельного обновления со smoke Parakeet и диаризации.
+        // `traits: []` — отключён трейт NemoTextProcessing (FST-нормализация
+        // текста NeMo для TTS и ITN, готовая статическая Rust-библиотека
+        // text-processing-rs): DOKA ею не пользуется (текст Parakeet с ним и без
+        // него одинаков), а в бинарник она добавляла 10 МБ (22,8 → 33,2 МБ;
+        // без неё — 25,2). Отключить трейт может только манифест 6.2+ — см.
+        // шапку файла.
         //
-        // Прежний `.upToNextMinor(from: "0.15.5")` от этого не защищал: он
-        // разрешает 0.15.7, и любой `swift package update` или резолв без
-        // Package.resolved ломал бы релиз. Поднимать версию — только после
-        // полной проверки: `./build.sh` и smoke локальных моделей.
+        // Модели диаризатора 0.17.x берёт с закреплённой ревизии: первая
+        // загрузка после обновления один раз докачивает ~22 МБ (маркер
+        // `.fluidaudio-revision`); 0.15.5 эти файлы тоже читает.
         //
-        // Чего мы при этом не берём (полезное в 0.15.6/0.15.7):
-        //   ce9f85e — проброс отмены в воркеры офлайнового диаризатора;
-        //   df1417c, 3ebb285 — кластеризация и учёт лимита спикеров (у нас
-        //                      используется `withSpeakers(exactly:)`);
-        //   4dbf4f9 — отменённая закачка больше не стартует.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5")
+        // Поднимать версию — только после полной проверки: `./build.sh` и
+        // smoke Parakeet и диаризации.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.5", traits: [])
     ],
     targets: [
         .executableTarget(
@@ -85,5 +85,7 @@ let package = Package(
             dependencies: ["DOKA"],
             path: "Tests/DOKATests"
         )
-    ]
+    ],
+    // Swift 5, а не 6: манифест 6.2 ради трейтов (см. шапку), язык прежний.
+    swiftLanguageModes: [.v5]
 )
