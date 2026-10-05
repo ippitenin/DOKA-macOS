@@ -20,8 +20,6 @@ struct LipMesh: Equatable {
     static let bandFractions: [CGFloat] = [1.0 / 3, 2.0 / 3]
     /// Насколько ореол дальше от центра рта, чем внешний контур.
     static let haloScale: CGFloat = 0.22
-    /// Отрезков сплайна между соседними точками в `spline` по умолчанию.
-    static let splineSteps = 8
     /// Отрезков плавного контура между соседними узлами кольца при отрисовке.
     static let contourSteps = 4
 
@@ -68,7 +66,8 @@ struct LipMesh: Equatable {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
-    /// Оболочка для зеркала на точках Vision без оси глаз и без калибровки.
+    /// Для тестов: точки Vision без оси глаз и калибровки (зеркало идёт
+    /// через `make(_:calibration:)`).
     static func make(outer: [CGPoint], inner: [CGPoint]) -> LipMesh? {
         LipContours.vision(outer: outer, inner: inner).flatMap { make($0) }
     }
@@ -148,7 +147,7 @@ struct LipMesh: Equatable {
 
     /// Центростремительный сплайн Катмулла–Рома через точки цепочки (без
     /// петель и выбросов на неравных шагах). Концы продолжаются отражением.
-    static func spline(_ points: [CGPoint], steps: Int = splineSteps) -> [CGPoint] {
+    static func spline(_ points: [CGPoint], steps: Int) -> [CGPoint] {
         guard points.count >= 2 else { return points }
         var result: [CGPoint] = []
         result.reserveCapacity((points.count - 1) * steps + 1)

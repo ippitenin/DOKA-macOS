@@ -21,7 +21,7 @@ final class LipMirrorPipelineTests: XCTestCase {
     private final class Rig {
         let pipeline = LipMirrorPipeline()
         let camera: CGSize
-        let target: LipMirrorTarget
+        var target: LipMirrorTarget
         var take: UUID
         var t = 1000.0
         var lastRegion = CGRect.null
@@ -118,6 +118,70 @@ final class LipMirrorPipelineTests: XCTestCase {
         assertEqual(paths.brackets.boundingBoxOfPath, expected.brackets.boundingBoxOfPath)
         // Камера ещё на сцене — въезд после трёх фиксов (`reacquireFixes`).
         assertEqual(pipeline.region(take: take, camera: camera, target: target), scene)
+    }
+
+    /// Ось глаз доходит до таблицы Vision: при наклоне головы внутренний
+    /// контур идёт через внешние уголки, а не по своим крайним точкам.
+    func testEyeAxisReachesContours() throws {
+        let angle = 55 * CGFloat.pi / 180
+        let mouth = CGPoint(x: 640, y: 480)
+        func tilted(_ points: [CGPoint], scaleY: CGFloat) -> [CGPoint] {
+            let c = cos(angle), s = sin(angle)
+            return points.map { p in
+                let x = p.x - mouth.x, y = (p.y - mouth.y) * scaleY
+                return CGPoint(x: mouth.x + x * c - y * s, y: mouth.y + x * s + y * c)
+            }
+        }
+        var sample = LipSyntheticFace.sample(mouth: mouth)
+        sample.outerLips = tilted(sample.outerLips, scaleY: 2.5)
+        sample.innerLips = tilted(sample.innerLips, scaleY: 2.5)
+        sample.eyes = tilted(sample.eyes, scaleY: 1)
+
+        let pipeline = LipMirrorPipeline()
+        _ = pipeline.region(take: take, camera: camera, target: target)
+        let region = CGRect(x: 400, y: 300, width: 480, height: 480 * target.aspect)
+        let paths = try XCTUnwrap(pipeline.update(sample: sample, host: 1000, camera: camera, region: region,
+                                                  target: target))
+
+        func expected(axis: CGVector?) throws -> LipMeshPaths {
+            let contours = try XCTUnwrap(axis.map {
+                LipContours.vision(outer: sample.outerLips, inner: sample.innerLips, axis: $0)
+            } ?? LipContours.vision(outer: sample.outerLips, inner: sample.innerLips))
+            var calibrator = LipMeshCalibrator()
+            let mesh = try XCTUnwrap(LipMesh.make(contours, calibration: calibrator.update(contours)))
+            return LipMeshPaths.make(mesh) {
+                LipMirrorGeometry.map($0, region: region, size: self.target.size, mirrored: true)
+            }
+        }
+        let withAxis = try expected(axis: CGVector(dx: cos(angle), dy: sin(angle)))
+        let horizontal = try expected(axis: nil)
+        assertEqual(paths.band.boundingBoxOfPath, withAxis.band.boundingBoxOfPath)
+        assertEqual(paths.grid.boundingBoxOfPath, withAxis.grid.boundingBoxOfPath)
+        // Без оси сетка другая — иначе тест ничего бы не различал.
+        XCTAssertNotEqual(paths.grid.boundingBoxOfPath, horizontal.grid.boundingBoxOfPath)
+    }
+
+    /// Reduce Motion из цели окна доходит до камеры: въезд — сразу в окно
+    /// рта, без промежуточных ширин; снятый посреди дубля — выезд снова глайдом.
+    func testReduceMotionReachesCamera() {
+        let reduced = LipMirrorTarget(size: target.size, scale: target.scale, reduceMotion: true)
+        let rig = Rig(camera: camera, target: reduced, take: take)
+        let sample = LipSyntheticFace.sample()
+        rig.step(sample)
+        rig.step(sample)
+        assertEqual(rig.next, scene)
+        rig.step(sample)
+        let tracked = rig.next
+        XCTAssertEqual(tracked.width, LipMirrorCamera.zoom * LipMirrorCamera.mouthPerEyes * 126, accuracy: 1)
+
+        rig.target = target
+        var widths: [CGFloat] = []
+        for _ in 0..<36 {
+            rig.step(.none)
+            widths.append(rig.next.width)
+        }
+        XCTAssertEqual(widths.last!, scene.width, accuracy: 0.5)
+        XCTAssertTrue(widths.contains { $0 > tracked.width + 1 && $0 < scene.width - 1 }, "выезд без глайда")
     }
 
     func testMaskHeldThroughSingleMissThenHidden() {

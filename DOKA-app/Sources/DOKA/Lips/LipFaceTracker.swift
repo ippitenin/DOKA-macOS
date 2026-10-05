@@ -18,11 +18,6 @@ struct LipFaceSample: Equatable {
     /// контуров, а не зрачки: зрачки Vision при моргании неточны. Пусто —
     /// хотя бы одного глаза не нашлось.
     var eyes: [CGPoint] = []
-    /// Оба контура губ Vision отдал замкнутыми (`.closedPath`): кольца сетки
-    /// предполагают замкнутый контур.
-    var lipContoursClosed = false
-    /// Уверенность Vision в точках лица (`landmarks.confidence`), 0…1.
-    var confidence: Float = 0
 
     static let none = LipFaceSample(box: nil, count: 0, outerLips: [], innerLips: [])
 }
@@ -93,10 +88,7 @@ final class LipFaceTracker: LipFaceDetecting {
         let eyes = [centroid(landmarks?.leftEye), centroid(landmarks?.rightEye)].compactMap { $0 }
         return LipFaceSample(box: box, count: faces.count,
                              outerLips: points(outer), innerLips: points(inner),
-                             eyes: eyes.count == 2 ? eyes : [],
-                             lipContoursClosed: outer?.pointsClassification == .closedPath
-                                 && inner?.pointsClassification == .closedPath,
-                             confidence: landmarks?.confidence ?? 0)
+                             eyes: eyes.count == 2 ? eyes : [])
     }
 
     private func area(_ rect: CGRect) -> CGFloat { rect.width * rect.height }

@@ -10,7 +10,7 @@ import CoreGraphics
 struct LipMeshPaths: @unchecked Sendable {
     /// Радиус узла сетки, pt.
     static let nodeRadius: CGFloat = 0.6
-    /// Радиус ключевой точки Vision, pt.
+    /// Радиус ключевой точки (точки Vision после фильтра One Euro), pt.
     static let keyRadius: CGFloat = 1.5
     /// Отступ скобок от ореола, pt.
     static let bracketPadding: CGFloat = 6
@@ -26,7 +26,7 @@ struct LipMeshPaths: @unchecked Sendable {
     let halo: CGPath
     /// Кружки узлов: промежуточные кольца, внешний и внутренний контуры, ореол.
     let nodes: CGPath
-    /// Кружки ключевых точек — настоящих точек Vision.
+    /// Кружки ключевых точек — точек Vision после фильтра One Euro (без интерполяции).
     let keys: CGPath
     /// Угловые скобки вокруг рамки ореола.
     let brackets: CGPath
@@ -57,10 +57,17 @@ struct LipMeshPaths: @unchecked Sendable {
             grid.addLine(to: i)
         }
 
-        // Ореол и короткие спицы к нему через одну.
+        // Ореол и короткие спицы к нему через одну. Ореол — отдельный подпуть
+        // на каждый отрезок между узлами: пунктир начинается заново на каждом
+        // подпути, поэтому штрихи привязаны к узлам. Одним замкнутым путём
+        // штрихи нижней губы ползли бы на речи на всю разницу длины контура
+        // (≈2 pt на пиксель хода челюсти — больше периода пунктира за кадр).
         let halo = CGMutablePath()
-        halo.addLines(between: curve(lips.halo))
-        halo.closeSubpath()
+        let ring = curve(lips.halo)
+        let steps = LipMesh.contourSteps
+        for j in 0..<(ring.count / steps) {
+            halo.addLines(between: (0...steps).map { ring[(j * steps + $0) % ring.count] })
+        }
         for j in stride(from: 0, to: min(outer.count, aura.count), by: 2) {
             halo.move(to: outer[j])
             halo.addLine(to: aura[j])

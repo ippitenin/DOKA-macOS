@@ -88,4 +88,24 @@ final class LipMeshPathsTests: XCTestCase {
         let nodes = mesh.bands.reduce(0) { $0 + $1.count } + mesh.outer.count + mesh.inner.count + mesh.halo.count
         XCTAssertEqual(subpaths(paths.nodes), nodes)
     }
+
+    /// Ореол — подпуть на каждый отрезок между узлами, и каждый начинается
+    /// в узле: пунктир отсчитывается от начала подпути, поэтому штрихи
+    /// привязаны к узлам и не ползут, когда нижняя губа растягивает контур.
+    func testHaloDashesStartAtNodes() throws {
+        let mesh = try mesh()
+        let paths = LipMeshPaths.make(mesh, map: shiftAndScale)
+        let aura = mesh.halo.map(shiftAndScale)
+        let spokes = (aura.count + 1) / 2
+        XCTAssertEqual(subpaths(paths.halo), aura.count + spokes)
+
+        var starts: [CGPoint] = []
+        paths.halo.applyWithBlock { element in
+            if element.pointee.type == .moveToPoint { starts.append(element.pointee.points[0]) }
+        }
+        for (start, node) in zip(starts.prefix(aura.count), aura) {
+            XCTAssertEqual(start.x, node.x, accuracy: 1e-6)
+            XCTAssertEqual(start.y, node.y, accuracy: 1e-6)
+        }
+    }
 }

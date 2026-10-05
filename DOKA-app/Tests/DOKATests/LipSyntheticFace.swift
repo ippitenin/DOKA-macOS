@@ -34,7 +34,6 @@ enum LipSyntheticFace {
                                    count: 1, outerLips: lips.outer, innerLips: lips.inner)
         // Порядок Vision: левый глаз лица — справа в кадре.
         sample.eyes = [CGPoint(x: eyes.x + d / 2, y: eyes.y), CGPoint(x: eyes.x - d / 2, y: eyes.y)]
-        sample.lipContoursClosed = true
         return sample
     }
 
