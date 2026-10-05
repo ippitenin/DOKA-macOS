@@ -117,6 +117,7 @@ struct AnalysisPanelView: View {
                                 suggestedName: "\(exportBaseName)-analysis.\(format.fileExtension)")
                         }
                     }
+                    Button(L("transcribe.analysisFormat.pdf")) { savePDF(shown) }
                 }
                 moreMenu(shown)
             }
@@ -127,6 +128,26 @@ struct AnalysisPanelView: View {
 
     private var exportBaseName: String {
         document.record?.exportBaseName ?? "transcript"
+    }
+
+    /// PDF с шапкой: запись, название анализа, дата записи, модель и дата анализа.
+    private func savePDF(_ analysis: StoredAnalysis) {
+        let record = document.record
+        var meta: [String] = []
+        if let record {
+            meta.append(L("analysis.pdf.recorded", record.date.formatted(date: .abbreviated, time: .shortened)))
+        }
+        var info = [sourceLabel(analysis)]
+        if analysis.createdAt != .distantPast {
+            info.append(analysis.createdAt.formatted(date: .abbreviated, time: .shortened))
+        }
+        meta.append(L("analysis.pdf.analysis", info.joined(separator: ", ")))
+        let header = AnalysisPDF.Header(
+            title: record?.displayTitle ?? "",
+            subtitle: analysis.title.isEmpty ? L("transcribe.llm.result.title") : analysis.title,
+            meta: meta)
+        AnalysisPDF.save(markdown: analysis.markdown, header: header,
+                         suggestedName: "\(exportBaseName)-analysis.pdf")
     }
 
     private func listTitle(_ analysis: StoredAnalysis) -> String {
