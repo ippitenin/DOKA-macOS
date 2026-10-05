@@ -8,34 +8,23 @@ import SwiftUI
 @MainActor
 final class LipMirrorController {
     private var panel: RecorderPanel?
-    private var hideGeneration = 0
-
-    private var animationDurationScale: Double {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 1
-    }
+    private let fade = PanelFade()
 
     func show(style: RecorderStyle, screen: NSScreen?) {
         guard let screen else { return }
         let placement = LipMirrorPlacement.resolve(style: style,
                                                    variant: SettingsStore.shared.lipsMirrorNotchVariant)
         let notch = RecorderPanelController.notchGeometry(for: screen)
-        let frame = screen.frame
-        let notchPanel = style == .notch
-            ? CGRect(x: frame.midX - notch.size.width / 2, y: frame.maxY - notch.size.height,
-                     width: notch.size.width, height: notch.size.height)
-            : nil
-        let layout = LipMirrorGeometry.layout(placement, screen: frame, safeTop: screen.safeAreaInsets.top,
+        let notchPanel = style == .notch ? RecorderPanelController.notchFrame(size: notch.size, on: screen) : nil
+        let layout = LipMirrorGeometry.layout(placement, screen: screen.frame, safeTop: screen.safeAreaInsets.top,
                                               notchWidth: notch.notchWidth, notchPanel: notchPanel)
-        hideGeneration += 1
         if let panel, panel.isVisible, panel.frame == layout.frame {
             // Возможно, идёт анимация затухания: прямое присваивание она бы
             // перетёрла и довела альфу до нуля — перебиваем её своей анимацией.
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = DS.Anim.panelShow * animationDurationScale
-                panel.animator().alphaValue = 1
-            }
+            fade.restore(panel)
             return
         }
+        fade.cancelHide()
         // Вью пересоздаётся на каждом показе — так плашка каждый раз заново
         // вытекает из края экрана.
         let view = NSHostingView(rootView: LipMirrorView(layout: layout))
@@ -49,22 +38,11 @@ final class LipMirrorController {
 
     func dismiss() {
         guard let panel, panel.isVisible else { return }
-        hideGeneration += 1
-        let generation = hideGeneration
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = DS.Anim.panelHide * animationDurationScale
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().alphaValue = 0
-        }, completionHandler: {
-            MainActor.assumeIsolated {
-                guard generation == self.hideGeneration else { return }
-                panel.orderOut(nil)
-                panel.alphaValue = 1
-                // Вью зеркала уходит из окна и отписывается от ящика кадров:
-                // невидимое окно не должно заставлять движок рендерить.
-                panel.contentView = nil
-            }
-        })
+        fade.fadeOut(panel) {
+            // Вью зеркала уходит из окна и отписывается от ящика кадров:
+            // невидимое окно не должно заставлять движок рендерить.
+            panel.contentView = nil
+        }
     }
 
     private static func makePanel(view: NSView, size: CGSize) -> RecorderPanel {

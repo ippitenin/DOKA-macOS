@@ -33,19 +33,16 @@ final class RecorderPanelController {
     private var panel: RecorderPanel?
     private var appliedStyle: RecorderStyle?
     private let controller: DictationController
-    /// Отменяет orderOut незавершённого скрытия при быстром повторном show().
-    private var hideGeneration = 0
+    /// Показ и затухание плашки: быстрый повторный show() отменяет orderOut
+    /// незавершённого скрытия.
+    private let fade = PanelFade()
 
     /// Полноэкранная клик-сквозная подсветка краёв — только для стиля
     /// «Аврора» во время записи/распознавания.
     private var glowPanel: RecorderPanel?
+    private let glowFade = PanelFade()
     /// Зеркало губ (эксперимент «Губы») — только пока камера снимает дубль.
     private let mirror = LipMirrorController()
-
-    /// NSAnimationContext, в отличие от SwiftUI, сам не уважает Reduce Motion.
-    private var animationDurationScale: Double {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 1
-    }
 
     init(controller: DictationController) {
         self.controller = controller
@@ -103,14 +100,12 @@ final class RecorderPanelController {
             appliedStyle = effective
         }
         guard let panel else { return }
-        hideGeneration += 1
 
         // Позиционируем только при появлении: переходы recording → transcribing →
         // error не должны дёргать панель (например, на другой экран за курсором).
         if !panel.isVisible {
             position(panel, style: effective, screen: screen)
-            let target = panel.frame
-            var start = target
+            var start = panel.frame
             // Появление: классика всплывает снизу, нотч выезжает из-под выреза,
             // «Аврора» не съезжает вовсе — её капелька раздувается из точки
             // внутри окна, и сдвиг рамки спорил бы с этим ростом.
@@ -119,23 +114,11 @@ final class RecorderPanelController {
             case .aurora, .mini: break
             default: start.origin.y -= 10
             }
-            panel.setFrame(start, display: false)
-            panel.alphaValue = 0
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = DS.Anim.panelShow * animationDurationScale
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().alphaValue = 1
-                panel.animator().setFrame(target, display: true)
-            }
+            fade.fadeIn(panel, from: start)
         } else {
             // Панель уже на экране (возможно, в середине скрытия) —
             // возвращаем непрозрачность.
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = DS.Anim.panelShow * animationDurationScale
-                panel.animator().alphaValue = 1
-            }
+            fade.restore(panel)
         }
         syncMirror(style: style, screen: screen)
     }
@@ -154,25 +137,11 @@ final class RecorderPanelController {
         dismissGlow()
         mirror.dismiss()
         guard let panel, panel.isVisible else { return }
-        hideGeneration += 1
-        let generation = hideGeneration
         var target = panel.frame
         if appliedStyle == .notch {
             target.origin.y += 8 // нотч втягивается вверх, под вырез
         }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = DS.Anim.panelHide * animationDurationScale
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().alphaValue = 0
-            panel.animator().setFrame(target, display: true)
-        }, completionHandler: {
-            // Completion приходит на главном потоке, но без изоляции к актору.
-            MainActor.assumeIsolated {
-                guard generation == self.hideGeneration else { return }
-                panel.orderOut(nil)
-                panel.alphaValue = 1
-            }
-        })
+        fade.fadeOut(panel, to: target)
     }
 
     // MARK: - Создание и геометрия
@@ -229,28 +198,18 @@ final class RecorderPanelController {
         guard let glow = glowPanel else { return }
         glow.setFrame(frame, display: false)     // под текущий экран
         if !glow.isVisible {
-            glow.alphaValue = 0
-            glow.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = DS.Anim.panelShow * animationDurationScale
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                glow.animator().alphaValue = 1
-            }
+            glowFade.fadeIn(glow)
+        } else {
+            // Видима, но, возможно, гаснет: новая запись началась раньше,
+            // чем кончилось затухание прошлой, — иначе запоздалый orderOut
+            // оставил бы запись без подсветки.
+            glowFade.restore(glow)
         }
     }
 
     private func dismissGlow() {
         guard let glow = glowPanel, glow.isVisible else { return }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = DS.Anim.panelHide * animationDurationScale
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            glow.animator().alphaValue = 0
-        }, completionHandler: {
-            MainActor.assumeIsolated {
-                glow.orderOut(nil)
-                glow.alphaValue = 1
-            }
-        })
+        glowFade.fadeOut(glow)
     }
 
     /// Геометрия нотч-панели: вырез + боковые зоны контента;
@@ -273,6 +232,15 @@ final class RecorderPanelController {
         return (CGSize(width: 240 + 2 * DS.EdgePlate.shoulder, height: 36), 0)
     }
 
+    /// Рамка notch-плашки: по центру экрана, вплотную к самой верхней кромке
+    /// (отступ 0) — и с вырезом, и без. Общая с зеркалом губ, которое у
+    /// «Нотча» продолжает плашку.
+    static func notchFrame(size: CGSize, on screen: NSScreen) -> CGRect {
+        let frame = screen.frame
+        return CGRect(x: frame.midX - size.width / 2, y: frame.maxY - size.height,
+                      width: size.width, height: size.height)
+    }
+
     private static func screenUnderMouse() -> NSScreen? {
         let mouse = NSEvent.mouseLocation
         return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
@@ -285,11 +253,8 @@ final class RecorderPanelController {
         guard let screen else { return }
         let size = panel.frame.size
         if style == .notch {
-            let frame = screen.frame
-            // И с вырезом, и без — плашка прирастает к самой верхней кромке (отступ 0).
             // Уровень .statusBar (см. makePanel) позволяет лечь поверх менюбара.
-            panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2,
-                                         y: frame.maxY - size.height))
+            panel.setFrameOrigin(Self.notchFrame(size: size, on: screen).origin)
         } else if style == .studio {
             // Студия прижата почти к нижней кромке (над Dock).
             let visible = screen.visibleFrame
