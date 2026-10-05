@@ -2,26 +2,41 @@ import AppKit
 import QuartzCore
 import SwiftUI
 
-/// Маска-сетка губ поверх кадра зеркала: полупрозрачная полоса губ, сетка
-/// между контурами, пунктирный ореол, светящиеся контуры, узлы, ключевые
-/// точки (точки Vision после фильтра One Euro, без интерполяции) и угловые
-/// скобки вокруг рта. Слои ставятся прямо в
-/// контейнер видео (координаты сверху слева). Геометрия — в `LipMeshPaths`
-/// (строится вне главного потока); здесь только стиль и порядок слоёв.
+/// Маска-сетка губ поверх кадра зеркала: полупрозрачная полоса губ,
+/// пунктирный ореол, спицы и промежуточные кольца между контурами, внешний
+/// (персик) и внутренний (индиго) контуры, ключевые точки (точки Vision
+/// после фильтра One Euro, без интерполяции) и угловые скобки вокруг рта.
+/// Слои ставятся прямо в контейнер видео (координаты сверху слева).
+/// Геометрия — в `LipMeshPaths` (строится вне главного потока); здесь только
+/// стиль и порядок слоёв.
+///
+/// Маска — свет, а не краска: каждый слой ложится на видео наложением
+/// «экран» (осветляет губы, а не закрашивает их) с одинаковой
+/// непрозрачностью `DS.Lips.maskOpacity` у каждого слоя. Фильтр — встроенный
+/// фильтр Core Animation по имени, не CIFilter: флаг
+/// `layerUsesCoreImageFilters` у вью-хоста (`LipMirrorVideoNSView`) ему не
+/// нужен и стоит страховкой на случай перехода на CIFilter.
 ///
 /// Неявной анимации у `CAShapeLayer.path` нет: пути меняются скачком, на
 /// каждом результате трекера.
 final class LipMeshOverlay {
-    static let meshWidth: CGFloat = 0.5
-    static let haloWidth: CGFloat = 0.6
-    static let rimWidth: CGFloat = 1.1
-    static let bracketWidth: CGFloat = 1
+    static let rimWidth: CGFloat = 0.9
+    static let ringWidth: CGFloat = 0.4
+    static let haloWidth: CGFloat = 0.5
+    static let bracketWidth: CGFloat = 0.8
+    /// Свечение контуров и ключевых точек.
+    static let glowRadius: CGFloat = 3
+    static let glowOpacity: Float = 0.6
+    /// Наложение «экран» — имя фильтра компоновки Core Animation.
+    static let blend = "screenBlendMode"
 
     private let fill = CAShapeLayer()
     private let halo = CAShapeLayer()
-    private let mesh = CAShapeLayer()
-    private let rims = CAShapeLayer()
-    private let nodes = CAShapeLayer()
+    private let spokes = CAShapeLayer()
+    private let ringOuter = CAShapeLayer()
+    private let ringInner = CAShapeLayer()
+    private let outerRim = CAShapeLayer()
+    private let innerRim = CAShapeLayer()
     private let keys = CAShapeLayer()
     private let brackets = CAShapeLayer()
 
@@ -30,40 +45,37 @@ final class LipMeshOverlay {
         fill.fillRule = .evenOdd
         fill.strokeColor = nil
 
-        halo.fillColor = nil
-        halo.strokeColor = NSColor(DS.Lips.halo).cgColor
-        halo.lineWidth = Self.haloWidth
+        Self.stroke(halo, DS.Lips.halo, width: Self.haloWidth)
         // Пунктир отсчитывается от начала каждого подпути, а ореол порезан
         // на подпути по узлам (`LipMeshPaths.make`): штрихи не ползут на речи.
         halo.lineDashPattern = [2, 3]
 
-        mesh.fillColor = nil
-        mesh.strokeColor = NSColor(DS.Lips.mesh).cgColor
-        mesh.lineWidth = Self.meshWidth
-        mesh.lineJoin = .round
+        Self.stroke(spokes, DS.Lips.spoke, width: Self.ringWidth)
+        Self.stroke(ringOuter, DS.Lips.ringOuter, width: Self.ringWidth)
+        Self.stroke(ringInner, DS.Lips.ringInner, width: Self.ringWidth)
 
-        rims.fillColor = nil
-        rims.strokeColor = NSColor(DS.Lips.contour).cgColor
-        rims.lineWidth = Self.rimWidth
-        rims.lineJoin = .round
-        Self.glow(rims, color: DS.Lips.contour, radius: 4)
-
-        nodes.fillColor = NSColor(DS.Lips.node).cgColor
-        nodes.strokeColor = nil
+        Self.stroke(outerRim, DS.Lips.outer, width: Self.rimWidth)
+        Self.glow(outerRim, color: DS.Lips.outer)
+        Self.stroke(innerRim, DS.Lips.inner, width: Self.rimWidth)
+        Self.glow(innerRim, color: DS.Lips.inner)
 
         keys.fillColor = NSColor(DS.Lips.dot).cgColor
         keys.strokeColor = nil
-        Self.glow(keys, color: DS.Lips.dot, radius: 3)
+        Self.glow(keys, color: DS.Lips.dot)
 
-        brackets.fillColor = nil
-        brackets.strokeColor = NSColor(DS.Lips.bracket).cgColor
-        brackets.lineWidth = Self.bracketWidth
+        Self.stroke(brackets, DS.Lips.bracket, width: Self.bracketWidth)
         brackets.lineCap = .round
-        brackets.lineJoin = .round
+
+        for layer in layers {
+            layer.compositingFilter = Self.blend
+            layer.opacity = DS.Lips.maskOpacity
+        }
     }
 
     /// Снизу вверх: заливка под сеткой, ключевые точки и скобки — сверху.
-    private var layers: [CAShapeLayer] { [fill, halo, mesh, rims, nodes, keys, brackets] }
+    var layers: [CAShapeLayer] {
+        [fill, halo, spokes, ringOuter, ringInner, outerRim, innerRim, keys, brackets]
+    }
 
     func install(in container: CALayer) {
         for layer in layers { container.addSublayer(layer) }
@@ -71,12 +83,16 @@ final class LipMeshOverlay {
 
     /// Пути одного кадра; nil — маску спрятать. Вызывающий сам решает про
     /// транзакцию: зеркало меняет маску и картинку вместе, без анимаций.
+    /// Колец в сетке два (`LipMesh.bands`); лишние, если их станет больше,
+    /// не рисуются.
     func apply(_ paths: LipMeshPaths?) {
         fill.path = paths?.band
-        rims.path = paths?.band
-        mesh.path = paths?.grid
         halo.path = paths?.halo
-        nodes.path = paths?.nodes
+        spokes.path = paths?.spokes
+        ringOuter.path = paths?.rings.first
+        ringInner.path = paths.flatMap { $0.rings.count > 1 ? $0.rings[1] : nil }
+        outerRim.path = paths?.outerRim
+        innerRim.path = paths?.innerRim
         keys.path = paths?.keys
         brackets.path = paths?.brackets
     }
@@ -86,12 +102,19 @@ final class LipMeshOverlay {
         for layer in layers { layer.contentsScale = scale }
     }
 
-    /// Свечение — только у контуров и ключевых точек: тень на густой сетке
-    /// пересчитывалась бы на каждом кадре.
-    private static func glow(_ layer: CAShapeLayer, color: Color, radius: CGFloat) {
+    private static func stroke(_ layer: CAShapeLayer, _ color: Color, width: CGFloat) {
+        layer.fillColor = nil
+        layer.strokeColor = NSColor(color).cgColor
+        layer.lineWidth = width
+        layer.lineJoin = .round
+    }
+
+    /// Мягкое свечение — только у контуров и ключевых точек: тень на густой
+    /// сетке пересчитывалась бы на каждом кадре.
+    private static func glow(_ layer: CAShapeLayer, color: Color) {
         layer.shadowColor = NSColor(color).cgColor
-        layer.shadowRadius = radius
-        layer.shadowOpacity = 0.9
+        layer.shadowRadius = glowRadius
+        layer.shadowOpacity = glowOpacity
         layer.shadowOffset = .zero
     }
 }

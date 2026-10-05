@@ -93,7 +93,7 @@ final class LipMirrorPipelineTests: XCTestCase {
         let expected = try XCTUnwrap(fresh.update(sample: sample, host: rig.t - dt, camera: camera, region: region,
                                                   target: target))
         assertEqual(paths.band.boundingBoxOfPath, expected.band.boundingBoxOfPath)
-        assertEqual(paths.grid.boundingBoxOfPath, expected.grid.boundingBoxOfPath)
+        assertEqual(paths.spokes.boundingBoxOfPath, expected.spokes.boundingBoxOfPath)
         assertEqual(paths.halo.boundingBoxOfPath, expected.halo.boundingBoxOfPath)
     }
 
@@ -156,9 +156,9 @@ final class LipMirrorPipelineTests: XCTestCase {
         let withAxis = try expected(axis: CGVector(dx: cos(angle), dy: sin(angle)))
         let horizontal = try expected(axis: nil)
         assertEqual(paths.band.boundingBoxOfPath, withAxis.band.boundingBoxOfPath)
-        assertEqual(paths.grid.boundingBoxOfPath, withAxis.grid.boundingBoxOfPath)
+        assertEqual(paths.spokes.boundingBoxOfPath, withAxis.spokes.boundingBoxOfPath)
         // Без оси сетка другая — иначе тест ничего бы не различал.
-        XCTAssertNotEqual(paths.grid.boundingBoxOfPath, horizontal.grid.boundingBoxOfPath)
+        XCTAssertNotEqual(paths.spokes.boundingBoxOfPath, horizontal.spokes.boundingBoxOfPath)
     }
 
     /// Reduce Motion из цели окна доходит до камеры: въезд — сразу в окно

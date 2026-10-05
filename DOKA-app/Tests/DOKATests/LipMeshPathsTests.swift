@@ -48,6 +48,75 @@ final class LipMeshPathsTests: XCTestCase {
         XCTAssertEqual(subpaths(paths.band), 2)
     }
 
+    /// Контуры — отдельными путями (у каждого свой цвет), а полоса — ровно
+    /// они двое: заливка и контуры не разойдутся.
+    func testRimsAreSeparateAndFormBand() throws {
+        let mesh = try mesh()
+        let paths = LipMeshPaths.make(mesh, map: shiftAndScale)
+        XCTAssertEqual(subpaths(paths.outerRim), 1)
+        XCTAssertEqual(subpaths(paths.innerRim), 1)
+        let expected = CGMutablePath()
+        expected.addPath(paths.outerRim)
+        expected.addPath(paths.innerRim)
+        XCTAssertEqual(paths.band, expected)
+        // Сама кривая — независимо от реализации: сплайн узлов через тот же
+        // `map`, замкнутый одним подпутём.
+        func reference(_ ring: [CGPoint]) -> CGPath {
+            let path = CGMutablePath()
+            path.addLines(between: LipMesh.smoothRing(ring).map(shiftAndScale))
+            path.closeSubpath()
+            return path
+        }
+        XCTAssertEqual(paths.outerRim, reference(mesh.outer))
+        XCTAssertEqual(paths.innerRim, reference(mesh.inner))
+        XCTAssertEqual(paths.rings, mesh.bands.map(reference))
+        let outer = bounds(mesh.outer.map(shiftAndScale))
+        let inner = bounds(mesh.inner.map(shiftAndScale))
+        XCTAssertTrue(paths.outerRim.boundingBoxOfPath.insetBy(dx: -0.5, dy: -0.5).contains(outer))
+        XCTAssertTrue(paths.innerRim.boundingBoxOfPath.insetBy(dx: -0.5, dy: -0.5).contains(inner))
+        XCTAssertTrue(outer.contains(paths.innerRim.boundingBoxOfPath), "внутренний контур вне внешнего")
+    }
+
+    /// Колец — столько же, сколько промежуточных колец сетки, каждое —
+    /// один замкнутый путь, снаружи внутрь: кольца сходятся в уголках рта,
+    /// поэтому ширина у них общая, а высота убывает.
+    func testRingsFollowMeshBands() throws {
+        let mesh = try mesh()
+        let paths = LipMeshPaths.make(mesh, map: shiftAndScale)
+        XCTAssertEqual(paths.rings.count, mesh.bands.count)
+        XCTAssertGreaterThan(paths.rings.count, 1)
+        for (ring, band) in zip(paths.rings, mesh.bands) {
+            XCTAssertEqual(subpaths(ring), 1)
+            let nodes = bounds(band.map(shiftAndScale))
+            XCTAssertTrue(ring.boundingBoxOfPath.insetBy(dx: -0.5, dy: -0.5).contains(nodes))
+        }
+        for (a, b) in zip(paths.rings, paths.rings.dropFirst()) {
+            XCTAssertGreaterThan(a.boundingBoxOfPath.height, b.boundingBoxOfPath.height)
+        }
+    }
+
+    /// Спица — от каждого узла внешнего контура к узлу внутреннего.
+    func testSpokesJoinOuterAndInnerNodes() throws {
+        let mesh = try mesh()
+        let paths = LipMeshPaths.make(mesh, map: shiftAndScale)
+        var segments: [(CGPoint, CGPoint)] = []
+        var start = CGPoint.zero
+        paths.spokes.applyWithBlock { element in
+            switch element.pointee.type {
+            case .moveToPoint: start = element.pointee.points[0]
+            case .addLineToPoint: segments.append((start, element.pointee.points[0]))
+            default: break
+            }
+        }
+        XCTAssertEqual(segments.count, min(mesh.outer.count, mesh.inner.count))
+        for ((a, b), (o, i)) in zip(segments, zip(mesh.outer.map(shiftAndScale), mesh.inner.map(shiftAndScale))) {
+            XCTAssertEqual(a.x, o.x, accuracy: 1e-6)
+            XCTAssertEqual(a.y, o.y, accuracy: 1e-6)
+            XCTAssertEqual(b.x, i.x, accuracy: 1e-6)
+            XCTAssertEqual(b.y, i.y, accuracy: 1e-6)
+        }
+    }
+
     func testBracketsSurroundHalo() throws {
         let mesh = try mesh()
         let paths = LipMeshPaths.make(mesh, map: shiftAndScale)
@@ -68,9 +137,10 @@ final class LipMeshPathsTests: XCTestCase {
         let width: CGFloat = 1280
         let mirrored = LipMeshPaths.make(mesh) { CGPoint(x: width - $0.x + 10, y: $0.y + 20) }
         let all: [(CGPath, CGPath)] = [
-            (plain.band, mirrored.band), (plain.grid, mirrored.grid), (plain.halo, mirrored.halo),
-            (plain.nodes, mirrored.nodes), (plain.keys, mirrored.keys), (plain.brackets, mirrored.brackets),
-        ]
+            (plain.band, mirrored.band), (plain.outerRim, mirrored.outerRim), (plain.innerRim, mirrored.innerRim),
+            (plain.spokes, mirrored.spokes), (plain.halo, mirrored.halo), (plain.keys, mirrored.keys),
+            (plain.brackets, mirrored.brackets),
+        ] + Array(zip(plain.rings, mirrored.rings))
         for (a, b) in all {
             let r = a.boundingBoxOfPath, m = b.boundingBoxOfPath
             XCTAssertEqual(m.minX, width - r.maxX + 10, accuracy: 1e-6)
@@ -85,8 +155,6 @@ final class LipMeshPathsTests: XCTestCase {
         let paths = LipMeshPaths.make(mesh, map: shiftAndScale)
         XCTAssertEqual(mesh.keypoints.count, 20)
         XCTAssertEqual(subpaths(paths.keys), mesh.keypoints.count)
-        let nodes = mesh.bands.reduce(0) { $0 + $1.count } + mesh.outer.count + mesh.inner.count + mesh.halo.count
-        XCTAssertEqual(subpaths(paths.nodes), nodes)
     }
 
     /// Ореол — подпуть на каждый отрезок между узлами, и каждый начинается

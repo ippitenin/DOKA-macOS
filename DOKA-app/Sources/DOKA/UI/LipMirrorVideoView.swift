@@ -44,6 +44,10 @@ final class LipMirrorVideoNSView: NSView {
         root.backgroundColor = NSColor.black.cgColor
         layer = root
         wantsLayer = true
+        // Слои маски ложатся на видео фильтром компоновки (`LipMeshOverlay`).
+        // NSView.h просит этот флаг для CIFilter в поддереве; строковому
+        // фильтру Core Animation он не нужен — держим как страховку.
+        layerUsesCoreImageFilters = true
 
         container.frame = CGRect(origin: .zero, size: frame.size)
         container.masksToBounds = true

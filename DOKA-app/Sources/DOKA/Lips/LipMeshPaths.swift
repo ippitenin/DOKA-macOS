@@ -8,8 +8,6 @@ import CoreGraphics
 /// `@unchecked Sendable`: `CGPath` неизменяем, а изменяемые пути наружу не
 /// выходят.
 struct LipMeshPaths: @unchecked Sendable {
-    /// Радиус узла сетки, pt.
-    static let nodeRadius: CGFloat = 0.6
     /// Радиус ключевой точки (точки Vision после фильтра One Euro), pt.
     static let keyRadius: CGFloat = 1.5
     /// Отступ скобок от ореола, pt.
@@ -17,44 +15,48 @@ struct LipMeshPaths: @unchecked Sendable {
     /// Длина плеча скобки — доля меньшей стороны рамки.
     static let bracketArm: CGFloat = 0.24
 
-    /// Внешний контур + внутренний (even-odd): заливка полосы губ и
-    /// светящиеся контуры — один и тот же путь.
+    /// Внешний контур + внутренний (even-odd) — заливка полосы губ.
     let band: CGPath
-    /// Промежуточные кольца и спицы от внешнего узла к внутреннему.
-    let grid: CGPath
+    /// Внешний и внутренний контуры отдельно: у каждого свой цвет.
+    let outerRim: CGPath
+    let innerRim: CGPath
+    /// Промежуточные кольца снаружи внутрь (`LipMesh.bands`), по пути на
+    /// кольцо — цвет перетекает от внешнего контура к внутреннему.
+    let rings: [CGPath]
+    /// Спицы от внешнего узла к внутреннему.
+    let spokes: CGPath
     /// Ореол и короткие спицы к нему через одну.
     let halo: CGPath
-    /// Кружки узлов: промежуточные кольца, внешний и внутренний контуры, ореол.
-    let nodes: CGPath
     /// Кружки ключевых точек — точек Vision после фильтра One Euro (без интерполяции).
     let keys: CGPath
     /// Угловые скобки вокруг рамки ореола.
     let brackets: CGPath
 
     static func make(_ lips: LipMesh, map: (CGPoint) -> CGPoint) -> LipMeshPaths {
-        // Узлы — для спиц и точек, плавные кривые — для контуров, колец и ореола.
+        // Узлы — для спиц, плавные кривые — для контуров, колец и ореола.
         let outer = lips.outer.map(map)
         let inner = lips.inner.map(map)
-        let bands = lips.bands.map { $0.map(map) }
         let aura = lips.halo.map(map)
         func curve(_ ring: [CGPoint]) -> [CGPoint] { LipMesh.smoothRing(ring).map(map) }
+        func closed(_ ring: [CGPoint]) -> CGPath {
+            let path = CGMutablePath()
+            path.addLines(between: curve(ring))
+            path.closeSubpath()
+            return path
+        }
 
         // Полоса губ: внешний контур минус внутренний (even-odd).
+        let outerRim = closed(lips.outer)
+        let innerRim = closed(lips.inner)
         let band = CGMutablePath()
-        band.addLines(between: curve(lips.outer))
-        band.closeSubpath()
-        band.addLines(between: curve(lips.inner))
-        band.closeSubpath()
+        band.addPath(outerRim)
+        band.addPath(innerRim)
 
-        // Кольца между контурами и «спицы» от внешнего узла к внутреннему.
-        let grid = CGMutablePath()
-        for ring in lips.bands {
-            grid.addLines(between: curve(ring))
-            grid.closeSubpath()
-        }
+        // «Спицы» от внешнего узла к внутреннему.
+        let spokes = CGMutablePath()
         for (o, i) in zip(outer, inner) {
-            grid.move(to: o)
-            grid.addLine(to: i)
+            spokes.move(to: o)
+            spokes.addLine(to: i)
         }
 
         // Ореол и короткие спицы к нему через одну. Ореол — отдельный подпуть
@@ -80,8 +82,8 @@ struct LipMeshPaths: @unchecked Sendable {
         let frame = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
 
         return LipMeshPaths(
-            band: band, grid: grid, halo: halo,
-            nodes: dots(bands.flatMap { $0 } + outer + inner + aura, radius: nodeRadius),
+            band: band, outerRim: outerRim, innerRim: innerRim, rings: lips.bands.map(closed),
+            spokes: spokes, halo: halo,
             keys: dots(lips.keypoints.map(map), radius: keyRadius),
             brackets: brackets(around: frame.insetBy(dx: -bracketPadding, dy: -bracketPadding)))
     }

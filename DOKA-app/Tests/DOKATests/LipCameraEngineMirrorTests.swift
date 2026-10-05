@@ -266,7 +266,7 @@ final class LipCameraEngineMirrorTests: XCTestCase {
         let paths = try XCTUnwrap(last.paths)
         let want = try XCTUnwrap(expected)
         XCTAssertEqual(paths.band.boundingBoxOfPath, want.band.boundingBoxOfPath)
-        XCTAssertEqual(paths.grid.boundingBoxOfPath, want.grid.boundingBoxOfPath)
+        XCTAssertEqual(paths.spokes.boundingBoxOfPath, want.spokes.boundingBoxOfPath)
         finish(engine, events)
     }
 

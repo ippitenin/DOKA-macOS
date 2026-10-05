@@ -162,12 +162,12 @@ final class LipMirrorCameraTests: XCTestCase {
 
     // MARK: - Покой и речь
 
-    /// В покое окно — те же 2,2 ширины рта, что у прежнего зеркала.
+    /// В покое окно — ровно `zoom` ширин рта.
     func testRegionMatchesCurrentFramingAtRest() {
         var rig = rig()
         let f = fix(CGPoint(x: 640, y: 450))
         let rect = rig.hold(f, seconds: 2)
-        XCTAssertEqual(rect.width / mouthWidth, 2.2, accuracy: 2.2 * 0.02)
+        XCTAssertEqual(rect.width / mouthWidth, LipMirrorCamera.zoom, accuracy: LipMirrorCamera.zoom * 0.02)
         XCTAssertEqual(rect.height / rect.width, aspect, accuracy: 1e-9)
         XCTAssertEqual(rect.midX, f.center.x, accuracy: 0.5)
         XCTAssertEqual(rect.midY, f.center.y, accuracy: 0.5)
@@ -457,27 +457,27 @@ final class LipMirrorCameraTests: XCTestCase {
 
     // MARK: - Рот в окне
 
-    /// Широко открытый рот (бокс губ 0,8 межглазного в высоту) окно
-    /// раздвигает: край губ не дальше 0,45 высоты окна от центра.
+    /// Широко открытый рот (бокс губ в межглазное высотой) окно раздвигает:
+    /// край губ не дальше 0,45 высоты окна от центра.
     func testWideOpenMouthStaysInFrame() {
         var rig = rig()
         let m = CGPoint(x: 640, y: 450)
         rig.hold(fix(m), seconds: 2)
-        let lips = CGRect(x: m.x - mouthWidth / 2, y: m.y - 0.3 * d, width: mouthWidth, height: 0.8 * d)
+        let lips = CGRect(x: m.x - mouthWidth / 2, y: m.y - 0.35 * d, width: mouthWidth, height: d)
         let rect = rig.hold(fix(m), seconds: 8, lips: lips)
         let edge = max(abs(lips.minY - rect.midY), abs(lips.maxY - rect.midY))
         XCTAssertLessThanOrEqual(edge, LipMirrorCamera.guardEdge * rect.height * 1.001)
         XCTAssertGreaterThan(rect.width, LipMirrorCamera.zoom * mouthWidth * 1.01)
     }
 
-    /// Голова повёрнута (межглазное 0,6), рот открыт на 0,64 межглазного —
+    /// Голова повёрнута (межглазное 0,6), рот открыт на 0,72 межглазного —
     /// окно держит бокс (не предохранитель) и рот целиком в кадре. По
     /// сжатому межглазному рот в окно не влез бы.
     func testTurnedHeadKeepsOpenMouthInFrame() {
         var rig = rig()
         let m = CGPoint(x: 640, y: 450)
         let width = 0.64 * d
-        let lips = CGRect(x: m.x - width / 2, y: m.y - 0.25 * d, width: width, height: 0.64 * d)
+        let lips = CGRect(x: m.x - width / 2, y: m.y - 0.25 * d, width: width, height: 0.72 * d)
         let rect = rig.hold(fix(m, eyeScale: 0.6, mouth: width), seconds: 4, lips: lips)
         XCTAssertEqual(rect.width,
                        LipMirrorCamera.zoom * LipMirrorCamera.mouthPerEyes * LipMirrorCamera.kappa * boxSide,
@@ -489,9 +489,9 @@ final class LipMirrorCameraTests: XCTestCase {
     /// горизонтали.
     func testWideMouthWidensWindowHorizontally() {
         let f = LipMirrorCamera.Fix(center: CGPoint(x: 640, y: 450), scale: d)
-        let lips = CGRect(x: 640 - d, y: 440, width: 2 * d, height: 0.2 * d)
+        let lips = CGRect(x: 640 - 1.2 * d, y: 440, width: 2.4 * d, height: 0.2 * d)
         XCTAssertEqual(LipMirrorCamera.windowWidth(for: f, lips: lips, aspect: aspect),
-                       d / LipMirrorCamera.guardEdge, accuracy: 1e-9)
+                       1.2 * d / LipMirrorCamera.guardEdge, accuracy: 1e-9)
         XCTAssertEqual(LipMirrorCamera.windowWidth(for: f, lips: nil, aspect: aspect),
                        LipMirrorCamera.zoom * LipMirrorCamera.mouthPerEyes * d, accuracy: 1e-9)
     }
