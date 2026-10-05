@@ -1,136 +1,139 @@
 import AppKit
-import AVFoundation
+import Combine
 import QuartzCore
 import SwiftUI
 
-/// Живой кадр рта в зеркале: общий слой превью камеры, растянутый так, что
-/// рот всегда в центре (кадр следует за лицом), и контур губ поверх.
-/// Слоями двигаем сами на каждом результате трекера — SwiftUI в этом не
-/// участвует (15 перерисовок в секунду ему не нужны).
+/// Живой кадр рта в зеркале: картинка и маска-сетка губ ОДНОГО кадра камеры,
+/// готовые на `visionQueue` (`LipMirrorFeed`). Здесь они только
+/// присваиваются слоям — одной транзакцией без анимаций, поэтому видео и
+/// маска меняются одновременно. SwiftUI в этом не участвует.
 struct LipMirrorVideoView: NSViewRepresentable {
     let size: CGSize
+    let reduceMotion: Bool
 
     func makeNSView(context: Context) -> LipMirrorVideoNSView {
-        LipMirrorVideoNSView(frame: CGRect(origin: .zero, size: size))
+        LipMirrorVideoNSView(frame: CGRect(origin: .zero, size: size), reduceMotion: reduceMotion)
     }
 
-    func updateNSView(_ nsView: LipMirrorVideoNSView, context: Context) {}
+    func updateNSView(_ nsView: LipMirrorVideoNSView, context: Context) {
+        nsView.reduceMotion = reduceMotion
+    }
 }
 
+@MainActor
 final class LipMirrorVideoNSView: NSView {
     private let container = CALayer()
-    private let contour = CAShapeLayer()
-    private let dots = CAShapeLayer()
-    private var smoother = LipMirrorSmoother()
-    private weak var preview: AVCaptureVideoPreviewLayer?
-    /// Последний известный размер кадра камеры.
-    private var cameraSize = CGSize(width: 1280, height: 720)
+    /// Картинка кадра. Ориентация `CGImage` в `contents` от переворота
+    /// контейнера не зависит (CALayer.h) — верх картинки остаётся сверху.
+    private let picture = CALayer()
+    private let mask = LipMeshOverlay()
+    /// Подписка на ящик кадров; nil — окна нет.
+    private var owner: UUID?
+    private var phase: LipMirrorPhase = .idle
+    private var phaseSubscription: AnyCancellable?
 
-    override init(frame: CGRect) {
+    var reduceMotion: Bool {
+        didSet { if reduceMotion != oldValue { updateTarget() } }
+    }
+
+    init(frame: CGRect, reduceMotion: Bool) {
+        self.reduceMotion = reduceMotion
         super.init(frame: frame)
+        // Слой-хост: свой корень до `wantsLayer`.
         let root = CALayer()
         root.backgroundColor = NSColor.black.cgColor
         layer = root
         wantsLayer = true
+        // Слои маски ложатся на видео фильтром компоновки (`LipMeshOverlay`).
+        // NSView.h просит этот флаг для CIFilter в поддереве; строковому
+        // фильтру Core Animation он не нужен — держим как страховку.
+        layerUsesCoreImageFilters = true
 
         container.frame = CGRect(origin: .zero, size: frame.size)
         container.masksToBounds = true
-        // Координаты сверху слева — как у боксов трекера.
+        // Координаты сверху слева — как у путей маски.
         container.isGeometryFlipped = true
         root.addSublayer(container)
 
-        contour.fillColor = nil
-        contour.strokeColor = NSColor(DS.Lips.contour).cgColor
-        contour.lineWidth = 1.2
-        contour.lineJoin = .round
-        contour.shadowColor = NSColor(DS.Lips.contour).cgColor
-        contour.shadowRadius = 4
-        contour.shadowOpacity = 0.9
-        contour.shadowOffset = .zero
-        dots.fillColor = NSColor(DS.Lips.dot).cgColor
-        dots.strokeColor = nil
-        container.addSublayer(contour)
-        container.addSublayer(dots)
+        picture.contentsGravity = .resize
+        picture.frame = container.bounds
+        container.insertSublayer(picture, at: 0)
+        mask.install(in: container)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) не используется") }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        MainActor.assumeIsolated {
-            if window != nil { attach() } else { detach() }
-        }
+        if window != nil { attach() } else { detach() }
     }
 
-    @MainActor
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        relayout()
+    }
+
+    override func layout() {
+        super.layout()
+        relayout()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        relayout()
+    }
+
     private func attach() {
+        guard owner == nil else { return }
+        relayout()
         let capture = LipCapture.shared
-        guard let preview = capture.previewLayer else { return }
-        preview.removeFromSuperlayer()
-        // Зеркало — отражение по горизонтали; в файл кадр идёт как есть.
-        // Если соединение превью уже отражает картинку само (автоматическое
-        // зеркалирование не успели выключить), второй раз не отражаем —
-        // иначе контур губ лёг бы на отражённое дважды лицо.
-        let alreadyMirrored = preview.connection?.isVideoMirrored ?? false
-        preview.transform = alreadyMirrored ? CATransform3DIdentity : CATransform3DMakeScale(-1, 1, 1)
-        container.insertSublayer(preview, at: 0)
-        self.preview = preview
-        place(preview: LipMirrorGeometry.fillFrame(camera: cameraSize, container: container.bounds.size))
-        smoother.reset()
-        capture.onMouth = { [weak self] sample, size in self?.update(sample, cameraSize: size) }
+        phase = capture.phase
+        owner = capture.mirrorFeed.attach(target: target) { [weak self] frame in self?.show(frame) }
+        // Лицо пропало или камера встала — маску прячем сразу: новых кадров
+        // может и не прийти. @Published отдаёт значение до записи в свойство.
+        phaseSubscription = capture.$phase.sink { [weak self] phase in
+            guard let self else { return }
+            self.phase = phase
+            if phase != .face { self.mask.apply(nil) }
+        }
     }
 
-    @MainActor
     private func detach() {
-        if preview?.superlayer === container { preview?.removeFromSuperlayer() }
-        preview = nil
-        LipCapture.shared.onMouth = nil
+        if let owner { LipCapture.shared.mirrorFeed.detach(owner: owner) }
+        owner = nil
+        phaseSubscription = nil
     }
 
-    private func update(_ sample: LipFaceSample, cameraSize: CGSize) {
-        self.cameraSize = cameraSize
-        let bounds = container.bounds.size
-        let mouth = smoother.update(sample.mouthRect)
+    private var target: LipMirrorTarget {
+        LipMirrorTarget(size: bounds.size, scale: window?.backingScaleFactor ?? 2, reduceMotion: reduceMotion)
+    }
+
+    /// Рамки и масштаб слоёв под окно, затем новый размер — в ящик: кадры под
+    /// старый размер он дальше не отдаст.
+    private func relayout() {
+        let scale = window?.backingScaleFactor ?? 2
         CATransaction.begin()
-        CATransaction.setAnimationDuration(1.0 / 15)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
-        if let mouth {
-            let frame = LipMirrorGeometry.previewFrame(mouth: mouth, camera: cameraSize, container: bounds,
-                                                       mirrored: true)
-            place(preview: frame)
-            drawContour(sample, frame: frame)
-        } else if sample.box == nil {
-            // Лица нет — показываем всю сцену, контур прячем.
-            smoother.reset()
-            place(preview: LipMirrorGeometry.fillFrame(camera: cameraSize, container: bounds))
-            contour.path = nil
-            dots.path = nil
-        }
+        CATransaction.setDisableActions(true)
+        container.frame = bounds
+        container.contentsScale = scale
+        picture.frame = container.bounds
+        picture.contentsScale = scale
+        mask.setScale(scale)
         CATransaction.commit()
+        updateTarget()
     }
 
-    /// При отражающем трансформе `frame` задавать нельзя — только границы и центр.
-    private func place(preview frame: CGRect) {
-        guard let preview else { return }
-        preview.bounds = CGRect(origin: .zero, size: frame.size)
-        preview.position = CGPoint(x: frame.midX, y: frame.midY)
+    private func updateTarget() {
+        guard let owner else { return }
+        LipCapture.shared.mirrorFeed.update(target: target, owner: owner)
     }
 
-    private func drawContour(_ sample: LipFaceSample, frame: CGRect) {
-        let scale = frame.width / max(cameraSize.width, 1)
-        func map(_ p: CGPoint) -> CGPoint {
-            CGPoint(x: frame.minX + (cameraSize.width - p.x) * scale, y: frame.minY + p.y * scale)
-        }
-        let path = CGMutablePath()
-        for points in [sample.outerLips, sample.innerLips] where points.count > 2 {
-            path.addLines(between: points.map(map))
-            path.closeSubpath()
-        }
-        contour.path = path
-        let dotPath = CGMutablePath()
-        for p in sample.outerLips.map(map) {
-            dotPath.addEllipse(in: CGRect(x: p.x - 1.6, y: p.y - 1.6, width: 3.2, height: 3.2))
-        }
-        dots.path = dotPath
+    /// nil — «пусто» (начался новый дубль): ни картинки, ни маски.
+    private func show(_ frame: LipMirrorFrame?) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        picture.contents = frame?.image
+        mask.apply(phase == .face ? frame?.paths : nil)
+        CATransaction.commit()
     }
 }

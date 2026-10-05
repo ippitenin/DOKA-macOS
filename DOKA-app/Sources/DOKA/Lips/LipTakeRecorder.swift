@@ -46,8 +46,10 @@ final class LipTakeRecorder {
     }
 
     var frameCount: Int { frames.count }
+    var faceCount: Int { faces.count }
     var isDiscarded: Bool { discarded }
     var firstFrameHost: Double? { frames.first?.host }
+    var lastFrameHost: Double? { frames.last?.host }
 
     // MARK: - Кадры
 

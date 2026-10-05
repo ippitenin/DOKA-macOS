@@ -60,8 +60,8 @@ final class LipMirrorController {
                 guard generation == self.hideGeneration else { return }
                 panel.orderOut(nil)
                 panel.alphaValue = 1
-                // Слой превью камеры общий — отцепляем, чтобы не держать его
-                // в невидимом окне.
+                // Вью зеркала уходит из окна и отписывается от ящика кадров:
+                // невидимое окно не должно заставлять движок рендерить.
                 panel.contentView = nil
             }
         })
@@ -118,7 +118,7 @@ struct LipMirrorView: View {
     private var video: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         return ZStack {
-            LipMirrorVideoView(size: layout.video.size)
+            LipMirrorVideoView(size: layout.video.size, reduceMotion: reduceMotion)
             if capture.phase != .face {
                 Color.black.opacity(capture.phase == .noFace ? 0.55 : 0.75)
                 if let caption {

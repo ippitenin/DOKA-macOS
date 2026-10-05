@@ -94,66 +94,34 @@ enum LipMirrorGeometry {
         }
     }
 
-    /// Во сколько раз область вокруг рта шире самого рта.
-    static let zoom: CGFloat = 2.2
-
-    /// Рамка слоя превью (весь кадр камеры) внутри контейнера видео так,
-    /// чтобы рот оказался в центре и занимал 1/`zoom` ширины. Координаты —
-    /// сверху слева. `mirrored` — картинка отражена (зеркало).
-    static func previewFrame(mouth: CGRect, camera: CGSize, container: CGSize, mirrored: Bool) -> CGRect {
-        let aspect = container.height / container.width
-        var regionWidth = mouth.width * zoom
-        if regionWidth * aspect < mouth.height * 1.8 {
-            regionWidth = mouth.height * 1.8 / aspect
+    /// Сцена: наибольший прямоугольник с аспектом окна (`aspect` — высота к
+    /// ширине) по центру кадра камеры.
+    static func sceneRegion(camera: CGSize, aspect: CGFloat) -> CGRect {
+        var width = camera.width
+        var height = width * aspect
+        if height > camera.height {
+            height = camera.height
+            width = height / aspect
         }
-        let scale = container.width / max(regionWidth, 1)
-        let size = CGSize(width: camera.width * scale, height: camera.height * scale)
-        let centerX = mirrored ? camera.width - mouth.midX : mouth.midX
-        return CGRect(x: container.width / 2 - centerX * scale,
-                      y: container.height / 2 - mouth.midY * scale,
-                      width: size.width, height: size.height)
+        return CGRect(x: (camera.width - width) / 2, y: (camera.height - height) / 2,
+                      width: width, height: height)
     }
 
-    /// Весь кадр камеры, заполняющий контейнер (лица нет — показываем сцену).
-    static func fillFrame(camera: CGSize, container: CGSize) -> CGRect {
-        let scale = max(container.width / camera.width, container.height / camera.height)
-        let size = CGSize(width: camera.width * scale, height: camera.height * scale)
-        return CGRect(x: (container.width - size.width) / 2, y: (container.height - size.height) / 2,
-                      width: size.width, height: size.height)
-    }
-}
-
-/// Сглаживание бокса рта для зеркала: экспоненциальное среднее и мёртвая
-/// зона — кадр не дрожит за каждым пикселем бокса, но плавно догоняет
-/// поворот головы.
-struct LipMirrorSmoother {
-    static let response: CGFloat = 0.25
-    /// Доля ширины рта, меньше которой сдвиг не считается движением.
-    static let deadZone: CGFloat = 0.02
-
-    private(set) var current: CGRect?
-
-    /// nil — лица нет: прежнее положение сохраняется.
-    mutating func update(_ rect: CGRect?) -> CGRect? {
-        guard let rect else { return nil }
-        guard let previous = current else {
-            current = rect
-            return rect
-        }
-        let threshold = previous.width * Self.deadZone
-        let moved = abs(rect.midX - previous.midX) > threshold
-            || abs(rect.midY - previous.midY) > threshold
-            || abs(rect.width - previous.width) > threshold
-        guard moved else { return previous }
-        func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * Self.response }
-        let width = mix(previous.width, rect.width)
-        let height = mix(previous.height, rect.height)
-        let next = CGRect(x: mix(previous.midX, rect.midX) - width / 2,
-                          y: mix(previous.midY, rect.midY) - height / 2,
-                          width: width, height: height)
-        current = next
-        return next
+    /// Точка кадра камеры в картинке размера `size`, показывающей `region`.
+    /// Начало сверху слева у обоих; `size` — в любых единицах (пиксели
+    /// картинки или точки маски). `mirrored` — картинка отражена.
+    static func map(_ p: CGPoint, region: CGRect, size: CGSize, mirrored: Bool) -> CGPoint {
+        let sx = size.width / region.width, sy = size.height / region.height
+        let x = mirrored ? region.maxX - p.x : p.x - region.minX
+        return CGPoint(x: x * sx, y: (p.y - region.minY) * sy)
     }
 
-    mutating func reset() { current = nil }
+    /// То же, что `map`, одним аффинным преобразованием для `CIImage` (начало
+    /// снизу слева у кадра и у картинки): переворот y, отражение и масштаб.
+    static func ciTransform(region: CGRect, camera: CGSize, size: CGSize, mirrored: Bool) -> CGAffineTransform {
+        let sx = size.width / region.width, sy = size.height / region.height
+        return CGAffineTransform(a: mirrored ? -sx : sx, b: 0, c: 0, d: sy,
+                                 tx: mirrored ? sx * region.maxX : -sx * region.minX,
+                                 ty: -sy * (camera.height - region.maxY))
+    }
 }

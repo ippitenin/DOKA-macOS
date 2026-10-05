@@ -127,13 +127,33 @@ enum DS {
         static let shoulder: CGFloat = 10
     }
 
-    /// Зеркало губ (эксперимент «Губы»): холодная sci-fi-гамма контура на
-    /// чёрной плашке — в родстве с палитрой «Мини», без тёплых акцентов.
+    /// Зеркало губ (эксперимент «Губы»): маска в палитре «Авроры» — снаружи
+    /// фирменный персик, к внутреннему контуру индиго. Своих RGB нет, только
+    /// производные от `glow`, `Aurora.indigo` и `Aurora.waveHighlight`: маска
+    /// ложится на видео светом (наложение «экран», `LipMeshOverlay`), а не
+    /// краской.
     enum Lips {
-        /// Контур губ — ледяной голубой.
-        static let contour = Color(red: 0.55, green: 0.94, blue: 1.00)
-        /// Ключевые точки контура — бирюза.
-        static let dot = Color(red: 0.04, green: 0.84, blue: 0.80)
+        /// Внешний контур губ — персик.
+        static let outer = DS.glow
+        /// Внутренний контур — индиго.
+        static let inner = DS.Aurora.indigo
+        /// Промежуточные кольца перетекают от персика к индиго; внешнее —
+        /// треть пути к индиго.
+        static let ringOuter = DS.glow.mix(with: DS.Aurora.indigo, by: 1.0 / 3)
+        /// Внутреннее промежуточное кольцо — 2/3 пути к индиго.
+        static let ringInner = DS.glow.mix(with: DS.Aurora.indigo, by: 2.0 / 3)
+        /// Спицы между контурами — середина перехода, едва заметные.
+        static let spoke = DS.glow.mix(with: DS.Aurora.indigo, by: 0.5).opacity(0.35)
+        /// Полоса губ между контурами — лёгкий тёплый свет.
+        static let fill = DS.glow.opacity(0.08)
+        /// Пунктирный ореол вокруг рта.
+        static let halo = DS.glow.opacity(0.30)
+        /// Ключевые точки (точки Vision) — тёплый почти-белый.
+        static let dot = DS.Aurora.waveHighlight
+        /// Угловые скобки вокруг рта.
+        static let bracket = DS.Aurora.indigo.opacity(0.70)
+        /// Непрозрачность всей маски: поверх видео она светит, но не застит.
+        static let maskOpacity: Float = 0.8
         /// Тонкая кромка кадра видео.
         static let rim = Color.white.opacity(0.14)
         /// Подписи состояний поверх кадра.
