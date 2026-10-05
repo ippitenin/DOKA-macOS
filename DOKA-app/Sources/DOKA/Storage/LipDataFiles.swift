@@ -148,8 +148,8 @@ final class LipDataFiles: @unchecked Sendable {
     /// задержало бы выход приложения. Корзину стирает `emptyTrash` отдельно
     /// (вызывающий — фоном), недостёртое добьёт уборка на старте.
     func deleteAll() {
-        moveToTrash(takesRoot)
-        moveToTrash(pendingRoot)
+        DiskTrash.move(takesRoot)
+        DiskTrash.move(pendingRoot)
         try? fm.removeItem(at: statsURL)
     }
 
@@ -177,7 +177,7 @@ final class LipDataFiles: @unchecked Sendable {
             case .silent: silent += 1
             }
         }
-        return (voice, whisper, silent, directorySize(root))
+        return (voice, whisper, silent, fm.allocatedSize(of: root))
     }
 
     /// Для сводки достаточно режима — остальные поля не декодируем.
@@ -186,30 +186,16 @@ final class LipDataFiles: @unchecked Sendable {
     /// Удаление — сначала мгновенный rename в корзину, потом стирание: прерванное
     /// стирание не оставит полупустую папку, похожую на живую.
     private func trash(_ url: URL) {
-        if let moved = moveToTrash(url) {
+        if let moved = DiskTrash.move(url) {
             try? fm.removeItem(at: moved)
         }
-    }
-
-    /// Переименовать в корзину; nil — нечего переносить. Не вышло переименовать —
-    /// стереть на месте.
-    @discardableResult
-    private func moveToTrash(_ url: URL) -> URL? {
-        guard fm.fileExists(atPath: url.path) else { return nil }
-        let target = url.deletingLastPathComponent()
-            .appendingPathComponent("\(url.lastPathComponent).deleting-\(UUID().uuidString)")
-        if (try? fm.moveItem(at: url, to: target)) != nil { return target }
-        try? fm.removeItem(at: url)
-        return nil
     }
 
     /// Стереть корзину. Трогает только `*.deleting-*`, поэтому её можно звать
     /// с любой очереди параллельно с очередью ввода-вывода.
     func emptyTrash() {
         for parent in [root, pendingRoot, takesRoot] {
-            for item in children(parent) where item.lastPathComponent.contains(".deleting-") {
-                try? fm.removeItem(at: item)
-            }
+            DiskTrash.empty(parent)
         }
     }
 
@@ -219,18 +205,6 @@ final class LipDataFiles: @unchecked Sendable {
     }
 
     private func isOlder(_ url: URL, than date: Date) -> Bool {
-        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        return (modified ?? .distantPast) < date
-    }
-
-    private func directorySize(_ url: URL) -> Int64 {
-        guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-                                             options: [.skipsHiddenFiles]) else { return 0 }
-        var total: Int64 = 0
-        for case let file as URL in enumerator {
-            total += Int64((try? file.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?
-                .totalFileAllocatedSize ?? 0)
-        }
-        return total
+        (url.contentModificationDate ?? .distantPast) < date
     }
 }

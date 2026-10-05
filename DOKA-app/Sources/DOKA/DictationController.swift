@@ -585,11 +585,9 @@ final class DictationController: ObservableObject {
         guard let items = try? fm.contentsOfDirectory(at: fm.temporaryDirectory,
                                                       includingPropertiesForKeys: keys) else { return }
         for url in items where url.lastPathComponent.hasPrefix("doka-")
-            && ["wav", "tmp"].contains(url.pathExtension) {
-            let modified = (try? url.resourceValues(forKeys: Set(keys)))?.contentModificationDate
-            if (modified ?? .distantPast) < launch {
-                try? fm.removeItem(at: url)
-            }
+            && ["wav", "tmp"].contains(url.pathExtension)
+            && (url.contentModificationDate ?? .distantPast) < launch {
+            try? fm.removeItem(at: url)
         }
     }
 

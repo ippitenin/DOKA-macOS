@@ -67,9 +67,8 @@ enum LipCropPlanner {
         percentile(values, 0.5)
     }
 
+    /// `values` не пуст: `plan` выходит раньше, если боксов нет.
     private static func percentile(_ values: [CGFloat], _ p: Double) -> CGFloat {
-        let sorted = values.sorted()
-        let index = Int((p * Double(sorted.count - 1)).rounded())
-        return sorted[index]
+        Percentile.nearestRank(values.sorted(), p) ?? 0
     }
 }

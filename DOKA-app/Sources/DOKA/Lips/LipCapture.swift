@@ -705,11 +705,7 @@ private struct TimingStats {
 
     /// Итог для лога: одна сортировка на оба перцентиля, мс; 0 — кадров не было.
     func summary() -> (count: Int, p50: Double, p95: Double, failures: Int) {
-        let sorted = seconds.sorted()
-        func percentile(_ p: Double) -> Double {
-            guard !sorted.isEmpty else { return 0 }
-            return sorted[Int((p * Double(sorted.count - 1)).rounded())] * 1000
-        }
-        return (sorted.count, percentile(0.5), percentile(0.95), failures)
+        let ms = Percentile.millisecondsSummary(seconds: seconds)
+        return (ms?.count ?? 0, ms?.p50 ?? 0, ms?.p95 ?? 0, failures)
     }
 }

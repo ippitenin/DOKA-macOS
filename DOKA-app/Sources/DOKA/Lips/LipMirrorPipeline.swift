@@ -140,14 +140,10 @@ final class LipMirrorFeed: @unchecked Sendable {
     /// дубля: следующий `begin` её стирает — снимать до него, а не в
     /// завершении записи, которое может прийти уже после старта новой диктовки.
     func latencySummary(take: UUID) -> (count: Int, p50: Double, p95: Double)? {
-        let sorted = lock.withLock {
+        let latencies = lock.withLock {
             state.latencyTake == take ? state.latencies : []
-        }.sorted()
-        guard !sorted.isEmpty else { return nil }
-        func percentile(_ p: Double) -> Double {
-            sorted[Int((p * Double(sorted.count - 1)).rounded())] * 1000
         }
-        return (sorted.count, percentile(0.5), percentile(0.95))
+        return Percentile.millisecondsSummary(seconds: latencies)
     }
 
     /// Забрать последний кадр. Отдаётся, только если дубль и окно всё ещё

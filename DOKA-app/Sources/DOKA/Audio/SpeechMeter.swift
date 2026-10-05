@@ -28,8 +28,28 @@ enum SpeechMeter {
         db >= quietThresholdDb
     }
 
-    /// Время речи по обоим порогам — тем же расчётом по буферам, что в
-    /// `AudioRecorder` (RMS буфера → дБFS → порог). Для тестов и калибровки.
+    /// Звучит ли речь в буфере — по обоим порогам.
+    struct BufferSpeech: Equatable {
+        /// Обычный порог: время речи для дашборда и гейта обычной диктовки.
+        let isSpeech: Bool
+        /// Порог тихого режима (шёпот).
+        let isQuietSpeech: Bool
+    }
+
+    /// ЕДИНСТВЕННЫЙ расчёт «RMS буфера → речь»: его зовут и запись
+    /// (`AudioRecorder`), и `measure`, так что тесты проверяют тот же код, что
+    /// работает в приложении. Обычный порог — по СТАРОЙ кривой
+    /// `(db + 50) / 50` против `AudioRecorder.speechLevelThreshold`: на ней
+    /// калибрована статистика дашборда, менять её нельзя.
+    static func classify(rms: Float) -> BufferSpeech {
+        let db = decibels(rms: rms)
+        let speechLevel = max(0, min(1, (db + 50) / 50))
+        return BufferSpeech(isSpeech: speechLevel >= AudioRecorder.speechLevelThreshold,
+                            isQuietSpeech: isQuietSpeech(db: db))
+    }
+
+    /// Время речи по обоим порогам — буферами, как в `AudioRecorder`. Для
+    /// тестов и калибровки.
     static func measure(samples: [Float], sampleRate: Double,
                         bufferFrames: Int = 1024) -> (standard: TimeInterval, quiet: TimeInterval) {
         var standard: TimeInterval = 0
@@ -39,10 +59,10 @@ enum SpeechMeter {
             let end = min(start + bufferFrames, samples.count)
             var sum: Float = 0
             for i in start..<end { sum += samples[i] * samples[i] }
-            let db = decibels(rms: sqrt(sum / Float(end - start)))
+            let speech = classify(rms: sqrt(sum / Float(end - start)))
             let seconds = Double(end - start) / sampleRate
-            if db >= standardThresholdDb { standard += seconds }
-            if isQuietSpeech(db: db) { quiet += seconds }
+            if speech.isSpeech { standard += seconds }
+            if speech.isQuietSpeech { quiet += seconds }
             start = end
         }
         return (standard, quiet)
