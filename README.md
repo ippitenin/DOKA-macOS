@@ -79,7 +79,8 @@ written in Russian.
   your own template; templates are exported and imported as JSON files, Memento templates
   included. The result renders as formatted text with headings, lists and tables,
   its timestamps are clickable and seek the player; copying puts both plain and rich text
-  on the clipboard, so tables paste as tables into Telegram, Notes or Word. Analysis can
+  on the clipboard, so tables paste as tables into Telegram, Notes or Word; the report saves
+  as Markdown, plain text or an A4 PDF with a header and page numbers. Analysis can
   be ordered right when transcribing a file — with any template or your own prompt: by
   default it runs on this Mac after recognition, and with the built-in service you can pick
   “In the cloud” (the Nexara language model) instead, so the analysis rides in the same
