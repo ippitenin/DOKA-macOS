@@ -27,26 +27,12 @@ final class LipMeshGeometryTests: XCTestCase {
         return reversed ? points.reversed() : points
     }
 
-    /// Губы в порядке Vision rev3/76: внешний контур — 14 точек, 13 — левый
-    /// уголок, 0…6 — верх слева направо, 7 — правый уголок, 8…12 — низ справа
-    /// налево; внутренний — 6 точек без уголков, 0…2 — верх слева направо,
-    /// 3…5 — низ справа налево. `upper`/`lower` — точек между уголками (5 и 3 —
-    /// созвездие 65: уголки 9 и 5). `spacing` раскладывает точки верхней губы по
-    /// ширине (тождество — равномерно); отрицательный `gap` перекрещивает
-    /// внутренний контур.
+    /// Губы в порядке Vision rev3/76 — общий `LipSyntheticFace.lips`.
     private func visionLips(center: CGPoint = CGPoint(x: 640, y: 480), halfWidth w: CGFloat = 60,
                             gap: CGFloat = 8, upper: Int = 7, lower: Int = 5,
                             spacing: (CGFloat) -> CGFloat = { $0 })
         -> (outer: [CGPoint], inner: [CGPoint]) {
-        func at(_ t: CGFloat, _ lift: CGFloat) -> CGPoint {
-            CGPoint(x: center.x - w + 2 * w * t, y: center.y - lift * sin(.pi * t))
-        }
-        var outer = (0..<upper).map { at(spacing(CGFloat($0 + 1) / CGFloat(upper + 1)), 24) }
-        outer.append(CGPoint(x: center.x + w, y: center.y))
-        outer += (0..<lower).map { at(1 - CGFloat($0 + 1) / CGFloat(lower + 1), -26) }
-        outer.append(CGPoint(x: center.x - w, y: center.y))
-        let inner = [0.3, 0.5, 0.7].map { at($0, gap / 2) } + [0.7, 0.5, 0.3].map { at($0, -gap / 2) }
-        return (outer, inner)
+        LipSyntheticFace.lips(center: center, halfWidth: w, gap: gap, upper: upper, lower: lower, spacing: spacing)
     }
 
     /// Кольцо в порядке MediaPipe: [0] — левый уголок, [1…9] — верх слева

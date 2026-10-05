@@ -94,7 +94,7 @@ final class LipMirrorVideoNSView: NSView {
             smoother.reset()
             meshSmoother.reset()
             place(preview: LipMirrorGeometry.fillFrame(camera: cameraSize, container: bounds))
-            mask.hide()
+            mask.apply(nil)
         }
         CATransaction.commit()
     }
@@ -112,8 +112,8 @@ final class LipMirrorVideoNSView: NSView {
         let lips = meshSmoother.update(raw)
         let scale = frame.width / max(cameraSize.width, 1)
         let width = cameraSize.width
-        mask.show(lips) { p in
+        mask.apply(LipMeshPaths.make(lips) { p in
             CGPoint(x: frame.minX + (width - p.x) * scale, y: frame.minY + p.y * scale)
-        }
+        })
     }
 }

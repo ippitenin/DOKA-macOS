@@ -5,8 +5,8 @@ import SwiftUI
 /// Маска-сетка губ поверх кадра зеркала: полупрозрачная полоса губ, сетка
 /// между контурами, пунктирный ореол, светящиеся контуры, узлы, ключевые
 /// точки Vision и угловые скобки вокруг рта. Слои ставятся прямо в
-/// контейнер видео (координаты сверху слева); точки кадра камеры переводит
-/// в них `map`, который знает о зеркале и масштабе превью.
+/// контейнер видео (координаты сверху слева). Геометрия — в `LipMeshPaths`
+/// (строится вне главного потока); здесь только стиль и порядок слоёв.
 ///
 /// Неявной анимации у `CAShapeLayer.path` нет: пути меняются скачком, на
 /// каждом результате трекера.
@@ -14,13 +14,7 @@ final class LipMeshOverlay {
     static let meshWidth: CGFloat = 0.5
     static let haloWidth: CGFloat = 0.6
     static let rimWidth: CGFloat = 1.1
-    static let nodeRadius: CGFloat = 0.6
-    static let keyRadius: CGFloat = 1.5
     static let bracketWidth: CGFloat = 1
-    /// Отступ скобок от ореола, pt.
-    static let bracketPadding: CGFloat = 6
-    /// Длина плеча скобки — доля меньшей стороны рамки.
-    static let bracketArm: CGFloat = 0.24
 
     private let fill = CAShapeLayer()
     private let halo = CAShapeLayer()
@@ -66,65 +60,27 @@ final class LipMeshOverlay {
     }
 
     /// Снизу вверх: заливка под сеткой, ключевые точки и скобки — сверху.
+    private var layers: [CAShapeLayer] { [fill, halo, mesh, rims, nodes, keys, brackets] }
+
     func install(in container: CALayer) {
-        for layer in [fill, halo, mesh, rims, nodes, keys, brackets] {
-            container.addSublayer(layer)
-        }
+        for layer in layers { container.addSublayer(layer) }
     }
 
-    func show(_ lips: LipMesh, map: (CGPoint) -> CGPoint) {
-        // Узлы — для спиц и точек, плавные кривые — для контуров, колец и ореола.
-        let outer = lips.outer.map(map)
-        let inner = lips.inner.map(map)
-        let bands = lips.bands.map { $0.map(map) }
-        let aura = lips.halo.map(map)
-        func curve(_ ring: [CGPoint]) -> [CGPoint] { LipMesh.smoothRing(ring).map(map) }
-
-        // Полоса губ: внешний контур минус внутренний (even-odd). Тот же путь — контуры.
-        let band = CGMutablePath()
-        band.addLines(between: curve(lips.outer))
-        band.closeSubpath()
-        band.addLines(between: curve(lips.inner))
-        band.closeSubpath()
-        fill.path = band
-        rims.path = band
-
-        // Кольца между контурами и «спицы» от внешнего узла к внутреннему.
-        let grid = CGMutablePath()
-        for ring in lips.bands {
-            grid.addLines(between: curve(ring))
-            grid.closeSubpath()
-        }
-        for (o, i) in zip(outer, inner) {
-            grid.move(to: o)
-            grid.addLine(to: i)
-        }
-        mesh.path = grid
-
-        // Ореол и короткие спицы к нему через одну.
-        let auraPath = CGMutablePath()
-        auraPath.addLines(between: curve(lips.halo))
-        auraPath.closeSubpath()
-        for j in stride(from: 0, to: min(outer.count, aura.count), by: 2) {
-            auraPath.move(to: outer[j])
-            auraPath.addLine(to: aura[j])
-        }
-        halo.path = auraPath
-
-        nodes.path = Self.dots(bands.flatMap { $0 } + outer + inner + aura, radius: Self.nodeRadius)
-        keys.path = Self.dots(lips.keypoints.map(map), radius: Self.keyRadius)
-
-        let bounds = lips.bounds
-        let a = map(CGPoint(x: bounds.minX, y: bounds.minY))
-        let b = map(CGPoint(x: bounds.maxX, y: bounds.maxY))
-        let frame = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
-        brackets.path = Self.brackets(around: frame.insetBy(dx: -Self.bracketPadding, dy: -Self.bracketPadding))
+    /// Пути одного кадра; nil — маску спрятать. Вызывающий сам решает про
+    /// транзакцию: зеркало меняет маску и картинку вместе, без анимаций.
+    func apply(_ paths: LipMeshPaths?) {
+        fill.path = paths?.band
+        rims.path = paths?.band
+        mesh.path = paths?.grid
+        halo.path = paths?.halo
+        nodes.path = paths?.nodes
+        keys.path = paths?.keys
+        brackets.path = paths?.brackets
     }
 
-    func hide() {
-        for layer in [fill, halo, mesh, rims, nodes, keys, brackets] {
-            layer.path = nil
-        }
+    /// Масштаб экрана — иначе на Retina пути растрируются в 1×.
+    func setScale(_ scale: CGFloat) {
+        for layer in layers { layer.contentsScale = scale }
     }
 
     /// Свечение — только у контуров и ключевых точек: тень на густой сетке
@@ -134,31 +90,5 @@ final class LipMeshOverlay {
         layer.shadowRadius = radius
         layer.shadowOpacity = 0.9
         layer.shadowOffset = .zero
-    }
-
-    private static func dots(_ points: [CGPoint], radius: CGFloat) -> CGPath {
-        let path = CGMutablePath()
-        for p in points {
-            path.addEllipse(in: CGRect(x: p.x - radius, y: p.y - radius, width: 2 * radius, height: 2 * radius))
-        }
-        return path
-    }
-
-    /// L-образные скобки по четырём углам рамки.
-    private static func brackets(around rect: CGRect) -> CGPath {
-        let arm = max(min(rect.width, rect.height) * bracketArm, 4)
-        let path = CGMutablePath()
-        let corners: [(CGPoint, CGFloat, CGFloat)] = [
-            (CGPoint(x: rect.minX, y: rect.minY), 1, 1),
-            (CGPoint(x: rect.maxX, y: rect.minY), -1, 1),
-            (CGPoint(x: rect.maxX, y: rect.maxY), -1, -1),
-            (CGPoint(x: rect.minX, y: rect.maxY), 1, -1),
-        ]
-        for (corner, dx, dy) in corners {
-            path.move(to: CGPoint(x: corner.x, y: corner.y + dy * arm))
-            path.addLine(to: corner)
-            path.addLine(to: CGPoint(x: corner.x + dx * arm, y: corner.y))
-        }
-        return path
     }
 }
