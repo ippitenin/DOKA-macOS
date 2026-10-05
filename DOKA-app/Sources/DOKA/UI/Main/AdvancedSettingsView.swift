@@ -147,13 +147,10 @@ struct AdvancedSettingsView: View {
                      footer: L("advanced.transcripts.footer")) {
             SettingsRow(title: L("advanced.transcripts.retention"),
                         help: L("advanced.transcripts.retention.help")) {
-                SettingsPopup(
-                    titles: TranscriptRetention.allCases.map(\.title),
-                    selectionIndex: Binding(
-                        get: { TranscriptRetention.allCases.firstIndex(of: settings.transcriptRetention) ?? 0 },
-                        set: { requestRetention(TranscriptRetention.allCases[$0]) }
-                    )
-                )
+                // Сокращение срока подтверждается алертом — через `requestRetention`.
+                SettingsPopup(selection: Binding(get: { settings.transcriptRetention },
+                                                 set: { requestRetention($0) }),
+                              title: \.title)
             }
             CardDivider()
             SettingsRow(title: L("advanced.transcripts.saveAudio"),

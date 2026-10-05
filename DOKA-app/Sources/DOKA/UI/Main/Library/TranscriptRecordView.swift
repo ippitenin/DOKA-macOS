@@ -363,14 +363,7 @@ struct TranscriptRecordView: View {
                     Text(L("transcribe.detail"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    SettingsPopup(
-                        titles: TimestampDetail.allCases.map(\.title),
-                        selectionIndex: Binding(
-                            get: { TimestampDetail.allCases.firstIndex(of: model.detail) ?? 0 },
-                            set: { model.detail = TimestampDetail.allCases[$0] }
-                        ),
-                        width: 150
-                    )
+                    SettingsPopup(selection: $model.detail, title: \.title, width: 150)
                     HelpBubble(text: L("transcribe.detail.help"))
                 }
                 .padding(.horizontal, DS.Spacing.cardPadding)

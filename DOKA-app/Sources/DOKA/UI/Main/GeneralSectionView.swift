@@ -34,13 +34,7 @@ struct GeneralSectionView: View {
         SettingsForm(title: L("section.general")) {
             SettingsCard {
                 SettingsRow(title: L("general.uiLanguage")) {
-                    SettingsPopup(
-                        titles: AppLanguage.allCases.map(\.title),
-                        selectionIndex: Binding(
-                            get: { AppLanguage.allCases.firstIndex(of: settings.appLanguage) ?? 0 },
-                            set: { settings.appLanguage = AppLanguage.allCases[$0] }
-                        )
-                    )
+                    SettingsPopup(selection: $settings.appLanguage, title: \.title)
                 }
                 CardDivider()
                 SettingsRow(title: L("general.transcriptionLanguage")) {
@@ -81,13 +75,7 @@ struct GeneralSectionView: View {
                 if settings.saveAudio {
                     CardDivider()
                     SettingsRow(title: L("general.audioRetention")) {
-                        SettingsPopup(
-                            titles: AudioRetention.allCases.map(\.title),
-                            selectionIndex: Binding(
-                                get: { AudioRetention.allCases.firstIndex(of: settings.audioRetention) ?? 0 },
-                                set: { settings.audioRetention = AudioRetention.allCases[$0] }
-                            )
-                        )
+                        SettingsPopup(selection: $settings.audioRetention, title: \.title)
                     }
                 }
                 CardDivider()
