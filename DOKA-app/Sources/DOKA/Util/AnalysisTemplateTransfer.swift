@@ -18,11 +18,64 @@ import Foundation
 ///   с длинной инструкцией, и наш промпт оборачивает его как любой другой.
 enum AnalysisTemplateTransfer {
     enum ImportError: Error, Equatable {
+        /// Файл не прочитался (это знает только тот, кто его читал).
+        case unreadable
         /// JSON не похож ни на шаблон, ни на массив шаблонов.
         case notTemplate
         /// Шаблон разобран, но не проходит валидацию редактора; текст — уже
         /// локализованная причина из `AnalysisTemplate.validationError`.
         case invalid(String)
+
+        /// Причина для алерта «Не удалось импортировать».
+        var message: String {
+            switch self {
+            case .unreadable: return L("analysis.templates.import.unreadable")
+            case .notTemplate: return L("analysis.templates.import.notTemplate")
+            case .invalid(let message): return message
+            }
+        }
+    }
+
+    /// Файл, выбранный для импорта: имя с расширением и содержимое (`nil` —
+    /// не прочитался).
+    struct ImportFile {
+        let fileName: String
+        let data: Data?
+    }
+
+    /// Итог импорта пачки файлов: шаблоны с уже свободными именами — в порядке
+    /// файлов, и отказы по файлам.
+    struct ImportOutcome {
+        struct Failure: Equatable {
+            let fileName: String
+            let reason: ImportError
+        }
+
+        var templates: [AnalysisTemplate] = []
+        var failures: [Failure] = []
+    }
+
+    /// Импорт нескольких файлов разом: каждый разбирается `parse` (имя файла
+    /// без расширения — запасное имя шаблона), совпавшие имена — с занятыми
+    /// `existingNames` и друг с другом — получают « (2)». Битый файл не мешает
+    /// остальным: он попадает в `failures`.
+    static func importFiles(_ files: [ImportFile], existingNames: [String]) -> ImportOutcome {
+        var names = AnalysisTemplateNames(existingNames)
+        var outcome = ImportOutcome()
+        for file in files {
+            do {
+                guard let data = file.data else { throw ImportError.unreadable }
+                let fallback = (file.fileName as NSString).deletingPathExtension
+                for var template in try parse(data, fallbackName: fallback) {
+                    template.name = names.claim(template.name)
+                    outcome.templates.append(template)
+                }
+            } catch {
+                outcome.failures.append(.init(fileName: file.fileName,
+                                              reason: error as? ImportError ?? .notTemplate))
+            }
+        }
+        return outcome
     }
 
     /// Шаблоны из файла: один объект или массив. Идентификаторы всегда новые —

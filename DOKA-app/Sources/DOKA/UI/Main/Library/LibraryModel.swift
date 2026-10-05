@@ -245,11 +245,9 @@ final class LibraryModel: ObservableObject {
     func exportCombined(markdown: Bool) {
         let records = selectedRecords
         guard !records.isEmpty else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = markdown ? "DOKA-library.md" : "DOKA-library.txt"
-        panel.canCreateDirectories = true
-        if !markdown { panel.allowedContentTypes = [.plainText] }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = SavePanel.chooseURL(
+            suggestedName: markdown ? "DOKA-library.md" : "DOKA-library.txt",
+            allowedContentTypes: markdown ? [] : [.plainText]) else { return }
         Task {
             var entries: [LibraryExport.Entry] = []
             for record in records {

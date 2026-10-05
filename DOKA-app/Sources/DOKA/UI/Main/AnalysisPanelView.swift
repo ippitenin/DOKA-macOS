@@ -137,23 +137,18 @@ struct AnalysisPanelView: View {
         if let record {
             meta.append(L("analysis.pdf.recorded", record.date.formatted(date: .abbreviated, time: .shortened)))
         }
-        var info = [sourceLabel(analysis)]
-        if analysis.createdAt != .distantPast {
-            info.append(analysis.createdAt.formatted(date: .abbreviated, time: .shortened))
-        }
+        let info = [sourceLabel(analysis), analysis.createdText].compactMap { $0 }
         meta.append(L("analysis.pdf.analysis", info.joined(separator: ", ")))
         let header = AnalysisPDF.Header(
             title: record?.displayTitle ?? "",
-            subtitle: analysis.title.isEmpty ? L("transcribe.llm.result.title") : analysis.title,
+            subtitle: analysis.displayTitle,
             meta: meta)
         AnalysisPDF.save(markdown: analysis.markdown, header: header,
                          suggestedName: "\(exportBaseName)-analysis.pdf")
     }
 
     private func listTitle(_ analysis: StoredAnalysis) -> String {
-        let name = analysis.title.isEmpty ? L("transcribe.llm.result.title") : analysis.title
-        guard analysis.createdAt != .distantPast else { return name }
-        return "\(name) · \(analysis.createdAt.formatted(date: .abbreviated, time: .shortened))"
+        [analysis.displayTitle, analysis.createdText].compactMap { $0 }.joined(separator: " · ")
     }
 
     private func moreMenu(_ analysis: StoredAnalysis) -> some View {
@@ -180,9 +175,9 @@ struct AnalysisPanelView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(sourceLabel(analysis))
-                if analysis.createdAt != .distantPast {
+                if let created = analysis.createdText {
                     Text("·")
-                    Text(analysis.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    Text(created)
                 }
                 if analysis.truncated {
                     Text("·")
@@ -460,5 +455,18 @@ struct AnalysisPanelView: View {
         controller.dismiss(recordID: recordID)
         controller.start(recordID: recordID,
                          request: .init(kind: kind, responseLanguage: analysis.responseLanguage))
+    }
+}
+
+private extension StoredAnalysis {
+    /// Название в списке анализов и в шапке PDF: имя шаблона или «Свой
+    /// запрос», а без названия — «Анализ».
+    var displayTitle: String {
+        title.isEmpty ? L("transcribe.llm.result.title") : title
+    }
+
+    /// Дата анализа; у записей до появления поля (`distantPast`) её нет.
+    var createdText: String? {
+        createdAt == .distantPast ? nil : createdAt.formatted(date: .abbreviated, time: .shortened)
     }
 }

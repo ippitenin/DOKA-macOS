@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Общие контролы расшифровки файлов: страница «Транскрибация», запись
 // библиотеки (обе раскладки) и экспорт из списка библиотеки. Раньше жили
@@ -225,20 +226,35 @@ struct SaveAsMenu<Items: View>: View {
     }
 }
 
+/// Системный диалог «Сохранить» — один на всё приложение: экспорт истории,
+/// библиотеки, расшифровок, анализа (текст и PDF) и шаблонов.
+@MainActor
+enum SavePanel {
+    /// Путь, выбранный пользователем, или `nil` при отмене. Пустой
+    /// `allowedContentTypes` — тип файла задаёт само имя.
+    static func chooseURL(suggestedName: String, allowedContentTypes: [UTType] = []) -> URL? {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.canCreateDirectories = true
+        if !allowedContentTypes.isEmpty {
+            panel.allowedContentTypes = allowedContentTypes
+        }
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
+    }
+}
+
 /// Запись текста в файл через системный диалог. Приложение не в песочнице —
 /// пишем по выбранному пути напрямую.
 @MainActor
 enum TextFileSaver {
     static func save(_ text: String, suggestedName: String) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedName
-        panel.canCreateDirectories = true
         // Расширения SRT/VTT/MD система как UTType может не знать — формат
         // задаёт само имя файла; ограничиваем тип только для txt.
-        if (suggestedName as NSString).pathExtension.lowercased() == "txt" {
-            panel.allowedContentTypes = [.plainText]
-        }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let isTxt = (suggestedName as NSString).pathExtension.lowercased() == "txt"
+        guard let url = SavePanel.chooseURL(suggestedName: suggestedName,
+                                            allowedContentTypes: isTxt ? [.plainText] : [])
+        else { return }
         write(text, to: url)
     }
 

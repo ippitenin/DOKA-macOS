@@ -138,6 +138,21 @@ final class AnalysisTemplateTransferTests: XCTestCase {
         XCTAssertEqual(imported.sections.map(\.columns), builtin.sections.map(\.columns))
     }
 
+    /// Каждый встроенный шаблон переживает экспорт и обратный импорт целиком.
+    func testAllBuiltinsRoundTrip() throws {
+        for builtin in BuiltinAnalysisTemplate.all {
+            let data = try AnalysisTemplateTransfer.exportData(builtin)
+            let imported = try XCTUnwrap(AnalysisTemplateTransfer.parse(data, fallbackName: "x").first)
+            XCTAssertEqual(imported.name, builtin.name)
+            XCTAssertEqual(imported.description, builtin.description)
+            XCTAssertEqual(imported.sections.map(\.title), builtin.sections.map(\.title), builtin.name)
+            XCTAssertEqual(imported.sections.map(\.instruction), builtin.sections.map(\.instruction), builtin.name)
+            XCTAssertEqual(imported.sections.map(\.format), builtin.sections.map(\.format), builtin.name)
+            XCTAssertEqual(imported.sections.map(\.columns), builtin.sections.map(\.columns), builtin.name)
+            XCTAssertEqual(imported.sections.map(\.cite), builtin.sections.map(\.cite), builtin.name)
+        }
+    }
+
     /// Массив шаблонов в одном файле; два импорта одного файла дают разные id.
     func testArrayOfTemplatesAndFreshIDs() throws {
         let json = """
@@ -207,5 +222,41 @@ final class AnalysisTemplateTransferTests: XCTestCase {
         let renamed = longNames.claim(long)
         XCTAssertEqual(renamed.count, AnalysisTemplate.maxNameLength)
         XCTAssertTrue(renamed.hasSuffix(" (2)"))
+    }
+
+    // MARK: - Пачка файлов
+
+    /// Несколько файлов разом: битые не мешают остальным, имена уникальны и
+    /// относительно существующих, и между импортированными; запасное имя —
+    /// имя файла без расширения.
+    func testImportFilesMixedBatch() {
+        let section = #"[{"title": "S", "instruction": ""}]"#
+        func file(_ name: String, _ json: String?) -> AnalysisTemplateTransfer.ImportFile {
+            .init(fileName: name, data: json.map { Data($0.utf8) })
+        }
+        let outcome = AnalysisTemplateTransfer.importFiles([
+            file("a.json", #"{"name": "Резюме", "sections": \#(section)}"#),
+            file("broken.json", "not json"),
+            file("two.json", #"[{"name": "Новый", "sections": \#(section)}, {"name": "новый", "sections": \#(section)}]"#),
+            file("gone.json", nil),
+            file("standup.json", #"{"sections": \#(section)}"#),
+            file("empty.json", #"{"name": "Пустой", "sections": []}"#)
+        ], existingNames: ["Резюме"])
+
+        XCTAssertEqual(outcome.templates.map(\.name), ["Резюме (2)", "Новый", "новый (2)", "standup"])
+        XCTAssertEqual(Set(outcome.templates.map(\.id)).count, 4)
+        XCTAssertEqual(outcome.failures.map(\.fileName), ["broken.json", "gone.json", "empty.json"])
+        XCTAssertEqual(outcome.failures[0].reason, .notTemplate)
+        XCTAssertEqual(outcome.failures[1].reason, .unreadable)
+        guard case .invalid = outcome.failures[2].reason else {
+            return XCTFail("пустой шаблон должен быть отказом валидации: \(outcome.failures[2].reason)")
+        }
+        XCTAssertFalse(outcome.failures.contains { $0.reason.message.isEmpty })
+    }
+
+    func testImportFilesEmpty() {
+        let outcome = AnalysisTemplateTransfer.importFiles([], existingNames: ["Резюме"])
+        XCTAssertTrue(outcome.templates.isEmpty)
+        XCTAssertTrue(outcome.failures.isEmpty)
     }
 }

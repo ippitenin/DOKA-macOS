@@ -341,38 +341,23 @@ struct HistorySectionView: View {
     // MARK: - Сохранение / экспорт (приложение не в песочнице — пишем напрямую)
 
     private func saveTxt(_ record: TranscriptionRecord) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(suggestedBaseName(record)).txt"
-        panel.allowedContentTypes = [.plainText]
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        write(record.text, to: url)
+        save(record.text, suggestedName: "\(suggestedBaseName(record)).txt", type: .plainText)
     }
 
     private func exportCSV() {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "DOKA-history.csv"
-        panel.allowedContentTypes = [.commaSeparatedText]
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        write(HistoryExport.csv(selectedRecords), to: url)
+        save(HistoryExport.csv(selectedRecords), suggestedName: "DOKA-history.csv",
+             type: .commaSeparatedText)
     }
 
     private func exportCombinedTxt() {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "DOKA-history.txt"
-        panel.allowedContentTypes = [.plainText]
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        write(HistoryExport.combinedPlainText(selectedRecords), to: url)
+        save(HistoryExport.combinedPlainText(selectedRecords), suggestedName: "DOKA-history.txt",
+             type: .plainText)
     }
 
-    private func write(_ text: String, to url: URL) {
-        do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            NSLog("DOKA: не удалось сохранить файл истории: \(error.localizedDescription)")
-        }
+    private func save(_ text: String, suggestedName: String, type: UTType) {
+        guard let url = SavePanel.chooseURL(suggestedName: suggestedName,
+                                            allowedContentTypes: [type]) else { return }
+        TextFileSaver.write(text, to: url)
     }
 
     private func suggestedBaseName(_ record: TranscriptionRecord) -> String {
