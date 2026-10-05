@@ -86,7 +86,7 @@ not on a particular translation.
     for arm64 only, so that reason is gone, but moving either one is a separate change with
     its own smoke pass. FluidAudio’s “patch” releases are not patches (0.15.5 → 0.15.7 is
     237 files) — that is why its pin is exact.
-  - **llama.cpp is a `binaryTarget` pinned to one release (`b10909`) by url + checksum.**
+  - **llama.cpp is a `binaryTarget` pinned to one release (`b11146` = v0.5.0) by url + checksum.**
     Upstream ships several releases a day and changes the C API without semver. Its macOS
     slice is universal; `build.sh` strips x86_64 from it. Moving it means a new checksum, a
     full `./build.sh` and a smoke pass over AI analysis.
