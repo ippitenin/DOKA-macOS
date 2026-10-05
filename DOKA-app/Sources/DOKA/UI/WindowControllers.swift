@@ -77,9 +77,6 @@ final class WindowManager {
         return mainState.section == section
     }
 
-    // Точки входа из старого кода (меню-бар, AppDelegate, DictationController).
-    func showSettings() { showMain(section: .general) }
-    func showHistory() { showMain(section: .history) }
     func showOnboarding() { showMain(section: .home) }
 
     /// Библиотека: с открытой записью либо на списке. Единая точка «открыть

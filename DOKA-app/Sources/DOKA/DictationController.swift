@@ -65,6 +65,9 @@ final class DictationController: ObservableObject {
             if case .recording = self { return true }
             return false
         }
+
+        /// Идёт запись или распознавание — автомат занят.
+        var isBusy: Bool { isRecording || self == .transcribing }
     }
 
     /// Идёт ли диктовка прямо сейчас — для гейтов, у которых нет ссылки на
@@ -174,12 +177,7 @@ final class DictationController: ObservableObject {
 
     func pasteLastTranscription() {
         // Во время записи/распознавания вставка ломала бы автомат — игнорируем.
-        switch state {
-        case .recording, .transcribing:
-            return
-        case .idle, .error:
-            break
-        }
+        guard !state.isBusy else { return }
         guard let text = history.lastText else {
             showError(L("error.historyEmpty"))
             return
@@ -200,25 +198,15 @@ final class DictationController: ObservableObject {
     /// не трогаем — сообщение увело бы его в `.error`.
     func toggleQuietMode() {
         settings.quietMode.toggle()
-        switch state {
-        case .idle, .error:
-            showError(settings.quietMode ? L("quietMode.on") : L("quietMode.off"),
-                      sound: .recordStop)
-        case .recording, .transcribing:
-            break
-        }
+        guard !state.isBusy else { return }
+        showError(settings.quietMode ? L("quietMode.on") : L("quietMode.off"), sound: .recordStop)
     }
 
     /// «Повторить неудачную диктовку» из меню-бара: та же запись уходит на
     /// распознавание текущим сервисом, в обход гейта тишины (пользователь
     /// явно просит распознать). Esc во время повтора возвращает запись в слот.
     func retryLastFailedDictation() {
-        switch state {
-        case .recording, .transcribing:
-            return
-        case .idle, .error:
-            break
-        }
+        guard !state.isBusy else { return }
         guard let failed = lastFailedDictation else { return }
         guard FileManager.default.fileExists(atPath: failed.audio.url.path) else {
             lastFailedDictation = nil
@@ -318,7 +306,7 @@ final class DictationController: ObservableObject {
         let lipTake = activeLipTake
         activeLipTake = nil
         guard let result = recorder.stop() else {
-            if let lipTake { LipCapture.shared.discard(lipTake) }
+            LipCapture.shared.discard(lipTake)
             showError(L("error.saveRecordingFailed"))
             return
         }
@@ -337,7 +325,7 @@ final class DictationController: ObservableObject {
                                     speechDuration: audio.gateSpeechDuration,
                                     speechGateEnabled: settings.skipSilentRecordings) {
         case .tooShort:
-            if let lipTake { LipCapture.shared.discard(lipTake) }
+            LipCapture.shared.discard(lipTake)
             Self.removeFile(audio.url)
             transition(to: .idle)
             return
@@ -347,7 +335,7 @@ final class DictationController: ObservableObject {
             NSLog("DOKA: гейт тишины — запись %.2f с, речи %.2f с%@, на распознавание не отправлена",
                   audio.duration, audio.gateSpeechDuration, audio.quiet ? " (тихий режим)" : "")
             // Пара «губы + текст» без текста не бывает.
-            if let lipTake { LipCapture.shared.discard(lipTake) }
+            LipCapture.shared.discard(lipTake)
             if DictationGate.isRetryable(duration: audio.duration) {
                 // Возможно, просто тихий голос: запись можно распознать всё равно.
                 storeFailed(audio.withoutLipTake, message: L("error.noSpeech"), gated: true)
@@ -391,6 +379,7 @@ final class DictationController: ObservableObject {
             return
         }
         let language = settings.language
+        let requestLanguage = language == "auto" ? nil : language
         let providerRaw = settings.providerTagForHistory
         let modelTag = route.modelTag
 
@@ -415,26 +404,7 @@ final class DictationController: ObservableObject {
 
         do {
             let started = Date()
-            let raw: String
-            switch route {
-            case .local(let localModel):
-                // Загрузка движка — тоже await: после неё те же права на автомат,
-                // что и после любого другого await (проверка generation ниже).
-                let engine = try await LocalEngineManager.shared.engine(for: localModel)
-                guard generation == gen else { return }
-                raw = try await engine.transcribeDictation(
-                    wavURL: uploadURL,
-                    language: language == "auto" ? nil : language
-                )
-                LocalEngineManager.shared.touch()
-            case .remote(let apiKey, let config):
-                raw = try await client.transcribe(
-                    fileURL: uploadURL,
-                    language: language == "auto" ? nil : language,
-                    apiKey: apiKey,
-                    config: config
-                )
-            }
+            let raw = try await recognize(uploadURL, route: route, language: requestLanguage, generation: gen)
             let transcriptionTime = Date().timeIntervalSince(started)
             guard generation == gen else { return }   // отменено пользователем
             // Весь результат — дежурная фраза Whisper на тишине («Thank you.»,
@@ -499,6 +469,25 @@ final class DictationController: ObservableObject {
             guard generation == gen else { return }
             outcome = .failed(error.localizedDescription)
             showError(error.localizedDescription)
+        }
+    }
+
+    /// Распознать запись маршрутом `route`: локальным движком или сетевым
+    /// клиентом. Устаревшая задача — поколение сменилось, пока грузился
+    /// движок, — получает `CancellationError` и уходит как отмена.
+    private func recognize(_ url: URL, route: ServiceRoute, language: String?,
+                           generation gen: Int) async throws -> String {
+        switch route {
+        case .local(let localModel):
+            // Загрузка движка — тоже await: после неё те же права на автомат,
+            // что и после любого другого await.
+            let engine = try await LocalEngineManager.shared.engine(for: localModel)
+            guard generation == gen else { throw CancellationError() }
+            let text = try await engine.transcribeDictation(wavURL: url, language: language)
+            LocalEngineManager.shared.touch()
+            return text
+        case .remote(let apiKey, let config):
+            return try await client.transcribe(fileURL: url, language: language, apiKey: apiKey, config: config)
         }
     }
 
@@ -585,11 +574,9 @@ final class DictationController: ObservableObject {
         guard let items = try? fm.contentsOfDirectory(at: fm.temporaryDirectory,
                                                       includingPropertiesForKeys: keys) else { return }
         for url in items where url.lastPathComponent.hasPrefix("doka-")
-            && ["wav", "tmp"].contains(url.pathExtension) {
-            let modified = (try? url.resourceValues(forKeys: Set(keys)))?.contentModificationDate
-            if (modified ?? .distantPast) < launch {
-                try? fm.removeItem(at: url)
-            }
+            && ["wav", "tmp"].contains(url.pathExtension)
+            && (url.contentModificationDate ?? .distantPast) < launch {
+            try? fm.removeItem(at: url)
         }
     }
 
@@ -606,16 +593,14 @@ final class DictationController: ObservableObject {
             // Камера гаснет вместе с записью. Дубль, который никто не забрал
             // (Esc, ошибка), выбрасывается.
             LipCapture.shared.stopCamera()
-            if let take = activeLipTake {
-                activeLipTake = nil
-                LipCapture.shared.discard(take)
-            }
+            LipCapture.shared.discard(activeLipTake)
+            activeLipTake = nil
         }
         state = newState
-        Self.isActive = newState.isRecording || newState == .transcribing
+        Self.isActive = newState.isBusy
         audioLevel = 0
         // Esc активен при записи и при распознавании (отмена запроса).
-        hotkeys?.setEscapeEnabled(newState.isRecording || newState == .transcribing)
+        hotkeys?.setEscapeEnabled(newState.isBusy)
 
         switch newState {
         case .idle:

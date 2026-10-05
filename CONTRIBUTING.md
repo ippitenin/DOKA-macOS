@@ -31,8 +31,8 @@ Architecture, invariants and the reasoning behind the odd-looking bits are docum
 
 ## Verification gates
 
-The pure logic is covered by tests in `Tests/DOKATests` — 551 checks that run in
-under a second. Everything else (audio capture, pasting, Keychain, the recorder panels)
+The pure logic is covered by tests in `Tests/DOKATests` — 780 checks that run in
+a few seconds. Everything else (audio capture, pasting, Keychain, the recorder panels)
 needs a real Mac with real permissions, so it is verified by hand. Five gates:
 
 1. `swift build` — must finish with **no warnings**.

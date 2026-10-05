@@ -20,6 +20,14 @@ struct LipFaceSample: Equatable {
     var eyes: [CGPoint] = []
 
     static let none = LipFaceSample(box: nil, count: 0, outerLips: [], innerLips: [])
+
+    /// Глаза слева направо в кадре; nil — глаз не два. Порядок Vision (левый,
+    /// правый глаз ЧЕЛОВЕКА) в незеркальном кадре идёт справа налево.
+    static func eyesLeftToRight(_ eyes: [CGPoint]) -> (left: CGPoint, right: CGPoint)? {
+        guard eyes.count == 2 else { return nil }
+        let sorted = eyes.sorted { $0.x < $1.x }
+        return (sorted[0], sorted[1])
+    }
 }
 
 /// Поиск лица в кадре. Шов для тестов: движок камеры знает детектор только

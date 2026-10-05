@@ -111,16 +111,8 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
     func trash(_ ids: [UUID]) {
         queue.async { [self] in
             guard !frozen else { return }
-            let fm = FileManager.default
             for id in ids {
-                let folder = folder(for: id)
-                guard fm.fileExists(atPath: folder.path) else { continue }
-                let bin = root.appendingPathComponent("\(id.uuidString).deleting-\(UUID().uuidString)")
-                do {
-                    try fm.moveItem(at: folder, to: bin)
-                } catch {
-                    try? fm.removeItem(at: folder)
-                }
+                DiskTrash.move(folder(for: id))
             }
         }
     }
@@ -130,11 +122,8 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
     /// долгого стирания ничего не вернёт (остатки подчистит sweep на старте).
     func emptyTrash() {
         queue.async { [self] in
-            guard !frozen,
-                  let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { return }
-            for name in names where name.contains(".deleting-") {
-                try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
-            }
+            guard !frozen else { return }
+            DiskTrash.empty(root)
         }
     }
 
@@ -409,18 +398,15 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
             guard let items = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: keys) else { return }
             for url in items {
                 let name = url.lastPathComponent
-                if name.contains(".deleting-") {
+                if DiskTrash.isTrash(name) {
                     try? fm.removeItem(at: url)
                     continue
                 }
                 guard let id = UUID(uuidString: name) else { continue }
                 try? fm.removeItem(at: url.appendingPathComponent(Self.audioFileName + ".part"))
                 let hasMeta = fm.fileExists(atPath: url.appendingPathComponent(Self.metaFileName).path)
-                if !hasMeta && !knownIDs.contains(id) {
-                    let modified = (try? url.resourceValues(forKeys: Set(keys)))?.contentModificationDate
-                    if (modified ?? .distantPast) < launch {
-                        try? fm.removeItem(at: url)
-                    }
+                if !hasMeta && !knownIDs.contains(id), (url.contentModificationDate ?? .distantPast) < launch {
+                    try? fm.removeItem(at: url)
                 }
             }
         }

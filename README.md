@@ -95,8 +95,9 @@ written in Russian.
 - **Lips (experiment)** — collects “lip video + text” pairs for future lip reading. Turn it on
   in General → Advanced; it is off by default. The camera runs only while you dictate, and the
   recognized text becomes the caption for the video. While recording, a mirror slides out of
-  the screen notch: a live view of your mouth that follows your face, with the lip contour
-  drawn on top. For now this only collects data — DOKA can’t read lips yet.
+  the screen notch: a live view of your mouth that calmly follows your face, with a glowing
+  lip mask in the Aurora palette (peach to indigo) drawn on the very frame it was measured
+  on. For now this only collects data — DOKA can’t read lips yet.
 - **Dictionary** — case-insensitive replacement rules applied to every transcript. Rules match whole words: “doka” → “DOKA” no longer touches “document”; the per-rule “Inside words” switch brings back substring matching (e.g. “ё” → “е”). Optionally applied to file transcripts as well.
 
 ## Privacy
@@ -216,7 +217,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 551 checks in under a second, and
+Pure logic is covered by tests — `swift test` runs 780 checks in a few seconds, and
 CI runs them on every pull request along with the build and a localisation check. Audio
 capture, pasting, Keychain and the recorder panels need a real Mac with real permissions,
 so those are verified by a manual smoke pass; `CLAUDE.md` lists what to check per area.

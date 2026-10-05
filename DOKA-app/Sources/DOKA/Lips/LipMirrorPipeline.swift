@@ -140,14 +140,10 @@ final class LipMirrorFeed: @unchecked Sendable {
     /// дубля: следующий `begin` её стирает — снимать до него, а не в
     /// завершении записи, которое может прийти уже после старта новой диктовки.
     func latencySummary(take: UUID) -> (count: Int, p50: Double, p95: Double)? {
-        let sorted = lock.withLock {
+        let latencies = lock.withLock {
             state.latencyTake == take ? state.latencies : []
-        }.sorted()
-        guard !sorted.isEmpty else { return nil }
-        func percentile(_ p: Double) -> Double {
-            sorted[Int((p * Double(sorted.count - 1)).rounded())] * 1000
         }
-        return (sorted.count, percentile(0.5), percentile(0.95))
+        return Percentile.millisecondsSummary(seconds: latencies)
     }
 
     /// Забрать последний кадр. Отдаётся, только если дубль и окно всё ещё
@@ -237,9 +233,8 @@ final class LipMirrorPipeline {
 
     /// Ось глаз слева направо; без двух глаз — горизонталь.
     private static func eyeAxis(_ eyes: [CGPoint]) -> CGVector {
-        guard eyes.count == 2 else { return CGVector(dx: 1, dy: 0) }
-        let sorted = eyes.sorted { $0.x < $1.x }
-        return CGVector(dx: sorted[1].x - sorted[0].x, dy: sorted[1].y - sorted[0].y)
+        guard let pair = LipFaceSample.eyesLeftToRight(eyes) else { return CGVector(dx: 1, dy: 0) }
+        return CGVector(dx: pair.right.x - pair.left.x, dy: pair.right.y - pair.left.y)
     }
 
     private static func bounds(_ points: [CGPoint]) -> CGRect {
@@ -247,4 +242,28 @@ final class LipMirrorPipeline {
         guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return .null }
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
+}
+
+/// Сетка губ переживает одиночные промахи Vision: без неё маска мигала бы.
+/// Сетка — в пикселях КАМЕРЫ, поэтому удержанная показывается через текущее
+/// окно и едет вместе с ним.
+struct LipMaskHold {
+    /// Дольше, с, — маска гаснет.
+    static let hold: TimeInterval = 0.15
+
+    private var stored: (mesh: LipMesh, time: Double)?
+
+    mutating func update(_ mesh: LipMesh?, at t: Double) -> LipMesh? {
+        if let mesh {
+            stored = (mesh, t)
+            return mesh
+        }
+        guard let stored, t - stored.time <= Self.hold else {
+            stored = nil
+            return nil
+        }
+        return stored.mesh
+    }
+
+    mutating func reset() { stored = nil }
 }

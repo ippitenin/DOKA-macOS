@@ -168,21 +168,7 @@ final class LocalModelStore: ObservableObject {
     }
 
     private nonisolated static func sizeOnDisk(_ asset: LocalAsset) -> Int64 {
-        directorySize(rootFolder(for: asset))
-    }
-
-    private nonisolated static func directorySize(_ url: URL) -> Int64 {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(at: url,
-                                             includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-                                             options: [.skipsHiddenFiles]) else { return 0 }
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            let size = (try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?
-                .totalFileAllocatedSize ?? 0
-            total += Int64(size)
-        }
-        return total
+        FileManager.default.allocatedSize(of: rootFolder(for: asset))
     }
 
     // MARK: - Скачивание
@@ -316,19 +302,10 @@ final class LocalModelStore: ObservableObject {
     /// плюс фоновое удаление — синхронное стирание многогигабайтного дерева
     /// на главном потоке замораживало бы UI ровно в момент клика.
     private static func removePartial(_ asset: LocalAsset) {
-        let fm = FileManager.default
-        let folder = rootFolder(for: asset)
-        guard fm.fileExists(atPath: folder.path) else { return }
-        let trash = folder.deletingLastPathComponent()
-            .appendingPathComponent("\(folder.lastPathComponent).deleting-\(UUID().uuidString)")
-        do {
-            try fm.moveItem(at: folder, to: trash)
-            Task.detached(priority: .utility) {
-                try? FileManager.default.removeItem(at: trash)
-            }
-        } catch {
-            // Переименование не удалось — удаляем на месте (редкий путь).
-            try? fm.removeItem(at: folder)
+        // Не вышло переименовать — `DiskTrash` стирает на месте (редкий путь).
+        guard let trash = DiskTrash.move(rootFolder(for: asset)) else { return }
+        Task.detached(priority: .utility) {
+            try? FileManager.default.removeItem(at: trash)
         }
     }
 
@@ -362,9 +339,7 @@ final class LocalModelStore: ObservableObject {
         let keep = LLMModelSpec.current.fileName
         for name in items where name != keep && !name.hasPrefix(".") {
             let url = llmFolder.appendingPathComponent(name)
-            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate
-            guard let modified, modified < cutoff else { continue }
+            guard let modified = url.contentModificationDate, modified < cutoff else { continue }
             try? fm.removeItem(at: url)
         }
     }
@@ -375,11 +350,7 @@ final class LocalModelStore: ObservableObject {
 
     /// Осиротевшие папки `*.deleting-*` после kill во время фонового удаления.
     private nonisolated static func sweepDeleteLeftovers() {
-        let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(atPath: AppDataFolder.modelsURL.path) else { return }
-        for name in items where name.contains(".deleting-") {
-            try? fm.removeItem(at: AppDataFolder.modelsURL.appendingPathComponent(name))
-        }
+        DiskTrash.empty(AppDataFolder.modelsURL)
     }
 
     // MARK: - Прогрев и удаление

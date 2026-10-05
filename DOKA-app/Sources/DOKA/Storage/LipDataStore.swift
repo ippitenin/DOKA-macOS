@@ -175,14 +175,9 @@ final class LipDataStore: ObservableObject {
         let epoch = dataEpoch
         /// Можно ли ещё писать: задача не отменена и данные не стирали.
         func current() -> Bool { !Task.isCancelled && epoch == dataEpoch }
-        let inputs: (LipJob, LipCaptureLog)? = await withCheckedContinuation { continuation in
-            ioQueue.async {
-                guard let job = files.readJob(id), let log = files.readCaptureLog(id) else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                continuation.resume(returning: (job, log))
-            }
+        let inputs: (LipJob, LipCaptureLog)? = await onIO {
+            guard let job = files.readJob(id), let log = files.readCaptureLog(id) else { return nil }
+            return (job, log)
         }
         guard current() else { return }
         guard let (job, log) = inputs else {

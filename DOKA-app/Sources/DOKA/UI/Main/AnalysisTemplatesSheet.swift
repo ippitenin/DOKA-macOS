@@ -286,13 +286,7 @@ struct AnalysisTemplatesSheet: View {
                     HStack(spacing: 10) {
                         Text(L("analysis.templates.sectionFormat"))
                             .foregroundStyle(.secondary)
-                        SettingsPopup(titles: AnalysisSectionFormat.allCases.map(\.title),
-                                      selectionIndex: Binding(
-                                        get: { AnalysisSectionFormat.allCases.firstIndex(of: section.format) ?? 0 },
-                                        set: { value in
-                                            mutate { $0.sections[index].format = AnalysisSectionFormat.allCases[value] }
-                                        }),
-                                      width: 140)
+                        SettingsPopup(selection: sectionBinding(index, \.format), title: \.title, width: 140)
                         Spacer(minLength: 12)
                         Text(L("analysis.templates.cite"))
                         SettingsSwitch(isOn: sectionBinding(index, \.cite))

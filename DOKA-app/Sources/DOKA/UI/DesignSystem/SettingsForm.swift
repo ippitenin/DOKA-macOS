@@ -93,6 +93,20 @@ struct SettingsPopup: View {
     }
 }
 
+extension SettingsPopup {
+    /// Список по всем значениям enum: заголовки — `title`, выбор — само
+    /// значение. Индексы (`allCases.firstIndex(of:)` и обратно) считаются
+    /// здесь, а не на каждом месте вызова.
+    init<Option: CaseIterable & Equatable>(selection: Binding<Option>, title: (Option) -> String,
+                                           width: CGFloat? = 180) {
+        let options = Array(Option.allCases)
+        self.init(titles: options.map(title),
+                  selectionIndex: Binding(get: { options.firstIndex(of: selection.wrappedValue) ?? 0 },
+                                          set: { selection.wrappedValue = options[$0] }),
+                  width: width)
+    }
+}
+
 private struct PopUpButton: NSViewRepresentable {
     let titles: [String]
     @Binding var selectionIndex: Int

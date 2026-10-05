@@ -1,5 +1,20 @@
 import Foundation
 
+/// Имена раскладки `LipData/` — один источник для камеры (`LipTake`) и
+/// файлового слоя (`LipDataFiles`). Это и договор с WISLIP: его импортёр
+/// читает `takes/*/meta.json` и `clip.mp4`.
+enum LipDataLayout {
+    static let pending = "pending"
+    static let takes = "takes"
+    static let rawVideo = "raw.mp4"
+    static let captureLog = "capture.json"
+    static let audio = "audio.wav"
+    static let job = "job.json"
+    static let clip = "clip.mp4"
+    static let meta = "meta.json"
+    static let stats = "stats.json"
+}
+
 /// Дубль губ: одна диктовка, снятая камерой. Токен едет вместе с записью
 /// звука (`RecordedDictation.lipTake`) до решения о её судьбе.
 struct LipTake: Equatable, Hashable {
@@ -14,11 +29,11 @@ struct LipTake: Equatable, Hashable {
 
     /// Папка сырья дубля: `LipData/pending/<id>/`.
     var folder: URL { pendingRoot.appendingPathComponent(id.uuidString, isDirectory: true) }
-    var rawVideoURL: URL { folder.appendingPathComponent("raw.mp4") }
-    var captureLogURL: URL { folder.appendingPathComponent("capture.json") }
+    var rawVideoURL: URL { folder.appendingPathComponent(LipDataLayout.rawVideo) }
+    var captureLogURL: URL { folder.appendingPathComponent(LipDataLayout.captureLog) }
 
     static var pendingRoot: URL {
-        AppDataFolder.lipDataURL.appendingPathComponent("pending", isDirectory: true)
+        AppDataFolder.lipDataURL.appendingPathComponent(LipDataLayout.pending, isDirectory: true)
     }
 }
 
@@ -52,6 +67,10 @@ struct LipCaptureLog: Codable, Equatable, Sendable {
         var studioLight: Bool
         var backgroundReplacement: Bool
         var reactions: Bool
+
+        /// Ни одного эффекта — до того, как известны формат и настройки камеры.
+        static let none = Effects(centerStage: false, portrait: false, studioLight: false,
+                                  backgroundReplacement: false, reactions: false)
     }
 
     var frameWidth: Int

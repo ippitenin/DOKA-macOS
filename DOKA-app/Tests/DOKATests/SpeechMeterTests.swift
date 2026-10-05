@@ -35,6 +35,18 @@ final class SpeechMeterTests: XCTestCase {
                        AudioRecorder.speechLevelThreshold, accuracy: 1e-6)
     }
 
+    /// Один буфер у границ обоих порогов: запись и `measure` делят этот расчёт,
+    /// поэтому граница здесь — та же, по которой считает `AudioRecorder`.
+    func testClassifyHonoursBothThresholds() {
+        func rms(_ db: Float) -> Float { pow(10, db / 20) }
+        XCTAssertEqual(SpeechMeter.classify(rms: rms(-39.5)), .init(isSpeech: true, isQuietSpeech: true))
+        XCTAssertEqual(SpeechMeter.classify(rms: rms(-40.5)), .init(isSpeech: false, isQuietSpeech: true))
+        XCTAssertEqual(SpeechMeter.classify(rms: rms(-47.5)), .init(isSpeech: false, isQuietSpeech: true))
+        XCTAssertEqual(SpeechMeter.classify(rms: rms(-48.5)), .init(isSpeech: false, isQuietSpeech: false))
+        // Нулевой буфер — без NaN и бесконечностей.
+        XCTAssertEqual(SpeechMeter.classify(rms: 0), .init(isSpeech: false, isQuietSpeech: false))
+    }
+
     /// Шёпот (−45 дБFS) обычный гейт не слышит, тихий — слышит.
     func testWhisperCountsOnlyInQuietMode() {
         let m = SpeechMeter.measure(samples: noise(db: -45, seconds: 2), sampleRate: 48_000)

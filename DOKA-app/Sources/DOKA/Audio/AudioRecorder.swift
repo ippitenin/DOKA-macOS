@@ -263,19 +263,17 @@ final class AudioRecorder {
 
                 // Статистика речи считается по прежней dB-кривой: её порог
                 // калиброван под неё, а lifetime-агрегаты дашборда — под порог.
-                let db = 20 * log10(max(rms, 1e-7))
-                let speechLevel = max(0, min(1, (db + 50) / 50))
+                let speech = SpeechMeter.classify(rms: rms)
                 let seconds = Double(frames) / buffer.format.sampleRate
-                let isSpeech = speechLevel >= Self.speechLevelThreshold
-                let isQuietSpeech = SpeechMeter.isQuietSpeech(db: db)
-                if isSpeech {
+                if speech.isSpeech {
                     session.speechTime += seconds
                 }
-                if isQuietSpeech {
+                if speech.isQuietSpeech {
                     session.quietSpeechTime += seconds
                 }
                 // Начало речи — по порогу того режима, в котором идёт запись.
-                session.onset.feed(isSpeech: session.quiet ? isQuietSpeech : isSpeech, at: bufferStart)
+                session.onset.feed(isSpeech: session.quiet ? speech.isQuietSpeech : speech.isSpeech,
+                                   at: bufferStart)
 
                 // Уровень для панелей — своя кривая с быстрым подъёмом.
                 let gain: Float = session.quiet ? SpeechMeter.quietDisplayGain : 1
