@@ -76,7 +76,8 @@ written in Russian.
   language model running right on the machine (llama.cpp + Qwen3.5 4B): no internet, no key,
   no billing; the 2.7 GB model is downloaded once. A long recording is processed in parts
   and combined into a single report. Template sections can be rewritten, or you can build
-  your own template. The result renders as formatted text with headings, lists and tables,
+  your own template; templates are exported and imported as JSON files, Memento templates
+  included. The result renders as formatted text with headings, lists and tables,
   its timestamps are clickable and seek the player; copying puts both plain and rich text
   on the clipboard, so tables paste as tables into Telegram, Notes or Word. Analysis can
   be ordered right when transcribing a file — with any template or your own prompt: by
