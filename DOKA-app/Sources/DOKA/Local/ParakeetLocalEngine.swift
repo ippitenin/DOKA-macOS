@@ -33,32 +33,9 @@ final class ParakeetLocalEngine: LocalTranscriptionEngine {
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw TranscriptionClient.ClientError.emptyText }
 
-        // Токены → слова: у sentencepiece «▁» помечает начало слова, пунктуация
-        // приходит отдельными токенами и приклеивается к текущему слову.
-        var words: [TranscriptWord] = []
-        var current = ""
-        var start: TimeInterval = 0
-        var end: TimeInterval = 0
-        func flush() {
-            let trimmed = current.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty {
-                words.append(TranscriptWord(text: trimmed, start: start, end: end))
-            }
-            current = ""
-        }
-        for timing in result.tokenTimings ?? [] {
-            let isWordStart = timing.token.hasPrefix("▁")
-            let piece = timing.token.replacingOccurrences(of: "▁", with: "")
-            if isWordStart || current.isEmpty {
-                flush()
-                current = piece
-                start = timing.startTime
-            } else {
-                current += piece
-            }
-            end = timing.endTime
-        }
-        flush()
+        let words = Self.words(from: (result.tokenTimings ?? []).map {
+            (token: $0.token, start: $0.startTime, end: $0.endTime)
+        })
 
         // Parakeet не делит текст на предложения — отдаём один сегмент на всю
         // запись; красивую нарезку по предложениям делает TranscriptSegmentSplitter
@@ -76,5 +53,39 @@ final class ParakeetLocalEngine: LocalTranscriptionEngine {
 
     func unload() {
         manager = nil
+    }
+
+    /// Токены → слова. Начало слова — токен с «▁» (метка sentencepiece) ИЛИ
+    /// с пробелом в начале: FluidAudio отдаёт токены уже декодированными
+    /// («␣При», «вет», «,»), и при проверке одного «▁» весь текст файла
+    /// склеивался в ОДНО слово — без пословных тайм-кодов запись не резалась
+    /// по предложениям, а спикеры сшивались только по перекрытию. Пунктуация
+    /// приходит отдельными токенами и приклеивается к текущему слову.
+    static func words(from tokens: [(token: String, start: TimeInterval, end: TimeInterval)]) -> [TranscriptWord] {
+        var words: [TranscriptWord] = []
+        var current = ""
+        var start: TimeInterval = 0
+        var end: TimeInterval = 0
+        func flush() {
+            let trimmed = current.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty {
+                words.append(TranscriptWord(text: trimmed, start: start, end: end))
+            }
+            current = ""
+        }
+        for token in tokens {
+            let isWordStart = token.token.hasPrefix("▁") || token.token.hasPrefix(" ")
+            let piece = token.token.replacingOccurrences(of: "▁", with: " ")
+            if isWordStart || current.trimmingCharacters(in: .whitespaces).isEmpty {
+                flush()
+                current = piece
+                start = token.start
+            } else {
+                current += piece
+            }
+            end = token.end
+        }
+        flush()
+        return words
     }
 }
