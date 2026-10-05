@@ -15,7 +15,7 @@ pinned in `DOKA-app/Package.swift`.
 
 | Component | Version | License | Source |
 |---|---|---|---|
-| llama.cpp (prebuilt xcframework) | b10909 | MIT | https://github.com/ggml-org/llama.cpp |
+| llama.cpp (prebuilt xcframework) | b11146 (v0.5.0) | MIT | https://github.com/ggml-org/llama.cpp |
 
 ```
 MIT License

@@ -63,15 +63,18 @@ let package = Package(
                                            "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         // Официальный prebuilt llama.cpp (MIT) — движок локального ИИ-анализа.
-        // Пин на КОНКРЕТНЫЙ bNNNNN: релизы выходят по нескольку раз в день,
-        // C-API меняется без semver. Обновление = новый url + checksum
+        // Пин на КОНКРЕТНЫЙ bNNNNN: ежедневные сборки (теперь — пре-релизы)
+        // выходят по нескольку раз в день, C-API меняется без semver. С осени
+        // 2026 у ggml-org есть и стабильные релизы vX.Y.Z — это ссылка
+        // (`nightly-tag.txt`) на одну из ночных сборок; пиним именно её:
+        // b11146 = v0.5.0 (23.09.2026), прежний пин — b10909. Обновление = новый url + checksum
         // (`swift package compute-checksum` = sha256 zip) + ./build.sh + smoke
         // анализа. macOS-срез у ggml-org — `macos-arm64_x86_64`; build.sh
         // вырезает из него x86_64 (`lipo -thin arm64`) и проверяет результат.
         .binaryTarget(
             name: "LlamaFramework",
-            url: "https://github.com/ggml-org/llama.cpp/releases/download/b10909/llama-b10909-xcframework.zip",
-            checksum: "2a54bb807a0ebe490488f22775386db4050f3e478a111f227fca56f31207d83c"
+            url: "https://github.com/ggml-org/llama.cpp/releases/download/b11146/llama-b11146-xcframework.zip",
+            checksum: "1c306afe9fe68a90c4bdc74619d8558d6e0754f085deb105dd2d70293a9a964f"
         ),
         // Тесты чистой логики. Сплит на отдельную библиотеку НЕ нужен: SPM
         // тестирует executable-таргет напрямую, несмотря на top-level код
