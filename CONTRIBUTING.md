@@ -31,7 +31,7 @@ Architecture, invariants and the reasoning behind the odd-looking bits are docum
 
 ## Verification gates
 
-The pure logic is covered by tests in `Tests/DOKATests` — 780 checks that run in
+The pure logic is covered by tests in `Tests/DOKATests` — 817 checks that run in
 a few seconds. Everything else (audio capture, pasting, Keychain, the recorder panels)
 needs a real Mac with real permissions, so it is verified by hand. Five gates:
 
@@ -61,9 +61,31 @@ its prefix to `DYNAMIC_PREFIXES` in the script — otherwise it will be reported
 
 Gates 4 and 5 stay manual: CI has no signing certificate and cannot click through the app.
 
+**Live smoke of the local models.** `Tests/DOKATests/LiveSmokeTests.swift` drives the
+downloaded models end to end on speech synthesised with `say`: Whisper with the “Auto”
+language (Russian speech must stay Russian, not turn into an English translation), Parakeet
+word timings and sentence splitting, Parakeet with local speaker separation on a two-voice
+dialogue, local AI analysis into a PDF (in one pass and in parts) and import of the
+installed Memento templates. It is skipped unless `DOKA_SMOKE=1`, so CI and a plain
+`swift test` stay fast; run it after touching a local-model dependency or engine:
+
+```bash
+DOKA_SMOKE=1 swift test --filter LiveSmokeTests
+# the language model can come from elsewhere:
+DOKA_SMOKE=1 DOKA_SMOKE_LLM=/path/to/Qwen3.5-4B-Q4_K_M.gguf swift test --filter LiveSmokeTests
+```
+
+A test whose model is not downloaded is skipped with the reason. It covers the engines, not
+the UI: pressing a global hotkey, recording from the microphone and pasting still need a
+manual pass.
+
 One trap when writing tests: anything that goes through `L(...)` — speaker display names,
 role validation messages — depends on the bundle language. Assert on structure or numbers,
 not on a particular translation.
+
+Pure logic (`ReplacementEngine`, `TranscriptFormatter`, `LightMarkdown` and the like) is
+written to be testable and can also be checked by a separate harness that compiles the real
+sources.
 
 ## Conventions
 
@@ -76,9 +98,9 @@ not on a particular translation.
   from the `DS` tokens in `UI/DesignSystem/`; glass surfaces go through `glassSurface()`.
   Do not hardcode colours or magic numbers in new UI.
 - **Dependency pins are deliberate — do not loosen them, and never commit the result of a
-  blind `swift package update`.** A bump is verified with a full `./build.sh` and a manual
-  smoke pass over the affected local models — `swift build` alone will not catch a release
-  regression.
+  blind `swift package update`.** A bump is verified with a full `./build.sh`, the live smoke
+  (`DOKA_SMOKE=1`, see above) and a manual pass over the affected local models — `swift build`
+  alone will not catch a release regression.
   - **WhisperKit stays on the 1.1.x line** (`.upToNextMinor`) and **FluidAudio is pinned
     `exact: "0.17.5"`** (with its `NemoTextProcessing` trait turned off — that is why the
     manifest is tools-version 6.2). The old pins (WhisperKit 0.18.x, FluidAudio 0.15.5) date
