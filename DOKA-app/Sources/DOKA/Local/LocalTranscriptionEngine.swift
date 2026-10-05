@@ -276,9 +276,6 @@ final class LocalEngineManager {
         }
     }
 
-    /// Языковая модель загружена в память (для политики «диктовка важнее»).
-    var isLLMLoaded: Bool { llm != nil || llmLoading != nil }
-
     func unloadDiarizer() {
         // Как `unloadLLM`: отменяем и НЕЗАВЕРШЁННУЮ загрузку, иначе она
         // доедет и поставит модели, которых на диске уже нет.
