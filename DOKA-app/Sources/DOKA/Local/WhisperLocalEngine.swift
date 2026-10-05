@@ -33,6 +33,12 @@ final class WhisperLocalEngine: LocalTranscriptionEngine {
         let options = DecodingOptions(
             task: .transcribe,
             language: language,          // nil — автоопределение
+            // Без этого флага «Авто» НЕ автоопределение: при включённом
+            // префилле (по умолчанию) WhisperKit подставляет английский, и
+            // русская речь выходила английским ПЕРЕВОДОМ — и в диктовке с
+            // языком «Авто», и в файле. Проверено на 0.18 и 1.1: с флагом
+            // русская фраза даёт русский текст и `language == "ru"`.
+            detectLanguage: language == nil,
             skipSpecialTokens: true,
             wordTimestamps: wordTimestamps,
             chunkingStrategy: .vad
