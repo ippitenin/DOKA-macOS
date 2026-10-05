@@ -4,13 +4,13 @@ import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
     /// Старт/стоп диктовки. По умолчанию Option+Tab — как в VoiceInk пользователя.
-    static let toggleRecording = Self("toggleRecording", default: .init(.tab, modifiers: [.option]))
+    static let toggleRecording = Self("toggleRecording", initial: .init(.tab, modifiers: [.option]))
     /// Push-to-talk: зажать — запись, отпустить — распознавание. Без дефолта.
     static let pushToTalk = Self("pushToTalk")
     /// Повторная вставка последней транскрипции.
-    static let pasteLast = Self("pasteLast", default: .init(.v, modifiers: [.control, .option]))
+    static let pasteLast = Self("pasteLast", initial: .init(.v, modifiers: [.control, .option]))
     /// Отмена записи. Активен только во время записи.
-    static let cancelRecording = Self("cancelRecording", default: .init(.escape))
+    static let cancelRecording = Self("cancelRecording", initial: .init(.escape))
     /// Открыть главное окно. Без дефолта: глобальный Cmd+, отобрал бы
     /// «Настройки» у всех приложений системы.
     static let openMainWindow = Self("openMainWindow")

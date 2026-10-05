@@ -45,7 +45,7 @@ SOFTWARE.
 
 | Component | Version | License | Source |
 |---|---|---|---|
-| KeyboardShortcuts | 2.4.0 | MIT | https://github.com/sindresorhus/KeyboardShortcuts |
+| KeyboardShortcuts | 3.1.0 | MIT | https://github.com/sindresorhus/KeyboardShortcuts |
 | WhisperKit (argmax-oss-swift) | 0.18.0 | MIT | https://github.com/argmaxinc/argmax-oss-swift |
 | FluidAudio | 0.15.5 | Apache-2.0 | https://github.com/FluidInference/FluidAudio |
 | swift-argument-parser | 1.8.2 | Apache-2.0 | https://github.com/apple/swift-argument-parser |
