@@ -40,7 +40,7 @@ enum AnalysisPDF {
     private static let listIndent: CGFloat = 18
 
     private static let textColor = NSColor(white: 0.1, alpha: 1)
-    private static let secondaryColor = NSColor(white: 0.42, alpha: 1)
+    static let secondaryColor = NSColor(white: 0.42, alpha: 1)
     private static let ruleColor = NSColor(white: 0.78, alpha: 1)
     private static let headerFill = NSColor(white: 0.95, alpha: 1)
 
@@ -48,11 +48,8 @@ enum AnalysisPDF {
 
     /// «Сохранить как…» → PDF: системный диалог и запись файла.
     static func save(markdown: String, header: Header, suggestedName: String) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedName
-        panel.canCreateDirectories = true
-        panel.allowedContentTypes = [.pdf]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = SavePanel.chooseURL(suggestedName: suggestedName,
+                                            allowedContentTypes: [.pdf]) else { return }
         if !write(document(markdown: markdown, header: header), title: header.title, to: url) {
             NSLog("DOKA: не удалось сохранить PDF анализа: \(url.path)")
         }
@@ -350,7 +347,7 @@ private final class PageNumberedTextView: NSTextView {
         return NSAttributedString(
             string: "\(operation.currentPage) / \(operation.pageRange.length)",
             attributes: [.font: AnalysisPDF.font(8.5),
-                         .foregroundColor: NSColor(white: 0.42, alpha: 1),
+                         .foregroundColor: AnalysisPDF.secondaryColor,
                          .paragraphStyle: style])
     }
 }

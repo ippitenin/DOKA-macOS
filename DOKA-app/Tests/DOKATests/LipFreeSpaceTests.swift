@@ -40,9 +40,11 @@ final class LipFreeSpaceTests: XCTestCase {
 
     /// Опрос — не на вызывающем потоке.
     func testProbeRunsOffCallerThread() {
-        let caller = Thread.current
+        // Идентификатор, а не сам `Thread`: он Sendable, и замыкание опроса
+        // может его захватить без предупреждения.
+        let caller = ObjectIdentifier(Thread.current)
         let space = LipFreeSpace(probe: {
-            XCTAssertFalse(Thread.current == caller)
+            XCTAssertNotEqual(ObjectIdentifier(Thread.current), caller)
             return 5_000_000_000
         })
         refreshed(space)

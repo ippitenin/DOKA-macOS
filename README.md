@@ -219,10 +219,12 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 780 checks in a few seconds, and
-CI runs them on every pull request along with the build and a localisation check. Audio
-capture, pasting, Keychain and the recorder panels need a real Mac with real permissions,
-so those are verified by a manual smoke pass; `CLAUDE.md` lists what to check per area.
+Pure logic is covered by tests — `swift test` runs 817 checks in a few seconds, and
+CI runs them on every pull request along with the build and a localisation check. The
+local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
+see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder
+panels need a real Mac with real permissions, so those are verified by a manual smoke pass;
+`CLAUDE.md` lists what to check per area.
 
 Two things worth knowing before you change dependencies or strings:
 

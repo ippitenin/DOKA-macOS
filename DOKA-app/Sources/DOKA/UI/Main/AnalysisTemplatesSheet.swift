@@ -449,43 +449,24 @@ struct AnalysisTemplatesSheet: View {
         Task {
             // Чтение — вне главного потока: файл может лежать в iCloud.
             let files = await Task.detached {
-                urls.map { url in (url, try? Data(contentsOf: url)) }
+                urls.map { url in
+                    AnalysisTemplateTransfer.ImportFile(fileName: url.lastPathComponent,
+                                                        data: try? Data(contentsOf: url))
+                }
             }.value
             applyImport(files)
         }
     }
 
-    private func applyImport(_ files: [(URL, Data?)]) {
-        var names = AnalysisTemplateNames((builtins + settings.analysisTemplates).map(\.name))
-        var imported: [AnalysisTemplate] = []
-        var failures: [String] = []
-        for (url, data) in files {
-            let reason: String
-            if let data {
-                do {
-                    let templates = try AnalysisTemplateTransfer.parse(
-                        data, fallbackName: url.deletingPathExtension().lastPathComponent)
-                    for var template in templates {
-                        template.name = names.claim(template.name)
-                        imported.append(template)
-                    }
-                    continue
-                } catch AnalysisTemplateTransfer.ImportError.invalid(let message) {
-                    reason = message
-                } catch {
-                    reason = L("analysis.templates.import.notTemplate")
-                }
-            } else {
-                reason = L("analysis.templates.import.unreadable")
-            }
-            failures.append("\(url.lastPathComponent): \(reason)")
-        }
-        if let first = imported.first {
-            settings.analysisTemplates.append(contentsOf: imported)
+    private func applyImport(_ files: [AnalysisTemplateTransfer.ImportFile]) {
+        let outcome = AnalysisTemplateTransfer.importFiles(
+            files, existingNames: (builtins + settings.analysisTemplates).map(\.name))
+        if let first = outcome.templates.first {
+            settings.analysisTemplates.append(contentsOf: outcome.templates)
             draft = nil
             selectedID = first.id
         }
-        importFailures = failures
+        importFailures = outcome.failures.map { "\($0.fileName): \($0.reason.message)" }
     }
 
     /// Выбранный шаблон (и встроенный — его текстом на языке интерфейса) —
