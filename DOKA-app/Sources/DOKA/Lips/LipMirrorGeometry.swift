@@ -94,6 +94,37 @@ enum LipMirrorGeometry {
         }
     }
 
+    /// Сцена: наибольший прямоугольник с аспектом окна (`aspect` — высота к
+    /// ширине) по центру кадра камеры.
+    static func sceneRegion(camera: CGSize, aspect: CGFloat) -> CGRect {
+        var width = camera.width
+        var height = width * aspect
+        if height > camera.height {
+            height = camera.height
+            width = height / aspect
+        }
+        return CGRect(x: (camera.width - width) / 2, y: (camera.height - height) / 2,
+                      width: width, height: height)
+    }
+
+    /// Точка кадра камеры в картинке размера `size`, показывающей `region`.
+    /// Начало сверху слева у обоих; `size` — в любых единицах (пиксели
+    /// картинки или точки маски). `mirrored` — картинка отражена.
+    static func map(_ p: CGPoint, region: CGRect, size: CGSize, mirrored: Bool) -> CGPoint {
+        let sx = size.width / region.width, sy = size.height / region.height
+        let x = mirrored ? region.maxX - p.x : p.x - region.minX
+        return CGPoint(x: x * sx, y: (p.y - region.minY) * sy)
+    }
+
+    /// То же, что `map`, одним аффинным преобразованием для `CIImage` (начало
+    /// снизу слева у кадра и у картинки): переворот y, отражение и масштаб.
+    static func ciTransform(region: CGRect, camera: CGSize, size: CGSize, mirrored: Bool) -> CGAffineTransform {
+        let sx = size.width / region.width, sy = size.height / region.height
+        return CGAffineTransform(a: mirrored ? -sx : sx, b: 0, c: 0, d: sy,
+                                 tx: mirrored ? sx * region.maxX : -sx * region.minX,
+                                 ty: -sy * (camera.height - region.maxY))
+    }
+
     /// Во сколько раз область вокруг рта шире самого рта.
     static let zoom: CGFloat = 2.2
 

@@ -61,7 +61,7 @@ final class LipCapture: ObservableObject {
     private var lastFaceAt: Date?
     private var phaseTimer: Timer?
     /// Лица нет дольше — «Лица не видно».
-    private static let faceLostAfter: TimeInterval = 0.5
+    private static let faceLostAfter = LipMirrorCamera.lostAfter
     /// Кадров нет дольше — «Камера недоступна».
     private static let cameraLostAfter: TimeInterval = 2.5
 
