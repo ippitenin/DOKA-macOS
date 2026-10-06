@@ -52,6 +52,9 @@ final class LipDataStore: ObservableObject {
     let outcomes = PassthroughSubject<LipTakeOutcome, Never>()
 
     private let files: LipDataFiles
+    /// Выбросить дубль, который не удалось зафиксировать. Тесты подменяют —
+    /// чтобы не поднимать камеру.
+    private let discardTake: @MainActor (LipTake) -> Void
     /// Весь дисковый I/O стора. Не private — тесты придерживают её, чтобы
     /// воспроизвести гонки.
     let ioQueue = DispatchQueue(label: "com.pitenin.doka.lips.io", qos: .utility)
@@ -71,9 +74,12 @@ final class LipDataStore: ObservableObject {
     private var dataEpoch = 0
     private var started = false
 
-    /// `files` подменяют тесты; приложение работает через `shared` с папкой по умолчанию.
-    init(files: LipDataFiles = LipDataFiles()) {
+    /// `files` и `discardTake` подменяют тесты; приложение работает через
+    /// `shared` с папкой по умолчанию и камерой.
+    init(files: LipDataFiles = LipDataFiles(),
+         discardTake: @escaping @MainActor (LipTake) -> Void = { LipCapture.shared.discard($0) }) {
         self.files = files
+        self.discardTake = discardTake
     }
 
     private static var appVersion: String {
@@ -121,7 +127,7 @@ final class LipDataStore: ObservableObject {
             try files.linkAudio(audio.url, into: take.id)
         } catch {
             NSLog("DOKA: губы — звук дубля не сохранён: %@", error.localizedDescription)
-            LipCapture.shared.discard(take)
+            commitFailed(take)
             return
         }
         let timing = audio.timing
@@ -141,6 +147,7 @@ final class LipDataStore: ObservableObject {
                 try files.writeJob(job, for: take.id)
             } catch {
                 NSLog("DOKA: губы — заказ дубля не записан: %@", error.localizedDescription)
+                Task { @MainActor in self.commitFailed(take) }
                 return
             }
             Task { @MainActor in
@@ -148,6 +155,14 @@ final class LipDataStore: ObservableObject {
                 self.enqueueIfReady(take.id)
             }
         }
+    }
+
+    /// Фиксация не удалась — пары не будет: дубль выбрасывается, а исход
+    /// «данные потеряны» уходит подписчикам. Без него фраза тренировки
+    /// навсегда осталась бы «в обработке» и не вернулась в очередь.
+    private func commitFailed(_ take: LipTake) {
+        discardTake(take)
+        outcomes.send(.rejected(take.id, nil))
     }
 
     /// Дубль выброшен — забыть его, если одно из событий уже пришло.
