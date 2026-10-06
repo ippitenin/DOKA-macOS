@@ -164,8 +164,8 @@ final class AnalysisController: ObservableObject {
 
             let languageName = Self.languageName(request: request, body: body,
                                                  record: store.record(recordID))
-            let banCJK = !Self.isCJKLanguage(Self.languageCode(request: request, body: body,
-                                                              record: store.record(recordID)))
+            let banCJK = LLMGenerationOptions.banCJK(forLanguage: Self.languageCode(
+                request: request, body: body, record: store.record(recordID)))
             let template: AnalysisTemplateBody = {
                 switch request.kind {
                 case .template(let value): return .sections(value)
@@ -446,9 +446,5 @@ final class AnalysisController: ObservableObject {
         case .system:
             return Bundle.module.preferredLocalizations.first ?? "en"
         }
-    }
-
-    private static func isCJKLanguage(_ code: String) -> Bool {
-        ["zh", "ja", "ko"].contains(code.lowercased().prefix(2).description)
     }
 }

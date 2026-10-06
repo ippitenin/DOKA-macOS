@@ -18,6 +18,13 @@ extension KeyboardShortcuts.Name {
     static let openHistoryWindow = Self("openHistoryWindow")
     /// Включить/выключить тихий режим (диктовка шёпотом). Без дефолта.
     static let toggleQuietMode = Self("toggleQuietMode")
+
+    /// Все клавиши DOKA. Новый хоткей — сюда же: нажатие своей клавиши между
+    /// двумя вставками не считается вводом пользователя (`Paster`).
+    static let dokaShortcuts: [Self] = [
+        .toggleRecording, .pushToTalk, .pasteLast, .cancelRecording,
+        .openMainWindow, .openHistoryWindow, .toggleQuietMode
+    ]
 }
 
 /// Захват кнопки мыши в «Клавишах»: пока пользователь назначает кнопку,

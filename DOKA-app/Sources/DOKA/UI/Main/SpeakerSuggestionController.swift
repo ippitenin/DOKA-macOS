@@ -75,7 +75,7 @@ final class SpeakerSuggestionController: ObservableObject {
             phase = .ready(recordID: recordID, suggestions: .init(), coveredSeconds: nil)
             return
         }
-        let banCJK = !["zh", "ja", "ko"].contains(String((source.language ?? "").prefix(2)).lowercased())
+        let banCJK = LLMGenerationOptions.banCJK(forLanguage: source.language)
         task?.cancel()
         phase = .running(recordID: recordID)
         task = Task { [weak self] in

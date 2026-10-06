@@ -33,13 +33,6 @@ enum Paster {
     /// пользователя — иначе пробел не ставился бы никогда.
     private static let syntheticEventTag: Int64 = 0x444F_4B41   // «DOKA»
 
-    /// Клавиши самой DOKA: нажатие хоткея диктовки между двумя вставками
-    /// текста в поле не меняет и прошлую вставку не сбрасывает.
-    private static let ownShortcuts: [KeyboardShortcuts.Name] = [
-        .toggleRecording, .pushToTalk, .pasteLast, .cancelRecording,
-        .toggleQuietMode, .openMainWindow, .openHistoryWindow
-    ]
-
     /// Вставляет текст. При restoreClipboard прежнее содержимое буфера вернётся
     /// через ~0.9 с — если за это время буфер не менялся кем-то ещё. При
     /// `spacing` перед текстом встаёт пробел, если это продолжение прошлой
@@ -96,8 +89,10 @@ enum Paster {
             let shortcut = isKey ? KeyboardShortcuts.Shortcut(event: event) : nil
             Task { @MainActor in
                 if tag == syntheticEventTag { return }
-                if let shortcut,
-                   ownShortcuts.contains(where: { KeyboardShortcuts.getShortcut(for: $0) == shortcut }) {
+                // Хоткей самой DOKA текста в поле не меняет.
+                if let shortcut, KeyboardShortcuts.Name.dokaShortcuts.contains(where: {
+                    KeyboardShortcuts.getShortcut(for: $0) == shortcut
+                }) {
                     return
                 }
                 lastPaste = nil
