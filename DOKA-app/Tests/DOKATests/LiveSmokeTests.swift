@@ -252,6 +252,37 @@ final class LiveSmokeTests: XCTestCase {
                        "разрез фразы «…дождаться / финальных…» — один человек")
     }
 
+    // MARK: - ИИ-обработка диктовки вживую
+
+    /// Самоисправление понято, продиктованный вопрос остаётся вопросом, а не
+    /// получает ответ; оба ответа проходят проверку `validate`.
+    func testDictationCleanup() async throws {
+        let modelURL = ProcessInfo.processInfo.environment["DOKA_SMOKE_LLM"]
+            .map { URL(fileURLWithPath: $0) } ?? LocalModelStore.llmFile
+        try requireModel(modelURL, "языковая модель (DOKA_SMOKE_LLM)")
+        let engine = LocalLLMEngine()
+        try await engine.load(fileURL: modelURL)
+        let wishes = DictationCleanup.defaultWishes
+        func clean(_ raw: String) async throws -> String {
+            let options = LLMGenerationOptions(maxTokens: 256, sampling: .greedy, banCJK: true)
+            let result = try await engine.generate(DictationCleanup.messages(text: raw, wishes: wishes, rules: []),
+                                                   options: options, emit: { _ in })
+            log(String(format: "ИИ-обработка: «%@» → «%@», %.2f с", raw, result.text, result.seconds))
+            guard case .accept(let text) = DictationCleanup.validate(raw: raw, output: result.text, wishes: wishes) else {
+                XCTFail("ответ не прошёл проверку: \(result.text)")
+                return raw
+            }
+            return text
+        }
+        let meeting = try await clean("Давай встретимся в среду, нет, подожди, в четверг в три часа дня.")
+        let question = try await clean("Сколько будет два плюс два?")
+        await engine.unload()
+        XCTAssertTrue(meeting.contains("четверг"))
+        XCTAssertFalse(meeting.contains("сред"), "самоисправление: остаётся только четверг")
+        XCTAssertTrue(question.hasSuffix("?"), "вопрос остаётся вопросом, а не ответом")
+        XCTAssertFalse(question.contains("4") || question.lowercased().contains("четыре"))
+    }
+
     // MARK: - Шаблоны Memento вживую
 
     /// Все шаблоны установленного Memento импортируются без отказов.

@@ -101,6 +101,9 @@ final class SettingsStore: ObservableObject {
         static let skipSilentRecordings = "skipSilentRecordings"
         static let quietMode = "quietMode"
         static let applyDictionaryToFiles = "applyDictionaryToFiles"
+        static let dictationCleanup = "dictationCleanup"
+        static let cleanupWishes = "cleanupWishes"
+        static let cleanupRules = "cleanupRules"
         static let libraryRetentionNoticeDismissed = "libraryRetentionNoticeDismissed"
         static let saveTranscriptAudio = "saveTranscriptAudio"
         static let notifyFileTranscription = "notifyFileTranscription"
@@ -251,6 +254,21 @@ final class SettingsStore: ObservableObject {
     @Published var applyDictionaryToFiles: Bool {
         didSet { defaults.set(applyDictionaryToFiles, forKey: Key.applyDictionaryToFiles) }
     }
+    /// ИИ-обработка диктовки («Словарь» → «ИИ-обработка», см. `DictationCleanup`).
+    /// По умолчанию выключена: добавляет секунды к каждой диктовке и держит
+    /// языковую модель в памяти.
+    @Published var dictationCleanup: Bool {
+        didSet { defaults.set(dictationCleanup, forKey: Key.dictationCleanup) }
+    }
+    /// Включённые готовые пожелания. Хранятся строками: неизвестное значение
+    /// (из будущей версии) просто пропускается, а не обнуляет набор.
+    @Published var cleanupWishes: Set<DictationCleanup.Wish> {
+        didSet { defaults.set(cleanupWishes.map(\.rawValue).sorted(), forKey: Key.cleanupWishes) }
+    }
+    /// Свои пожелания словами («Менять GitHub на гитхаб»).
+    @Published var cleanupRules: [String] {
+        didSet { defaults.set(cleanupRules, forKey: Key.cleanupRules) }
+    }
     /// Эксперимент «Чтение по губам» («Расширенные»): показывает раздел «Губы»
     /// в сайдбаре. По умолчанию выключен — пока собранные пары нечем читать,
     /// никто не снимает себя впустую.
@@ -368,6 +386,7 @@ final class SettingsStore: ObservableObject {
             Key.skipSilentRecordings: true,
             Key.quietMode: false,
             Key.applyDictionaryToFiles: false,
+            Key.dictationCleanup: false,
             Key.saveTranscriptAudio: true,
             Key.notifyFileTranscription: true,
             Key.lipsExperiment: false,
@@ -381,6 +400,10 @@ final class SettingsStore: ObservableObject {
         lipsMirrorNotchVariant = defaults.string(forKey: Key.lipsMirrorNotchVariant)
             .flatMap(LipMirrorNotchVariant.init(rawValue:)) ?? .continuation
         applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
+        dictationCleanup = defaults.bool(forKey: Key.dictationCleanup)
+        cleanupWishes = defaults.stringArray(forKey: Key.cleanupWishes)
+            .map { Set($0.compactMap(DictationCleanup.Wish.init(rawValue:))) } ?? DictationCleanup.defaultWishes
+        cleanupRules = defaults.stringArray(forKey: Key.cleanupRules) ?? []
         libraryRetentionNoticeDismissed = defaults.bool(forKey: Key.libraryRetentionNoticeDismissed)
         saveTranscriptAudio = defaults.bool(forKey: Key.saveTranscriptAudio)
         language = defaults.string(forKey: Key.language) ?? "ru"

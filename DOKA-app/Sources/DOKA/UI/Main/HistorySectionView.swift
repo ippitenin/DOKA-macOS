@@ -597,6 +597,22 @@ private struct HistoryDetailInspector: View {
             }
             .glassSurface()
 
+            // Текст до ИИ-обработки — видно, что именно модель поправила.
+            if let raw = record.rawText, raw != record.text {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L("history.inspector.rawText"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(raw)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassSurface()
+            }
+
             // Кнопка есть только когда сохранение включено и файл на месте — иначе показывать нечего.
             if settings.saveAudio, let url = record.audioURL {
                 Button {
