@@ -68,8 +68,14 @@ application bundle.
 |---|---|---|
 | Whisper large-v3-turbo (OpenAI) | MIT | https://huggingface.co/openai/whisper-large-v3-turbo |
 | Parakeet TDT 0.6B v3 (NVIDIA) | CC-BY-4.0 | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 |
-| Speaker diarization, Core ML (FluidInference) | CC-BY-4.0 | https://huggingface.co/FluidInference/speaker-diarization-coreml |
+| Speaker diarization with an exact speaker count (pyannote community-1), Core ML (FluidInference) | CC-BY-4.0 | https://huggingface.co/FluidInference/speaker-diarization-coreml |
+| Nemotron 3 Diarization (NVIDIA), Core ML (FluidInference) | OpenMDW-1.1 | https://huggingface.co/FluidInference/nemotron-3-diarization-coreml |
 | Qwen3.5-4B, GGUF Q4_K_M (Alibaba Cloud) | Apache-2.0 | https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF |
+
+*nemotron-3-diarization-coreml* by FluidInference is a Core ML conversion of
+[nvidia/Nemotron-3-Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) by NVIDIA.
+Use of the model is governed by the
+[OpenMDW License Agreement, version 1.1](https://openmdw.ai/license/1-1/).
 
 The GGUF build of *Qwen3.5-4B* is a quantization by
 [lmstudio-community](https://huggingface.co/lmstudio-community) of

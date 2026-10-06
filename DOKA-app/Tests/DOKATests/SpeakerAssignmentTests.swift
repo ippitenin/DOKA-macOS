@@ -172,4 +172,101 @@ final class SpeakerAssignmentTests: XCTestCase {
         XCTAssertTrue(fine.segments.allSatisfy { $0.speaker != nil })
         XCTAssertEqual(Set(fine.segments.compactMap(\.speaker)), ["speaker_0", "speaker_1"])
     }
+
+    // MARK: - Островки (дрожание разметки)
+
+    /// Слова подряд по 0,4 с вплотную; `pauses[i]` — пауза перед i-м словом.
+    /// Интервалы диаризатора — ровно по словам, со спикерами из `speakers`.
+    private func scene(_ texts: [String], _ speakers: [String],
+                       pauses: [Int: Double] = [:]) -> (words: [TranscriptWord], spans: [SpeakerSpan]) {
+        var time = 0.0
+        var words: [TranscriptWord] = []
+        for (index, text) in texts.enumerated() {
+            time += pauses[index] ?? 0
+            words.append(word(text, time, time + 0.4))
+            time += 0.4
+        }
+        let spans = zip(words, speakers).map { span($1, $0.start, $0.end) }
+        return (words, spans)
+    }
+
+    private func applyToOneSegment(_ scene: (words: [TranscriptWord], spans: [SpeakerSpan]),
+                                   text: String) -> [TranscriptSegment] {
+        SpeakerAssignment.apply(spans: scene.spans, words: scene.words,
+                                segments: [segment(text, 0, scene.words.last!.end)])
+    }
+
+    /// Слово посреди фразы, отданное другому человеку, возвращается соседу —
+    /// и сегмент сохраняет исходный текст целиком.
+    func testMidPhraseIslandGoesToNeighbour() {
+        let text = "Американская, стайсик, и мне нравится"
+        let result = applyToOneSegment(scene(text.components(separatedBy: " "),
+                                             ["A", "B", "A", "A", "A"]), text: text)
+        XCTAssertEqual(result.map(\.speaker), ["A"])
+        XCTAssertEqual(result[0].text, text)
+    }
+
+    /// Короткий ответ между предложениями — настоящая реплика.
+    func testShortReplyBetweenSentencesSurvives() {
+        let result = applyToOneSegment(scene(["бьётся.", "Логично.", "Идём", "дальше."],
+                                             ["A", "B", "A", "A"]),
+                                       text: "бьётся. Логично. Идём дальше.")
+        XCTAssertEqual(result.map(\.speaker), ["A", "B", "A"])
+        XCTAssertEqual(result.map(\.text), ["бьётся.", "Логично.", "Идём дальше."])
+    }
+
+    /// Граница только с одной стороны — не реплика, а дрожание.
+    func testIslandWithBoundaryOnOneSideIsMerged() {
+        let result = applyToOneSegment(scene(["бьётся.", "Логично", "идём", "дальше."],
+                                             ["A", "B", "A", "A"]),
+                                       text: "бьётся. Логично идём дальше.")
+        XCTAssertEqual(result.map(\.speaker), ["A"])
+    }
+
+    /// Паузы с обеих сторон — граница даже без знаков препинания (у сетевых
+    /// сервисов слова бывают без пунктуации); паузы короче порога — нет.
+    func testPausesOnBothSidesKeepIsland() {
+        let long = SpeakerAssignment.islandPause + 0.1
+        let kept = applyToOneSegment(scene(["так", "да", "вот", "и"], ["A", "B", "A", "A"],
+                                           pauses: [1: long, 2: long]),
+                                     text: "так да вот и")
+        XCTAssertEqual(kept.map(\.speaker), ["A", "B", "A"])
+
+        let short = SpeakerAssignment.islandPause - 0.1
+        let merged = applyToOneSegment(scene(["так", "да", "вот", "и"], ["A", "B", "A", "A"],
+                                             pauses: [1: short, 2: short]),
+                                       text: "так да вот и")
+        XCTAssertEqual(merged.map(\.speaker), ["A"])
+    }
+
+    /// Три слова подряд — уже не островок, даже посреди фразы.
+    func testThreeWordRunIsNotAnIsland() {
+        let result = applyToOneSegment(scene(["раз", "два", "три", "четыре", "пять"],
+                                             ["A", "B", "B", "B", "A"]),
+                                       text: "раз два три четыре пять")
+        XCTAssertEqual(result.map(\.speaker), ["A", "B", "A"])
+    }
+
+    /// Островок — только между речью ОДНОГО и того же человека; на краю
+    /// записи и между двумя разными соседями слова остаются как есть.
+    func testRunsAtEdgesOrBetweenDifferentSpeakersStay() {
+        let edge = applyToOneSegment(scene(["да", "так", "вот", "и"], ["B", "A", "A", "A"]),
+                                     text: "да так вот и")
+        XCTAssertEqual(edge.map(\.speaker), ["B", "A"])
+        let between = applyToOneSegment(scene(["раз", "два", "три", "четыре"], ["A", "B", "C", "C"]),
+                                        text: "раз два три четыре")
+        XCTAssertEqual(between.map(\.speaker), ["A", "B", "C"])
+    }
+
+    /// Островок на стыке двух сегментов (у Whisper они короткие) виден только
+    /// по всей записи: изнутри второго сегмента у слова нет соседа слева.
+    func testIslandAcrossSegmentBoundaryIsMerged() {
+        let s = scene(["Американская,", "стайсик,", "и", "мне", "нравится"], ["A", "B", "A", "A", "A"])
+        let result = SpeakerAssignment.apply(
+            spans: s.spans, words: s.words,
+            segments: [segment("Американская,", 0, s.words[0].end),
+                       segment("стайсик, и мне нравится", s.words[1].start, s.words[4].end)])
+        XCTAssertEqual(result.map(\.speaker), ["A", "A"])
+        XCTAssertEqual(result[1].text, "стайсик, и мне нравится")
+    }
 }

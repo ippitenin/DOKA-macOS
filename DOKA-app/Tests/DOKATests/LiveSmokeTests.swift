@@ -96,8 +96,8 @@ final class LiveSmokeTests: XCTestCase {
 
     // MARK: - Parakeet + локальная диаризация
 
-    /// Диалог двух голосов: диаризатор находит двоих и в «Авто», и с
-    /// подсказкой; реплики одного голоса — у одного спикера; спикеры
+    /// Диалог двух голосов: диаризатор находит двоих и в «Авто» (Nemotron),
+    /// и с подсказкой (pyannote); реплики одного голоса — у одного спикера; спикеры
     /// переживают все детализации и доходят до экспортов.
     func testParakeetWithLocalDiarization() async throws {
         let dialog = try await Self.dialog()
@@ -327,7 +327,8 @@ final class LiveSmokeTests: XCTestCase {
     private static func dialog() async throws -> Dialog {
         if let cachedDialog { return cachedDialog }
         try requireParakeet()
-        try requireModel(LocalModelStore.diarizerModelFolder, "диаризатор")
+        try requireModel(LocalModelStore.diarizerModelFolder, "диаризатор pyannote")
+        try requireModel(LocalModelStore.nemotronFolder, "диаризатор Nemotron")
 
         var turns = dialogScript
         let wavURL = try workFolder().appendingPathComponent("dialog.wav")

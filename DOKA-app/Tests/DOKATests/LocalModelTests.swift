@@ -119,6 +119,15 @@ final class LocalModelTests: XCTestCase {
                        LocalModelStore.diarizerFolder.path)
     }
 
+    /// Nemotron — в той же папке диаризатора, под именем репозитория (так его
+    /// раскладывает `loadFromHuggingFace(cacheDirectory:)`): удаление и
+    /// подсчёт размера «модели разделения» берут обе модели разом.
+    func testNemotronLivesInsideDiarizerFolder() {
+        XCTAssertEqual(LocalModelStore.nemotronFolder.lastPathComponent, "nemotron-3-diarization")
+        XCTAssertEqual(LocalModelStore.nemotronFolder.deletingLastPathComponent().path,
+                       LocalModelStore.diarizerFolder.path)
+    }
+
     /// Все ресурсы лежат в ФИКСИРОВАННОЙ папке моделей и НЕ следуют за
     /// пользовательской «Папкой данных»: это перекачиваемый кеш, а перенос
     /// полутора гигабайт сделал бы миграцию блокирующей.
