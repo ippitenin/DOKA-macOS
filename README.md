@@ -34,9 +34,10 @@ written in Russian.
 
 ## Features
 
-- **Voice dictation** — global hotkey (or push-to-talk, or a mouse button) → recording →
-  transcription → dictionary replacements → text pasted into the active app through the
-  clipboard and a synthetic ⌘V.
+- **Voice dictation** — global hotkey (or push-to-talk, a mouse button, or the Fn/🌐 key) →
+  recording → transcription → dictionary replacements → text pasted into the active app through
+  the clipboard and a synthetic ⌘V. Two dictations in a row into the same field get a space
+  between them, so the words don't run together.
 - **Recording panel** — six styles. `aurora` and `mini` are a glowing droplet built on Metal
   shaders in the spirit of Liquid Glass: the wave inside answers your voice in both amplitude
   and speed, the glass refracts light at the rim, and while transcribing the droplet springs
