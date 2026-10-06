@@ -36,7 +36,9 @@ written in Russian.
 
 - **Voice dictation** — global hotkey (or push-to-talk, or a mouse button) → recording →
   transcription → dictionary replacements → text pasted into the active app through the
-  clipboard and a synthetic ⌘V.
+  clipboard and a synthetic ⌘V. Optional AI cleanup on your Mac removes stumbles,
+  understands self-corrections ("Wednesday, no, Thursday"), turns spoken punctuation into
+  marks and follows your own wishes ("start with a lowercase letter").
 - **Recording panel** — six styles. `aurora` and `mini` are a glowing droplet built on Metal
   shaders in the spirit of Liquid Glass: the wave inside answers your voice in both amplitude
   and speed, the glass refracts light at the rim, and while transcribing the droplet springs
