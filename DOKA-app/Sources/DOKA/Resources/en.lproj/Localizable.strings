@@ -163,6 +163,8 @@
 "general.uiLanguage" = "Interface language:";
 "general.transcriptionLanguage" = "Transcription language:";
 "general.restoreClipboard" = "Restore the clipboard after pasting";
+"general.smartSpacing" = "Space between dictations";
+"general.smartSpacing.help" = "When you dictate twice in a row into the same field, DOKA adds a space between the phrases so the words don't run together. No space is added if you typed, clicked, switched apps or more than three minutes passed between dictations.";
 "general.launchAtLogin" = "Launch at login";
 "general.recorderPanel" = "Recording panel";
 "general.restartAlert.title" = "Restart DOKA";
@@ -232,6 +234,13 @@
 "hotkeys.pushToTalk.hint" = "Hold the shortcut to record; release to transcribe and paste.";
 "hotkeys.mouseButton" = "Mouse button:";
 "hotkeys.mouseButton.hint" = "A side mouse button starts and stops dictation — handy for MX Master-style mice.";
+"hotkeys.fnKey" = "Fn key (🌐)";
+"hotkeys.fnKey.hint" = "Dictate with the Fn key alone. Hold: speak while holding it, then release. Press: a short press starts recording, another one stops it. Fn with arrows, Delete and F-keys works as before. Some external keyboards never send Fn to the system — it won't work there.";
+"hotkeys.fnKey.systemConflict" = "macOS also reacts to 🌐 — it switches the input source, opens emoji or dictation. In Keyboard settings choose “Press 🌐 key to: Do Nothing”.";
+"hotkeys.fnKey.openKeyboardSettings" = "Keyboard Settings";
+"hotkeys.fn.off" = "Off";
+"hotkeys.fn.hold" = "Hold";
+"hotkeys.fn.toggle" = "Press";
 "hotkeys.mouseButton.assign" = "Add";
 "hotkeys.mouseButton.listening" = "Press a button…";
 "hotkeys.mouseButton.assigned" = "Button %d";

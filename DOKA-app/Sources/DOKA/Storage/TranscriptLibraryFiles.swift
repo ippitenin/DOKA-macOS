@@ -19,7 +19,7 @@ struct LibraryIndexFile: Codable {
 ///   <UUID>/meta.json        FileTranscriptRecord — источник правды
 ///   <UUID>/transcript.json  TranscriptBody (есть только у готовых)
 ///   <UUID>/text.txt         плоский текст для поиска
-///   <UUID>/audio.m4a        архив звука (audio.m4a.part — пока кодируется)
+///   <UUID>/audio.m4a        архив звука (audio.part.m4a — пока кодируется)
 ///   <UUID>.deleting-<uuid>  корзина фонового удаления
 /// ```
 /// Весь дисковый ввод-вывод идёт через ОДНУ последовательную очередь: чтение,
@@ -33,6 +33,13 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
     static let bodyFileName = "transcript.json"
     static let textFileName = "text.txt"
     static let audioFileName = "audio.m4a"
+    /// Недописанный архив. Расширение — ОБЯЗАТЕЛЬНО `.m4a`: `AVAudioFile` выбирает
+    /// контейнер по расширению, и при прежнем имени `audio.m4a.part` выходил
+    /// CAF под именем `audio.m4a`, который `AVURLAsset` не открывает («нет
+    /// звуковой дорожки» у «Повторить» из архива и «Распознать заново»).
+    static let audioPartFileName = "audio.part.m4a"
+    /// Прежнее имя недописанного архива — только для подчистки огрызков.
+    static let legacyAudioPartFileName = "audio.m4a.part"
     /// Журнал v1 в корне папки данных: читается один раз для миграции.
     static let legacyFileName = "transcripts.json"
     /// Резервная копия v1 после миграции — откат на прошлую версию не теряет
@@ -61,7 +68,25 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
     func textURL(_ id: UUID) -> URL { folder(for: id).appendingPathComponent(Self.textFileName) }
     func audioURL(_ id: UUID) -> URL { folder(for: id).appendingPathComponent(Self.audioFileName) }
     func audioPartURL(_ id: UUID) -> URL {
-        folder(for: id).appendingPathComponent(Self.audioFileName + ".part")
+        folder(for: id).appendingPathComponent(Self.audioPartFileName)
+    }
+
+    /// Архив внутри — CAF (записан до исправления имени `.part`, см.
+    /// `audioPartFileName`). Узнаём по сигнатуре `caff` в первых байтах.
+    nonisolated static func isCAF(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: 4)) == Data("caff".utf8)
+    }
+
+    /// Записи из `ids`, чей архив лежит CAF, — на очереди, после уже
+    /// поставленных операций.
+    func cafArchiveIDs(_ ids: [UUID]) async -> [UUID] {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                continuation.resume(returning: ids.filter { Self.isCAF(audioURL($0)) })
+            }
+        }
     }
 
     /// Архив звука записи, если он реально лежит на диске.
@@ -403,7 +428,8 @@ final class TranscriptLibraryFiles: @unchecked Sendable {
                     continue
                 }
                 guard let id = UUID(uuidString: name) else { continue }
-                try? fm.removeItem(at: url.appendingPathComponent(Self.audioFileName + ".part"))
+                try? fm.removeItem(at: url.appendingPathComponent(Self.audioPartFileName))
+                try? fm.removeItem(at: url.appendingPathComponent(Self.legacyAudioPartFileName))
                 let hasMeta = fm.fileExists(atPath: url.appendingPathComponent(Self.metaFileName).path)
                 if !hasMeta && !knownIDs.contains(id), (url.contentModificationDate ?? .distantPast) < launch {
                     try? fm.removeItem(at: url)

@@ -184,7 +184,8 @@ final class DictationController: ObservableObject {
         }
         Task {
             do {
-                try await Paster.paste(text, restoreClipboard: settings.restoreClipboard)
+                try await Paster.paste(text, restoreClipboard: settings.restoreClipboard,
+                                       spacing: settings.smartSpacing)
             } catch {
                 showError(error.localizedDescription)
             }
@@ -468,7 +469,8 @@ final class DictationController: ObservableObject {
                 return
             }
             do {
-                try await Paster.paste(text, restoreClipboard: settings.restoreClipboard)
+                try await Paster.paste(text, restoreClipboard: settings.restoreClipboard,
+                                       spacing: settings.smartSpacing)
                 guard generation == gen else { return }
                 transition(to: .idle)
             } catch {

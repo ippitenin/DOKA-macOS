@@ -364,6 +364,43 @@ final class TranscriptHistoryStore: ObservableObject {
         }
     }
 
+    /// Архивы, записанные до исправления имени `.part`, лежат CAF под именем
+    /// `audio.m4a`: плеер их играет, а `AVURLAsset` не открывает, и «Повторить»
+    /// из архива и «Распознать заново» без исходника падали «нет звуковой
+    /// дорожки». Один раз на старте перепаковываем их в M4A (AAC тот же).
+    /// По одной записи, задачами стора: удаление записи или стирание аудио
+    /// отменяет перепаковку, перенос «Папки данных» её дожидается.
+    func repairLegacyArchives() {
+        guard !isFrozen else { return }
+        let ids = records.filter { $0.audioFileName != nil }.map(\.id)
+        guard !ids.isEmpty else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            for id in await self.files.cafArchiveIDs(ids) {
+                guard !self.isFrozen, self.record(id) != nil, self.audioTasks[id] == nil else { continue }
+                let source = self.files.audioURL(id)
+                let part = self.files.audioPartURL(id)
+                let task = Task { [weak self] in
+                    do {
+                        try await SourceAudioArchiver.remuxCAF(source, to: part)
+                        guard let self, !Task.isCancelled else { return }
+                        _ = await self.files.commitAudio(id)
+                    } catch {
+                        if !(error is CancellationError) {
+                            NSLog("DOKA: архив звука не перепакован: \(error.localizedDescription)")
+                        }
+                        try? FileManager.default.removeItem(at: part)
+                    }
+                    // Отменённую задачу из реестра убрал отменивший (см. archiveAudio).
+                    guard !Task.isCancelled else { return }
+                    self?.audioTasks[id] = nil
+                }
+                self.audioTasks[id] = task
+                await task.value
+            }
+        }
+    }
+
     /// Стереть звук одной записи (меню записи): расшифровка и анализы остаются.
     func removeAudio(_ id: UUID) {
         guard !isFrozen, record(id) != nil else { return }

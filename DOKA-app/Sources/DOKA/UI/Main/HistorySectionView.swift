@@ -112,7 +112,9 @@ struct HistorySectionView: View {
             Button {
                 confirmClearAll = true
             } label: {
+                // Высота капсулы фиксирована: перенос подписи её бы обрезал.
                 Label(L("history.clear"), systemImage: "trash")
+                    .fixedSize()
                     .foregroundStyle(history.records.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.red))
                     .padding(.horizontal, 12)
                     .frame(height: 30)
