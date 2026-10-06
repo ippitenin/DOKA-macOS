@@ -256,6 +256,17 @@
 "dictionary.from" = "Text to replace";
 "dictionary.to" = "Replacement";
 "dictionary.add" = "Add rule";
+"cleanup.toggle" = "AI cleanup of dictation";
+"cleanup.toggle.help" = "The language model on this Mac tidies up what you dictate: removes stumbles, understands self-corrections (“on Wednesday, no, Thursday” → “on Thursday”), turns spoken “period”, “comma”, “new line” into punctuation and writes numbers as digits. Adds about a second to a typical dictation, a few seconds to a long one. If the model is busy or the answer looks odd, the original text is pasted. Dictionary rules apply after the cleanup. The original text is shown in History.";
+"cleanup.modelNeeded" = "Cleanup needs the language model on this Mac.";
+"cleanup.lowMemory" = "This Mac has less than 16 GB of memory: cleanup doesn't work with on-device recognition (two models won't fit). It works with a cloud service.";
+"cleanup.rule.placeholder" = "Your own wish, e.g. “Write GitHub in lowercase”";
+"cleanup.rule.add" = "Add";
+"cleanup.rule.delete" = "Delete wish";
+"cleanup.wish.removeFillers" = "No filler words";
+"cleanup.wish.lowercaseStart" = "Lowercase start";
+"cleanup.wish.finalPeriod" = "Period at the end";
+"cleanup.wish.shorter" = "Keep it short";
 "dictionary.delete" = "Delete rule";
 "dictionary.insideWords.badge" = "in words";
 "dictionary.more" = "Actions";
@@ -314,6 +325,7 @@
 "history.inspector.microphone" = "Microphone";
 "history.inspector.model" = "Model";
 "history.inspector.provider" = "Provider";
+"history.inspector.rawText" = "Before AI cleanup";
 "history.inspector.showInFinder" = "Show in Finder";
 
 /* Recorder panel */

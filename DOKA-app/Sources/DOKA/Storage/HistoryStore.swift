@@ -19,6 +19,10 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
     let microphone: String?
     let transcriptionTime: TimeInterval?   // latency распознавания, сек
     let audioFileName: String?     // "<id>.m4a" в AudioStore, либо nil
+    /// Распознанный текст ДО ИИ-обработки, если она его изменила; nil — не
+    /// обрабатывали или правки не было. `var` с дефолтом: прежние вызовы
+    /// memberwise-init не меняются, старая история читается.
+    var rawText: String? = nil
 }
 
 extension TranscriptionRecord {
@@ -52,11 +56,13 @@ final class HistoryStore: ObservableObject {
     func add(id: UUID = UUID(), text: String, duration: TimeInterval, language: String,
              speechDuration: TimeInterval? = nil, model: String? = nil,
              provider: String? = nil, microphone: String? = nil,
-             transcriptionTime: TimeInterval? = nil, audioFileName: String? = nil) -> UUID {
+             transcriptionTime: TimeInterval? = nil, audioFileName: String? = nil,
+             rawText: String? = nil) -> UUID {
         let record = TranscriptionRecord(
             id: id, text: text, date: Date(), duration: duration, language: language,
             speechDuration: speechDuration, model: model, provider: provider,
-            microphone: microphone, transcriptionTime: transcriptionTime, audioFileName: audioFileName
+            microphone: microphone, transcriptionTime: transcriptionTime, audioFileName: audioFileName,
+            rawText: rawText
         )
         records.insert(record, at: 0)
         if records.count > Self.limit {

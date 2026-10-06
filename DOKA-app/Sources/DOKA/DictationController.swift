@@ -281,6 +281,12 @@ final class DictationController: ObservableObject {
             LocalEngineManager.shared.unloadLLM()
         }
 
+        // ИИ-обработка: модель грузится, пока человек говорит (из кэша —
+        // около секунды), и к концу распознавания уже готова.
+        if cleanupAllowed(route: settings.isLocalService ? .local : .remote) {
+            Task { _ = try? await LocalEngineManager.shared.llmEngine() }
+        }
+
         // Диктовка важнее тренировки губ: идущая фраза окна «Тренировка»
         // выбрасывается, камера и микрофон — диктовке.
         if settings.lipsExperiment {
@@ -422,7 +428,11 @@ final class DictationController: ObservableObject {
                 showError(L("error.noSpeech"), sound: .cancel)
                 return
             }
-            let text = ReplacementEngine.apply(raw, rules: settings.replacements)
+            // ИИ-обработка — после фильтра галлюцинаций и ДО словаря: правила
+            // пользователя главнее правки модели. Подпись губ — сырой `raw`.
+            let cleaned = await cleanUp(raw, route: route, language: requestLanguage)
+            guard generation == gen else { return }   // Esc во время обработки
+            let text = ReplacementEngine.apply(cleaned ?? raw, rules: settings.replacements)
             // Кодируем аудио в m4a ДО выхода (settle уберёт исходный WAV). id фиксируем заранее,
             // чтобы имя файла и запись истории гарантированно совпадали. Если сохранение аудио
             // выключено — кодирование пропускаем целиком, и вставка не ждёт его (быстрее).
@@ -439,7 +449,7 @@ final class DictationController: ObservableObject {
             history.add(id: recordID, text: text, duration: audio.duration, language: language,
                         speechDuration: audio.statsSpeechDuration, model: modelTag, provider: providerRaw,
                         microphone: audio.microphone, transcriptionTime: transcriptionTime,
-                        audioFileName: audioName)
+                        audioFileName: audioName, rawText: cleaned.map { _ in raw })
             // Без времени речи (шёпот) запись не входит в «Скорость речи».
             stats.record(text: text, duration: audio.duration,
                          speechDuration: audio.statsSpeechDuration ?? 0)
@@ -474,6 +484,85 @@ final class DictationController: ObservableObject {
             guard generation == gen else { return }
             outcome = .failed(error.localizedDescription)
             showError(error.localizedDescription)
+        }
+    }
+
+    // MARK: - ИИ-обработка
+
+    private enum CleanupRoute { case local, remote }
+
+    /// Можно ли обрабатывать сейчас: включено, модель скачана и не занята
+    /// анализом или подсказкой имён (контекст один, а диктовка ждать минуты
+    /// не должна), а на маке с малой ОЗУ — только при сетевом распознавании:
+    /// речевая и языковая модели вместе уводят его в своп.
+    private func cleanupAllowed(route: CleanupRoute) -> Bool {
+        guard settings.dictationCleanup, LocalModelStore.shared.isDownloaded(.llm) else { return false }
+        guard !AnalysisController.shared.isRunning, !SpeakerSuggestionController.shared.isRunning else { return false }
+        if route == .local && LLMModelSpec.isLowMemoryMac { return false }
+        return true
+    }
+
+    /// Правка модели; nil — правки нет, вставляется сырой текст: обработка
+    /// выключена или недоступна, модель ещё грузится, таймаут, ответ оборван
+    /// или не прошёл проверку (`DictationCleanup.validate`). Диктовка важнее
+    /// правки — ошибкой это не бывает никогда.
+    private func cleanUp(_ raw: String, route: ServiceRoute, language: String?) async -> String? {
+        let routeKind: CleanupRoute
+        if case .local = route { routeKind = .local } else { routeKind = .remote }
+        guard cleanupAllowed(route: routeKind) else { return nil }
+        let manager = LocalEngineManager.shared
+        // Модель не в памяти (первая загрузка после скачивания компилирует
+        // кернелы) — эту диктовку не задерживаем, грузим к следующей.
+        guard manager.isLLMLoaded else {
+            Task { _ = try? await manager.llmEngine() }
+            NSLog("DOKA: ИИ-обработка пропущена — модель ещё загружается")
+            return nil
+        }
+        let wishes = settings.cleanupWishes
+        let rules = settings.cleanupRules
+        let glossary = DictationCleanup.glossary(from: settings.replacements)
+        let words = raw.dokaWordCount
+        let banCJK = !["zh", "ja", "ko"].contains(language ?? "")
+        let started = Date()
+        do {
+            let engine = try await manager.llmEngine()
+            manager.beginLLMUse()
+            defer { manager.endLLMUse() }
+            let inputTokens = try await engine.countTokens([raw]).first ?? words * 2
+            let options = LLMGenerationOptions(maxTokens: DictationCleanup.maxTokens(inputTokens: inputTokens),
+                                               sampling: .greedy, banCJK: banCJK)
+            let messages = DictationCleanup.messages(text: raw, wishes: wishes, rules: rules, glossary: glossary)
+            // Таймаут: генерация проверяет отмену на каждом токене, поэтому
+            // по истечении времени она обрывается почти сразу.
+            let result = try await withThrowingTaskGroup(of: LLMGenerationResult?.self) { group in
+                group.addTask { try await engine.generate(messages, options: options, emit: { _ in }) }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(DictationCleanup.timeout(words: words)))
+                    return nil
+                }
+                let first = try await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            guard let result else {
+                NSLog("DOKA: ИИ-обработка не уложилась в %.0f с — вставлен исходный текст",
+                      DictationCleanup.timeout(words: words))
+                return nil
+            }
+            guard !result.truncated else { return nil }
+            switch DictationCleanup.validate(raw: raw, output: result.text, wishes: wishes) {
+            case .accept(let text):
+                NSLog("DOKA: ИИ-обработка %d слов за %.2f с", words, Date().timeIntervalSince(started))
+                return text == raw ? nil : text
+            case .reject(let reason):
+                NSLog("DOKA: ИИ-обработка отклонена (%@) — вставлен исходный текст", reason.rawValue)
+                return nil
+            }
+        } catch {
+            if !(error is CancellationError) {
+                NSLog("DOKA: ИИ-обработка не удалась: %@", error.localizedDescription)
+            }
+            return nil
         }
     }
 
