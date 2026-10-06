@@ -279,6 +279,11 @@ final class DictationController: ObservableObject {
             LocalEngineManager.shared.unloadLLM()
         }
 
+        // Диктовка важнее тренировки губ: идущая фраза окна «Тренировка»
+        // выбрасывается, камера и микрофон — диктовке.
+        if settings.lipsExperiment {
+            LipTrainingController.shared.interruptForDictation()
+        }
         // Камера — раньше аудиодвижка: она прогревается дольше, и так
         // выигрывает у него 50–150 мс. Нет сбора или камеры — дубля нет,
         // диктовка от этого не зависит.

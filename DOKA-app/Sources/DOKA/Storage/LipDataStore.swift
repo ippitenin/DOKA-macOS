@@ -1,4 +1,19 @@
+import Combine
 import Foundation
+
+/// Чем кончилась обработка дубля — для окна «Тренировка»: оно показывает
+/// судьбу прошлой фразы и возвращает отброшенную в очередь.
+enum LipTakeOutcome: Equatable {
+    case saved(UUID)
+    /// nil — не решение по паре, а потерянные данные (сырьё пропало, сбой записи).
+    case rejected(UUID, LipRejectReason?)
+
+    var id: UUID {
+        switch self {
+        case .saved(let id), .rejected(let id, _): return id
+        }
+    }
+}
 
 /// Хранилище пар «губы + текст» (эксперимент «Губы»).
 ///
@@ -15,12 +30,13 @@ final class LipDataStore: ObservableObject {
     struct Summary: Equatable {
         var voice = 0
         var whisper = 0
+        var silent = 0
         var pending = 0
         var bytes: Int64 = 0
         var stats = LipStats()
         var loaded = false
 
-        var pairs: Int { voice + whisper }
+        var pairs: Int { voice + whisper + silent }
         /// Есть что стирать: пары, очередь, счётчики или байты сырья.
         var hasData: Bool { pairs > 0 || pending > 0 || bytes > 0 || stats != LipStats() }
         var rejected: [(reason: LipRejectReason, count: Int)] {
@@ -32,6 +48,8 @@ final class LipDataStore: ObservableObject {
     }
 
     @Published private(set) var summary = Summary()
+    /// Исход каждого обработанного дубля (на главном потоке).
+    let outcomes = PassthroughSubject<LipTakeOutcome, Never>()
 
     private let files: LipDataFiles
     /// Весь дисковый I/O стора. Не private — тесты придерживают её, чтобы
@@ -113,7 +131,10 @@ final class LipDataStore: ObservableObject {
                          quietSpeechSeconds: audio.quietSpeechDuration, quiet: audio.quiet,
                          microphone: audio.microphone, hostStart: timing?.hostStart,
                          inputLatency: timing?.inputLatency ?? 0, speechOnset: timing?.speechOnset,
-                         maxClockDrift: timing?.maxClockDrift ?? 0)
+                         maxClockDrift: timing?.maxClockDrift ?? 0,
+                         // Диктовку пишем без этих ключей — `job.json` как раньше.
+                         source: caption.source == .dictation ? nil : caption.source,
+                         mode: caption.mode)
         let files = self.files
         ioQueue.async {
             do {
@@ -183,6 +204,7 @@ final class LipDataStore: ObservableObject {
         guard let (job, log) = inputs else {
             // Сырьё пропало или битое — выбросить, без счётчика: это не решение по паре.
             ioQueue.async { files.reject(id: id) }
+            outcomes.send(.rejected(id, nil))
             return
         }
 
@@ -222,24 +244,33 @@ final class LipDataStore: ObservableObject {
 
         let headMissing: Bool
         if case .keep(let missing) = plan.verdict { headMissing = missing } else { headMissing = false }
-        await onIO {
+        let saved: Bool = await onIO {
             do {
-                if try files.commit(id: id, meta: meta), headMissing {
+                let committed = try files.commit(id: id, meta: meta)
+                if committed, headMissing {
                     var stats = files.readStats()
                     stats.headMissing += 1
                     files.writeStats(stats)
                 }
+                return committed
             } catch {
                 NSLog("DOKA: губы — пара %@ не зафиксирована: %@", id.uuidString, error.localizedDescription)
                 files.reject(id: id)
+                return false
             }
+        }
+        guard saved else {
+            outcomes.send(.rejected(id, nil))
+            return
         }
         NSLog("DOKA: губы — пара %@ сохранена (%.1f с, лицо %.0f%%)", id.uuidString, job.duration,
               plan.faceCoverage * 100)
+        outcomes.send(.saved(id))
     }
 
     private func record(_ id: UUID, rejected reason: LipRejectReason) {
         NSLog("DOKA: губы — дубль %@ отброшен: %@", id.uuidString, reason.rawValue)
+        outcomes.send(.rejected(id, reason))
         let files = self.files
         ioQueue.async {
             files.reject(id: id)
@@ -257,6 +288,12 @@ final class LipDataStore: ObservableObject {
 
     // MARK: - Сводка и удаление
 
+    /// Тексты уже записанных фраз тренировки (сохранённые и в обработке).
+    func trainingTexts() async -> [String] {
+        let files = self.files
+        return await onIO { files.trainingTexts() }
+    }
+
     func refreshSummary() {
         let files = self.files
         ioQueue.async {
@@ -265,6 +302,7 @@ final class LipDataStore: ObservableObject {
             Task { @MainActor in
                 self.summary.voice = counts.voice
                 self.summary.whisper = counts.whisper
+                self.summary.silent = counts.silent
                 self.summary.bytes = counts.bytes
                 self.summary.stats = stats
                 self.summary.pending = self.queue.count

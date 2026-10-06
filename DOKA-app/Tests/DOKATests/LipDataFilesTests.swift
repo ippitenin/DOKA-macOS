@@ -37,9 +37,10 @@ final class LipDataFilesTests: XCTestCase {
         try fm.setAttributes([.modificationDate: Date().addingTimeInterval(-age)], ofItemAtPath: url.path)
     }
 
-    private func meta(_ id: UUID, mode: LipMode) -> LipTakeMeta {
+    private func meta(_ id: UUID, mode: LipMode, source: LipSource = .dictation,
+                      text: String = "привет") -> LipTakeMeta {
         LipTakeMeta(schemaVersion: 1, id: id, date: Date(timeIntervalSince1970: 1_791_115_200),
-                    source: "dictation", mode: mode, text: "привет", language: "ru", provider: "Nexara",
+                    source: source.rawValue, mode: mode, text: text, language: "ru", provider: "Nexara",
                     model: "whisper-1", historyID: nil, duration: 3, speechSeconds: 2, quietSpeechSeconds: 2,
                     speechOnset: 0.4, quiet: mode == .whisper,
                     video: .init(width: 512, height: 512, fps: 30, validFrom: 0.3, validTo: 3, faceCoverage: 1,
@@ -53,10 +54,36 @@ final class LipDataFilesTests: XCTestCase {
                     appVersion: "test")
     }
 
-    private func commitTake(_ id: UUID, mode: LipMode) throws {
+    private func commitTake(_ id: UUID, mode: LipMode, source: LipSource = .dictation,
+                            text: String = "привет") throws {
         _ = try makePending(id, files: LipDataFiles.readyFiles)
         try Data("clip".utf8).write(to: files.clipPartURL(id))
-        XCTAssertTrue(try files.commit(id: id, meta: meta(id, mode: mode)))
+        XCTAssertTrue(try files.commit(id: id, meta: meta(id, mode: mode, source: source, text: text)))
+    }
+
+    /// Окно «Тренировка» не предлагает фразы, которые уже сохранены или ещё
+    /// обрабатываются; пары и заказы диктовки сюда не попадают.
+    func testTrainingTextsListsSavedAndPendingTrainingPhrases() throws {
+        try commitTake(UUID(), mode: .voice)
+        try commitTake(UUID(), mode: .silent, source: .training, text: "Сохранённая фраза")
+        let pendingID = UUID()
+        _ = try makePending(pendingID, files: [LipDataLayout.rawVideo])
+        var job = LipJob(text: "Фраза в обработке", language: "ru", provider: "training", model: "work",
+                         historyID: nil, date: Date(), duration: 3, speechSeconds: 0, quietSpeechSeconds: 0,
+                         quiet: false, microphone: nil, hostStart: 1, inputLatency: 0, speechOnset: 0.5,
+                         maxClockDrift: 0)
+        job.source = .training
+        job.mode = .silent
+        try files.writeJob(job, for: pendingID)
+        let dictationID = UUID()
+        _ = try makePending(dictationID, files: [LipDataLayout.rawVideo])
+        var dictation = job
+        dictation.source = nil
+        dictation.text = "диктовка"
+        try files.writeJob(dictation, for: dictationID)
+
+        XCTAssertEqual(Set(files.trainingTexts()), ["Сохранённая фраза", "Фраза в обработке"])
+        XCTAssertEqual(files.summary().silent, 1)
     }
 
     // MARK: - Уборка на старте

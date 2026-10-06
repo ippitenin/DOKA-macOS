@@ -12,6 +12,9 @@ final class WindowManager {
     private var mainWindow: NSWindow?
     /// Делегат окна — держим сами: `NSWindow.delegate` слабый.
     private let windowDelegate = MainWindowDelegate()
+    /// Окно «Тренировка» (эксперимент «Губы») — тоже ленивое.
+    private var trainingWindow: NSWindow?
+    private let trainingDelegate = TrainingWindowDelegate()
     private var cancellables: Set<AnyCancellable> = []
 
     private init() {
@@ -19,7 +22,11 @@ final class WindowManager {
         // «Губы»): ставим её окну явно, а не надеемся на SwiftUI-рамку.
         SettingsStore.shared.$lipsExperiment
             .receive(on: RunLoop.main)
-            .sink { [weak self] enabled in self?.applyMinSize(lipsEnabled: enabled) }
+            .sink { [weak self] enabled in
+                self?.applyMinSize(lipsEnabled: enabled)
+                // Эксперимент выключили — тренировке без него не место.
+                if !enabled { self?.closeTraining() }
+            }
             .store(in: &cancellables)
     }
 
@@ -106,6 +113,52 @@ final class WindowManager {
         return advancedRequested
     }
 
+    /// Окно «Тренировка». Каждый показ закрытого окна — новый сеанс: свежая
+    /// очередь фраз и счётчик «за сеанс».
+    func showTraining() {
+        guard SettingsStore.shared.lipsExperiment else { return }
+        if trainingWindow == nil {
+            trainingWindow = makeTrainingWindow()
+        }
+        guard let window = trainingWindow else { return }
+        if !window.isVisible {
+            // Вью — заново: так она снова берёт фокус клавиатуры и подписывается.
+            let hosting = NSHostingController(rootView: LipTrainingView())
+            hosting.sizingOptions = .preferredContentSize
+            window.contentViewController = hosting
+            window.setContentSize(hosting.view.fittingSize)
+            center(window)
+            LipTrainingController.shared.beginSession()
+        }
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func closeTraining() {
+        guard let window = trainingWindow, window.isVisible else { return }
+        window.performClose(nil)
+    }
+
+    private func makeTrainingWindow() -> NSWindow {
+        let window = NSWindow(
+            contentRect: .zero,
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = L("training.window.title")
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.isMovableByWindowBackground = false
+        window.isReleasedWhenClosed = false
+        window.delegate = trainingDelegate
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        return window
+    }
+
     private func makeMainWindow() -> NSWindow {
         let hosting = NSHostingController(
             rootView: MainWindowView(state: mainState)
@@ -158,6 +211,17 @@ final class WindowManager {
             x: visible.midX - size.width / 2,
             y: visible.midY - size.height / 2
         ))
+    }
+}
+
+/// Делегат окна «Тренировка»: закрытие — конец сеанса. Идущая фраза
+/// выбрасывается, отложенная фиксируется; вью уходит из окна и отписывается
+/// от камеры.
+@MainActor
+private final class TrainingWindowDelegate: NSObject, NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        LipTrainingController.shared.endSession()
+        (notification.object as? NSWindow)?.contentViewController = nil
     }
 }
 

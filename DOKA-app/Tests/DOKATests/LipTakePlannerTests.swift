@@ -59,6 +59,32 @@ final class LipTakePlannerTests: XCTestCase {
         XCTAssertEqual(meta.schemaVersion, LipTakeMeta.currentSchema)
     }
 
+    /// Заказ тренировки: в meta — источник и режим из заказа, а не из тихого
+    /// режима; записи истории нет. Остальное — как у диктовки.
+    func testTrainingJobBecomesSilentTrainingPair() throws {
+        var training = job()
+        training.source = .training
+        training.mode = .silent
+        training.historyID = nil
+        training.provider = LipCaption.trainingProvider
+        let plan = LipTakePlanner.plan(job: training, log: log())
+        XCTAssertEqual(plan.verdict, .keep(headMissing: false))
+        let meta = try XCTUnwrap(LipTakePlanner.meta(id: UUID(), job: training, log: log(), plan: plan,
+                                                     appVersion: "t"))
+        XCTAssertEqual(meta.source, "training")
+        XCTAssertEqual(meta.mode, .silent)
+        XCTAssertNil(meta.historyID)
+        let json = String(decoding: try LipTakeMeta.encoder.encode(meta), as: UTF8.self)
+        XCTAssertFalse(json.contains("historyID"), json)
+
+        // Заказ диктовки без этих полей — прежнее поведение.
+        let dictation = try XCTUnwrap(LipTakePlanner.meta(id: UUID(), job: job(), log: log(),
+                                                          plan: LipTakePlanner.plan(job: job(), log: log()),
+                                                          appVersion: "t"))
+        XCTAssertEqual(dictation.source, "dictation")
+        XCTAssertEqual(dictation.mode, .voice)
+    }
+
     /// Без хост-времени звука губы не сшить — пара отбрасывается.
     func testMissingAudioClockIsRejected() {
         XCTAssertEqual(LipTakePlanner.plan(job: job(hostStart: nil), log: log()).verdict, .reject(.syncLost))

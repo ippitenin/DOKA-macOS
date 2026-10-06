@@ -15,6 +15,23 @@ enum LipMirrorPhase: Equatable {
     case unavailable
 }
 
+/// Зачем снимаем дубль — у каждого назначения свой гейт настроек.
+enum LipTakePurpose {
+    /// Обычная диктовка: нужен «Учить губы».
+    case dictation
+    /// Окно «Тренировка»: хватает включённого эксперимента — человек сам
+    /// открыл окно и нажал «начать».
+    case training
+
+    @MainActor var isEnabled: Bool {
+        let settings = SettingsStore.shared
+        switch self {
+        case .dictation: return settings.lipsCaptureEnabled
+        case .training: return settings.lipsExperiment
+        }
+    }
+}
+
 /// Камера эксперимента «Губы»: снимает лицо во время диктовки.
 ///
 /// Камера работает ТОЛЬКО на время записи: `beginTake` при старте диктовки,
@@ -52,6 +69,8 @@ final class LipCapture: ObservableObject {
 
     /// Свободное место — кэш, опрашиваемый фоном: старт диктовки его только читает.
     private let freeSpace = LipFreeSpace()
+    /// Хватает ли места на дубль — тренировка объясняет отказ `beginTake`.
+    var hasRoom: Bool { freeSpace.hasRoom }
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -83,8 +102,8 @@ final class LipCapture: ObservableObject {
     /// Настроить сессию, если сбор включён и доступ есть. Камера при этом не
     /// включается (индикатор не горит). Заодно прогрев зеркала — один раз за
     /// процесс, повторные вызовы его не повторяют.
-    func prepareIfEnabled() {
-        guard SettingsStore.shared.lipsCaptureEnabled,
+    func prepareIfEnabled(for purpose: LipTakePurpose = .dictation) {
+        guard purpose.isEnabled,
               AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
         freeSpace.refresh()
         configure()
@@ -99,8 +118,8 @@ final class LipCapture: ObservableObject {
 
     /// Начать дубль. nil — сбор выключен, нет доступа или места; диктовка
     /// идёт как обычно.
-    func beginTake() -> LipTake? {
-        guard SettingsStore.shared.lipsCaptureEnabled,
+    func beginTake(for purpose: LipTakePurpose = .dictation) -> LipTake? {
+        guard purpose.isEnabled,
               AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return nil }
         guard freeSpace.hasRoom else {
             NSLog("DOKA: губы — мало места на диске, дубль не начат")

@@ -23,6 +23,19 @@ struct LipsSectionView: View {
                 }
             }
 
+            SettingsCard(header: L("lips.training.header")) {
+                SettingsRow(title: L("lips.training.title"), help: L("lips.training.hint")) {
+                    HStack(spacing: 10) {
+                        Text(L("lips.training.count", store.summary.silent))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        Button(L("lips.training.start")) { WindowManager.shared.showTraining() }
+                            .dsGlassButton()
+                            .disabled(!permissions.cameraAuthorized)
+                    }
+                }
+            }
+
             SettingsCard(header: L("lips.mirror.header")) {
                 SettingsRow(title: L("lips.mirror.notchVariant"), help: L("lips.mirror.notchVariant.hint")) {
                     SettingsPopup(selection: $settings.lipsMirrorNotchVariant, title: \.title)
@@ -31,7 +44,7 @@ struct LipsSectionView: View {
 
             SettingsCard(header: L("lips.data.header"), footer: L("lips.data.footer")) {
                 SettingsRow(title: L("lips.stats.pairs.title")) {
-                    Text(L("lips.stats.pairs", store.summary.voice, store.summary.whisper))
+                    Text(L("lips.stats.pairs", store.summary.voice, store.summary.whisper, store.summary.silent))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }

@@ -73,6 +73,26 @@ final class LipDataStoreTests: XCTestCase {
         XCTAssertEqual(files.readStats().rejected["emptyText"], 1)
     }
 
+    /// Исход обработки публикуется — по нему окно «Тренировка» показывает
+    /// судьбу прошлой фразы и возвращает отброшенную в очередь.
+    func testOutcomesArePublished() async throws {
+        let store = LipDataStore(files: files)
+        var received: [LipTakeOutcome] = []
+        let subscription = store.outcomes.sink { received.append($0) }
+        defer { subscription.cancel() }
+
+        let rejected = try makeEmptyTextTake()
+        store.enqueueForProcessing(rejected)
+        await settle(store)
+        // Сырья нет вовсе — не решение по паре, а потерянные данные.
+        let lost = UUID()
+        store.enqueueForProcessing(lost)
+        await settle(store)
+
+        XCTAssertEqual(received, [.rejected(rejected, .emptyText), .rejected(lost, nil)])
+        XCTAssertEqual(received.map(\.id), [rejected, lost])
+    }
+
     /// «Удалить всё», пока worker ждёт чтения дубля: после удаления счётчик
     /// отбраковки не воскресает.
     func testDeleteAllDuringProcessingLeavesNothingBehind() async throws {
