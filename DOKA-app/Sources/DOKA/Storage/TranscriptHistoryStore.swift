@@ -325,17 +325,28 @@ final class TranscriptHistoryStore: ObservableObject {
         // начнёт писать .part немедленно.
         try? FileManager.default.createDirectory(at: files.folder(for: id),
                                                  withIntermediateDirectories: true)
+        startAudioPartTask(id, failure: "архив звука записи не создан", recordsFileName: true) { part in
+            _ = try await SourceAudioArchiver.archive(source: source, to: part)
+        }
+    }
+
+    /// Задача стора над временным архивом (`audioPartURL`): `write` пишет его,
+    /// затем атомарная фиксация в `audio.m4a`; `recordsFileName` — после неё
+    /// отметить архив в записи. Сбой или отмена — временный файл прочь.
+    @discardableResult
+    private func startAudioPartTask(_ id: UUID, failure: String, recordsFileName: Bool,
+                                    write: @escaping @Sendable (URL) async throws -> Void) -> Task<Void, Never> {
         let part = files.audioPartURL(id)
-        audioTasks[id] = Task { [weak self] in
+        let task = Task { [weak self] in
             do {
-                _ = try await SourceAudioArchiver.archive(source: source, to: part)
+                try await write(part)
                 guard let self, !Task.isCancelled else { return }
-                if await self.files.commitAudio(id) {
+                if await self.files.commitAudio(id), recordsFileName {
                     self.update(id) { $0.audioFileName = TranscriptLibraryFiles.audioFileName }
                 }
             } catch {
                 if !(error is CancellationError) {
-                    NSLog("DOKA: архив звука записи не создан: \(error.localizedDescription)")
+                    NSLog("DOKA: \(failure): \(error.localizedDescription)")
                 }
                 try? FileManager.default.removeItem(at: part)
             }
@@ -344,6 +355,8 @@ final class TranscriptHistoryStore: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.audioTasks[id] = nil
         }
+        audioTasks[id] = task
+        return task
     }
 
     /// Архив для «Распознать заново»: копия звука исходной записи (на APFS —
@@ -379,24 +392,11 @@ final class TranscriptHistoryStore: ObservableObject {
             for id in await self.files.cafArchiveIDs(ids) {
                 guard !self.isFrozen, self.record(id) != nil, self.audioTasks[id] == nil else { continue }
                 let source = self.files.audioURL(id)
-                let part = self.files.audioPartURL(id)
-                let task = Task { [weak self] in
-                    do {
-                        try await SourceAudioArchiver.remuxCAF(source, to: part)
-                        guard let self, !Task.isCancelled else { return }
-                        _ = await self.files.commitAudio(id)
-                    } catch {
-                        if !(error is CancellationError) {
-                            NSLog("DOKA: архив звука не перепакован: \(error.localizedDescription)")
-                        }
-                        try? FileManager.default.removeItem(at: part)
-                    }
-                    // Отменённую задачу из реестра убрал отменивший (см. archiveAudio).
-                    guard !Task.isCancelled else { return }
-                    self?.audioTasks[id] = nil
-                }
-                self.audioTasks[id] = task
-                await task.value
+                // Архив в записи уже отмечен — только подменить файл.
+                await self.startAudioPartTask(id, failure: "архив звука не перепакован",
+                                              recordsFileName: false) { part in
+                    try await SourceAudioArchiver.remuxCAF(source, to: part)
+                }.value
             }
         }
     }
