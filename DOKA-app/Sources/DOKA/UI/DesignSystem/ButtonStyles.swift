@@ -40,7 +40,7 @@ private struct DSCapsuleButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = Capsule(style: .continuous)
-        configuration.label
+        NoShrinkWidth { configuration.label }
             .font(isCompact ? .subheadline : nil)
             .foregroundStyle(foreground(role: configuration.role))
             .padding(.horizontal, isCompact ? 10 : 14)
@@ -78,5 +78,25 @@ private struct DSCapsuleButtonStyle: ButtonStyle {
         case .prominent: .white
         case .secondary: role == .destructive ? .red : .primary
         }
+    }
+}
+
+/// Подпись капсулы не уже своей идеальной ширины, но растягивается, если её
+/// просят (кнопки во всю ширину — `.frame(maxWidth: .infinity)` в подписи).
+/// HStack делит ширину по «гибкости» детей, а не по нужде: в ряду «полоса ·
+/// процент · Отмена» строки настроек ряд получал меньше, чем просил, и «Отмена»
+/// переносилась по буквам («Отмен/а»), хотя слева было пусто. Голый
+/// `.fixedSize()` эту беду лечит, но схлопывает растянутые кнопки.
+struct NoShrinkWidth: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let label = subviews.first else { return .zero }
+        let ideal = label.sizeThatFits(.unspecified)
+        let width = max(ideal.width, proposal.width ?? ideal.width)
+        return label.sizeThatFits(ProposedViewSize(width: width, height: proposal.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin,
+                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
