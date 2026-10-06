@@ -69,8 +69,11 @@ jobs:
       - name: Гейт предупреждений
         # Только наш код: FluidAudio даёт три своих предупреждения, из-за которых
         # -warnings-as-errors применить нельзя — он уронил бы сборку на чужом коде.
+        # Предупреждения уровня пакета (например, «found N file(s) which are
+        # unhandled» — CLAUDE.md в папке таргета без exclude) пути в строке
+        # warning не содержат, их ловит имя нашего пакета 'doka-app'.
         run: |
-          if grep "warning:" "$RUNNER_TEMP/build.log" | grep "Sources/DOKA/"; then
+          if grep "warning:" "$RUNNER_TEMP/build.log" | grep -E "Sources/DOKA/|'doka-app'"; then
             echo "::error::Сборка выдала предупреждения в Sources/DOKA — гейт CLAUDE.md требует их отсутствия"
             exit 1
           fi

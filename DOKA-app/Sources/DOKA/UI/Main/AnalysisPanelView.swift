@@ -12,7 +12,7 @@ struct AnalysisPanelView: View {
     let seekDuration: Double?
     /// Пункт «Шаблоны…» открывает модальный шит. На странице «Транскрибация»
     /// он выключен: там уже висит свой `.fileImporter`, а вложенные модальные
-    /// окна SwiftUI на macOS обслуживает ненадёжно (см. CLAUDE.md). Шаблоны
+    /// окна SwiftUI на macOS обслуживает ненадёжно (см. UI/Main/Library/CLAUDE.md). Шаблоны
     /// правятся из раздела «Сервис».
     var allowsTemplateEditor = true
     /// Пока курсор в поле «Свой запрос», клавиши записи (пробел, Esc) должны

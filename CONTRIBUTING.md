@@ -26,7 +26,8 @@ resets macOS TCC permissions, so you will be re-granting microphone and accessib
 access fairly often while developing.
 
 Architecture, invariants and the reasoning behind the odd-looking bits are documented in
-[`CLAUDE.md`](CLAUDE.md). It is worth reading the section relevant to your change — many
+[`CLAUDE.md`](CLAUDE.md) and in the per-area `CLAUDE.md` files next to the code (the root file
+has a map). It is worth reading the one relevant to your change — many
 “obvious improvements” have already been tried and reverted.
 
 ## Verification gates
@@ -43,7 +44,7 @@ needs a real Mac with real permissions, so it is verified by hand. Five gates:
    touched them). `swift build` does **not** validate `.strings` syntax — a broken file
    compiles fine and fails at runtime.
 4. `./build.sh` — the release build must sign successfully.
-5. A manual smoke pass over whatever you touched. `CLAUDE.md` lists what to check per area.
+5. A manual smoke pass over whatever you touched. [`SMOKE.md`](SMOKE.md) lists what to check per area.
 
 **Gates 1–3 run automatically on every pull request** (`.github/workflows/build.yml`).
 Run them locally before pushing to get the answer in seconds instead of minutes:

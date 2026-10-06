@@ -56,6 +56,16 @@ let package = Package(
                 "LlamaFramework"
             ],
             path: "Sources/DOKA",
+            // Документация для Claude Code по папкам областей (см. корневой
+            // CLAUDE.md → «Карта документации»). Без exclude SwiftPM считает
+            // их необработанными файлами и выдаёт предупреждение; новый
+            // CLAUDE.md в папке таргета добавлять сюда же.
+            exclude: [
+                "Audio/CLAUDE.md", "Lips/CLAUDE.md", "Local/CLAUDE.md",
+                "Managers/CLAUDE.md", "Network/CLAUDE.md", "Paste/CLAUDE.md",
+                "Storage/CLAUDE.md", "Text/CLAUDE.md", "UI/CLAUDE.md",
+                "UI/Main/CLAUDE.md", "UI/Main/Library/CLAUDE.md", "Util/CLAUDE.md"
+            ],
             resources: [.process("Resources")],
             // llama.framework — ДИНАМИЧЕСКИЙ фреймворк с install name
             // `@rpath/llama.framework/...`; build.sh кладёт его в
@@ -82,11 +92,13 @@ let package = Package(
         // Тесты чистой логики. Сплит на отдельную библиотеку НЕ нужен: SPM
         // тестирует executable-таргет напрямую, несмотря на top-level код
         // в main.swift (проверено). Покрывается только логика без UI, звука
-        // и сети — остальное проверяется ручным smoke (см. CLAUDE.md).
+        // и сети — остальное проверяется ручным smoke (см. SMOKE.md в корне
+        // репозитория).
         .testTarget(
             name: "DOKATests",
             dependencies: ["DOKA"],
-            path: "Tests/DOKATests"
+            path: "Tests/DOKATests",
+            exclude: ["CLAUDE.md"]
         )
     ],
     // Swift 5, а не 6: манифест 6.2 ради трейтов (см. шапку), язык прежний.

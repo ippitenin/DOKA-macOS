@@ -220,12 +220,13 @@ minutes of inactivity.
 | `DOKA-app/` | The application itself (SPM executable, AppKit + SwiftUI) |
 | `DOKA_LOGO/` | Brand logo sources |
 | `media/` | Images used by this README |
-| `CLAUDE.md` | Detailed architecture and project invariants |
+| `CLAUDE.md` | Architecture overview, commands, verification gates and project-wide invariants; area details live in `CLAUDE.md` files inside `DOKA-app/` (the root file has a map) |
+| `SMOKE.md` | Manual smoke checklist, per area |
 
 ## Development
 
 Architecture, invariants, commands and verification gates are documented in
-[`CLAUDE.md`](CLAUDE.md). The short version: `DictationController` is the central state
+[`CLAUDE.md`](CLAUDE.md) and the per-area `CLAUDE.md` files it maps. The short version: `DictationController` is the central state
 machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
@@ -235,7 +236,7 @@ CI runs them on every pull request along with the build and a localisation check
 local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
 see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder
 panels need a real Mac with real permissions, so those are verified by a manual smoke pass;
-`CLAUDE.md` lists what to check per area.
+[`SMOKE.md`](SMOKE.md) lists what to check per area.
 
 Two things worth knowing before you change dependencies or strings:
 
