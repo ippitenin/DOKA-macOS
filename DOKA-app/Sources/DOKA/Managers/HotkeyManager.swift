@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Foundation
 import KeyboardShortcuts
 
@@ -31,6 +32,8 @@ enum MouseShortcutCapture {
 @MainActor
 final class HotkeyManager {
     private let controller: DictationController
+    private var fnGesture = FnKeyGesture()
+    private var fnStartTask: Task<Void, Never>?
 
     init(controller: DictationController) {
         self.controller = controller
@@ -63,6 +66,7 @@ final class HotkeyManager {
         KeyboardShortcuts.disable(.cancelRecording)
 
         installMouseMonitors()
+        installFnMonitors()
     }
 
     // MARK: - Кнопка мыши
@@ -87,6 +91,80 @@ final class HotkeyManager {
         let assigned = SettingsStore.shared.mouseShortcutButton
         guard assigned >= 2, button == assigned else { return }
         controller.toggle()
+    }
+
+    // MARK: - Клавиша Fn (🌐)
+
+    /// Событие клавиатуры, нужное автомату Fn, — извлекается из NSEvent сразу
+    /// в обработчике монитора (сам NSEvent через границу Task не передать).
+    private enum FnInput {
+        case fnDown(TimeInterval), fnUp(TimeInterval), otherKey(TimeInterval)
+
+        init?(_ event: NSEvent) {
+            switch event.type {
+            case .flagsChanged where event.keyCode == UInt16(kVK_Function):
+                self = event.modifierFlags.contains(.function)
+                    ? .fnDown(event.timestamp) : .fnUp(event.timestamp)
+            case .keyDown:
+                self = .otherKey(event.timestamp)
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// Fn — не клавиша KeyboardShortcuts (одиночный модификатор она не
+    /// назначает), поэтому — свои мониторы `.flagsChanged`, как у кнопки
+    /// мыши: глобальный (другие приложения) и локальный (окна DOKA).
+    private func installFnMonitors() {
+        NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+            guard let input = FnInput(event) else { return }
+            Task { @MainActor in self?.handleFn(input) }
+        }
+        NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+            if let input = FnInput(event) {
+                Task { @MainActor in self?.handleFn(input) }
+            }
+            return event
+        }
+    }
+
+    private func handleFn(_ input: FnInput) {
+        let mode = SettingsStore.shared.fnKeyMode
+        // Выключено — нажатие, начатое до выключения, всё равно доводим до
+        // конца: иначе запись, начатая удержанием, осталась бы без стопа.
+        guard mode != .off || fnGesture.isDown else { return }
+        switch input {
+        case .fnDown(let time): perform(fnGesture.fnDown(at: time, mode: mode))
+        case .fnUp(let time): perform(fnGesture.fnUp(at: time))
+        case .otherKey(let time): perform(fnGesture.otherKey(at: time))
+        }
+    }
+
+    private func perform(_ action: FnKeyGesture.Action) {
+        switch action {
+        case .none:
+            break
+        case .scheduleStart(let delay):
+            fnStartTask?.cancel()
+            fnStartTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, let self else { return }
+                self.perform(self.fnGesture.startDelayElapsed(at: ProcessInfo.processInfo.systemUptime))
+            }
+        case .start:
+            controller.pushToTalkDown()
+        case .stop:
+            fnStartTask?.cancel()
+            controller.pushToTalkUp()
+        case .cancel:
+            fnStartTask?.cancel()
+            // Отменяется только запись: распознавание отменяет сам
+            // пользователь — по Esc.
+            if controller.state.isRecording { controller.cancel() }
+        case .toggle:
+            controller.toggle()
+        }
     }
 
     /// Включает/выключает глобальный Esc. Вызывается при каждом входе/выходе

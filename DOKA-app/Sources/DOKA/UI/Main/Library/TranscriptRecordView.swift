@@ -384,6 +384,11 @@ struct TranscriptRecordView: View {
                         .padding(.horizontal, DS.Spacing.cardPadding)
                         .padding(.bottom, 10)
                 }
+                if !roster.isEmpty {
+                    SpeakerSuggestionsPanel(document: document, roster: roster)
+                        .padding(.horizontal, DS.Spacing.cardPadding)
+                        .padding(.bottom, 10)
+                }
 
                 CardDivider()
 

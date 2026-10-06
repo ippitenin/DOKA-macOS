@@ -278,16 +278,8 @@ struct LocalAssetStatusView: View {
                 .dsProminentButton()
             }
         case .downloading(let progress):
-            HStack(spacing: 12) {
-                ProgressView(value: progress)
-                    .frame(width: 150)
-                Text(progress.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Button(L("common.cancel")) {
-                    models.cancelDownload(asset)
-                }
-                .dsGlassButton()
+            DownloadProgressRow(progress: progress) {
+                models.cancelDownload(asset)
             }
         case .preparing:
             HStack(spacing: 8) {
@@ -322,5 +314,36 @@ struct LocalAssetStatusView: View {
 
     private static func bytes(_ count: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
+    }
+}
+
+/// Ряд скачивания: полоса, процент и «Отмена». Отдельной вью — чтобы его
+/// вёрстку проверял тест (`CapsuleButtonLayoutTests`) без живого скачивания.
+struct DownloadProgressRow: View {
+    let progress: Double
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView(value: progress)
+                .frame(width: 150)
+            // Ширина — всегда под «100 %»: иначе на 10 % и на 100 % ряд
+            // вздрагивает, а полоса прыгает влево.
+            Text(Self.percent(1))
+                .fixedSize()
+                .hidden()
+                .overlay(alignment: .trailing) {
+                    Text(Self.percent(progress))
+                        .fixedSize()
+                }
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Button(L("common.cancel"), action: onCancel)
+                .dsGlassButton()
+        }
+    }
+
+    static func percent(_ value: Double) -> String {
+        value.formatted(.percent.precision(.fractionLength(0)))
     }
 }

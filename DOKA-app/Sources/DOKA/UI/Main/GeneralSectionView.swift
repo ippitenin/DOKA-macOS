@@ -53,6 +53,11 @@ struct GeneralSectionView: View {
                     SettingsSwitch(isOn: $settings.restoreClipboard)
                 }
                 CardDivider()
+                SettingsRow(title: L("general.smartSpacing"),
+                            help: L("general.smartSpacing.help")) {
+                    SettingsSwitch(isOn: $settings.smartSpacing)
+                }
+                CardDivider()
                 SettingsRow(title: L("general.launchAtLogin")) {
                     SettingsSwitch(isOn: $settings.launchAtLogin)
                 }

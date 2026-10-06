@@ -79,6 +79,7 @@ final class SettingsStore: ObservableObject {
         static let language = "language"
         static let soundsEnabled = "soundsEnabled"
         static let restoreClipboard = "restoreClipboard"
+        static let smartSpacing = "smartSpacing"
         static let replacements = "replacements"
         static let onboardingCompleted = "onboardingCompleted"
         static let provider = "provider"
@@ -96,11 +97,15 @@ final class SettingsStore: ObservableObject {
         static let showDockIcon = "showDockIcon"
         static let openWindowAtLaunch = "openWindowAtLaunch"
         static let mouseShortcutButton = "mouseShortcutButton"
+        static let fnKeyMode = "fnKeyMode"
         static let customServices = "customServices"
         static let servicesMigrated = "servicesMigrated"
         static let skipSilentRecordings = "skipSilentRecordings"
         static let quietMode = "quietMode"
         static let applyDictionaryToFiles = "applyDictionaryToFiles"
+        static let dictationCleanup = "dictationCleanup"
+        static let cleanupWishes = "cleanupWishes"
+        static let cleanupRules = "cleanupRules"
         static let libraryRetentionNoticeDismissed = "libraryRetentionNoticeDismissed"
         static let saveTranscriptAudio = "saveTranscriptAudio"
         static let notifyFileTranscription = "notifyFileTranscription"
@@ -135,6 +140,11 @@ final class SettingsStore: ObservableObject {
     }
     @Published var restoreClipboard: Bool {
         didSet { defaults.set(restoreClipboard, forKey: Key.restoreClipboard) }
+    }
+    /// Пробел перед диктовкой, продолжающей прошлую вставку в том же поле
+    /// («…слово Слово…», а не «…словоСлово…»). См. `PasteSpacing`.
+    @Published var smartSpacing: Bool {
+        didSet { defaults.set(smartSpacing, forKey: Key.smartSpacing) }
     }
     @Published var replacements: [ReplacementRule] {
         didSet {
@@ -251,6 +261,21 @@ final class SettingsStore: ObservableObject {
     @Published var applyDictionaryToFiles: Bool {
         didSet { defaults.set(applyDictionaryToFiles, forKey: Key.applyDictionaryToFiles) }
     }
+    /// ИИ-обработка диктовки («Словарь» → «ИИ-обработка», см. `DictationCleanup`).
+    /// По умолчанию выключена: добавляет секунды к каждой диктовке и держит
+    /// языковую модель в памяти.
+    @Published var dictationCleanup: Bool {
+        didSet { defaults.set(dictationCleanup, forKey: Key.dictationCleanup) }
+    }
+    /// Включённые готовые пожелания. Хранятся строками: неизвестное значение
+    /// (из будущей версии) просто пропускается, а не обнуляет набор.
+    @Published var cleanupWishes: Set<DictationCleanup.Wish> {
+        didSet { defaults.set(cleanupWishes.map(\.rawValue).sorted(), forKey: Key.cleanupWishes) }
+    }
+    /// Свои пожелания словами («Менять GitHub на гитхаб»).
+    @Published var cleanupRules: [String] {
+        didSet { defaults.set(cleanupRules, forKey: Key.cleanupRules) }
+    }
     /// Эксперимент «Чтение по губам» («Расширенные»): показывает раздел «Губы»
     /// в сайдбаре. По умолчанию выключен — пока собранные пары нечем читать,
     /// никто не снимает себя впустую.
@@ -333,6 +358,11 @@ final class SettingsStore: ObservableObject {
     @Published var mouseShortcutButton: Int {
         didSet { defaults.set(mouseShortcutButton, forKey: Key.mouseShortcutButton) }
     }
+    /// Клавиша Fn (🌐) как хоткей диктовки; по умолчанию выключена — у
+    /// macOS на неё своё действие (см. `SystemFnKeyUsage`).
+    @Published var fnKeyMode: FnKeyMode {
+        didSet { defaults.set(fnKeyMode.rawValue, forKey: Key.fnKeyMode) }
+    }
 
     /// Автозапуск при входе через SMAppService.
     @Published var launchAtLogin: Bool {
@@ -356,6 +386,7 @@ final class SettingsStore: ObservableObject {
             Key.language: "ru",
             Key.soundsEnabled: true,
             Key.restoreClipboard: true,
+            Key.smartSpacing: true,
             Key.onboardingCompleted: false,
             Key.provider: TranscriptionProvider.builtin.rawValue,
             Key.saveAudio: false,
@@ -368,6 +399,7 @@ final class SettingsStore: ObservableObject {
             Key.skipSilentRecordings: true,
             Key.quietMode: false,
             Key.applyDictionaryToFiles: false,
+            Key.dictationCleanup: false,
             Key.saveTranscriptAudio: true,
             Key.notifyFileTranscription: true,
             Key.lipsExperiment: false,
@@ -381,6 +413,10 @@ final class SettingsStore: ObservableObject {
         lipsMirrorNotchVariant = defaults.string(forKey: Key.lipsMirrorNotchVariant)
             .flatMap(LipMirrorNotchVariant.init(rawValue:)) ?? .continuation
         applyDictionaryToFiles = defaults.bool(forKey: Key.applyDictionaryToFiles)
+        dictationCleanup = defaults.bool(forKey: Key.dictationCleanup)
+        cleanupWishes = defaults.stringArray(forKey: Key.cleanupWishes)
+            .map { Set($0.compactMap(DictationCleanup.Wish.init(rawValue:))) } ?? DictationCleanup.defaultWishes
+        cleanupRules = defaults.stringArray(forKey: Key.cleanupRules) ?? []
         libraryRetentionNoticeDismissed = defaults.bool(forKey: Key.libraryRetentionNoticeDismissed)
         saveTranscriptAudio = defaults.bool(forKey: Key.saveTranscriptAudio)
         language = defaults.string(forKey: Key.language) ?? "ru"
@@ -391,7 +427,9 @@ final class SettingsStore: ObservableObject {
         showDockIcon = defaults.bool(forKey: Key.showDockIcon)
         openWindowAtLaunch = defaults.bool(forKey: Key.openWindowAtLaunch)
         mouseShortcutButton = defaults.integer(forKey: Key.mouseShortcutButton)
+        fnKeyMode = FnKeyMode(rawValue: defaults.string(forKey: Key.fnKeyMode) ?? "") ?? .off
         restoreClipboard = defaults.bool(forKey: Key.restoreClipboard)
+        smartSpacing = defaults.bool(forKey: Key.smartSpacing)
         onboardingCompleted = defaults.bool(forKey: Key.onboardingCompleted)
         providerID = defaults.string(forKey: Key.provider) ?? TranscriptionProvider.builtin.rawValue
         if let data = defaults.data(forKey: Key.customServices),

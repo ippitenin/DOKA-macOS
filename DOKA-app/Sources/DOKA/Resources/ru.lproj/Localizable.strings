@@ -163,6 +163,8 @@
 "general.uiLanguage" = "Язык интерфейса:";
 "general.transcriptionLanguage" = "Язык распознавания:";
 "general.restoreClipboard" = "Восстанавливать буфер обмена после вставки";
+"general.smartSpacing" = "Пробел между диктовками";
+"general.smartSpacing.help" = "Если продиктовать дважды подряд в то же поле, DOKA поставит пробел между фразами, чтобы слова не слиплись. Пробел не ставится, если между диктовками вы печатали, кликали, ушли в другое приложение или прошло больше трёх минут.";
 "general.launchAtLogin" = "Запускать при входе в систему";
 "general.recorderPanel" = "Панель записи";
 "general.restartAlert.title" = "Перезапуск DOKA";
@@ -232,6 +234,13 @@
 "hotkeys.pushToTalk.hint" = "Зажмите сочетание — идёт запись; отпустите — распознавание и вставка.";
 "hotkeys.mouseButton" = "Кнопка мыши:";
 "hotkeys.mouseButton.hint" = "Боковая кнопка мыши запускает и останавливает диктовку — удобно для MX Master и подобных мышей.";
+"hotkeys.fnKey" = "Клавиша Fn (🌐)";
+"hotkeys.fnKey.hint" = "Диктовка одной клавишей Fn. «Удерживать» — говорите, пока держите, и отпустите. «Нажать» — короткое нажатие начинает запись, ещё одно — заканчивает. Fn со стрелками, Delete и F-клавишами работает как раньше. На некоторых внешних клавиатурах Fn до системы не доходит — там она не сработает.";
+"hotkeys.fnKey.systemConflict" = "macOS тоже реагирует на 🌐 — переключает раскладку, открывает эмодзи или диктовку. В настройках клавиатуры выберите «Нажатие клавиши 🌐: ничего не делать».";
+"hotkeys.fnKey.openKeyboardSettings" = "Настройки клавиатуры";
+"hotkeys.fn.off" = "Выключена";
+"hotkeys.fn.hold" = "Удерживать";
+"hotkeys.fn.toggle" = "Нажать";
 "hotkeys.mouseButton.assign" = "Добавить";
 "hotkeys.mouseButton.listening" = "Нажмите кнопку…";
 "hotkeys.mouseButton.assigned" = "Кнопка %d";
@@ -247,6 +256,17 @@
 "dictionary.from" = "Что заменить";
 "dictionary.to" = "На что";
 "dictionary.add" = "Добавить правило";
+"cleanup.toggle" = "ИИ-обработка диктовки";
+"cleanup.toggle.help" = "Языковая модель на этом Mac приводит продиктованное в порядок: убирает запинки, понимает самоисправления («в среду, нет, в четверг» → «в четверг»), превращает «точка», «запятая», «новая строка» в знаки и пишет числа цифрами. Добавляет около секунды к обычной диктовке, длинной — несколько секунд. Если модель занята или ответ выглядит странно, вставится исходный текст. Правила словаря применяются после обработки. Исходный текст виден в «Истории».";
+"cleanup.modelNeeded" = "Для обработки нужна языковая модель на этом Mac.";
+"cleanup.lowMemory" = "На этом Mac меньше 16 ГБ памяти: с распознаванием на этом Mac обработка не работает (две модели сразу не поместятся). С облачным сервисом — работает.";
+"cleanup.rule.placeholder" = "Своё пожелание, например «Менять GitHub на гитхаб»";
+"cleanup.rule.add" = "Добавить";
+"cleanup.rule.delete" = "Удалить пожелание";
+"cleanup.wish.removeFillers" = "Без «ну» и «короче»";
+"cleanup.wish.lowercaseStart" = "С маленькой буквы";
+"cleanup.wish.finalPeriod" = "Точка в конце";
+"cleanup.wish.shorter" = "Писать коротко";
 "dictionary.delete" = "Удалить правило";
 "dictionary.insideWords.badge" = "в словах";
 "dictionary.more" = "Действия";
@@ -305,6 +325,7 @@
 "history.inspector.microphone" = "Микрофон";
 "history.inspector.model" = "Модель";
 "history.inspector.provider" = "Провайдер";
+"history.inspector.rawText" = "До ИИ-обработки";
 "history.inspector.showInFinder" = "Показать в Finder";
 
 /* Панель записи */
@@ -768,6 +789,25 @@
 "analysis.progress.writing" = "Пишу отчёт…";
 "analysis.busy.transcribing" = "Идёт локальное распознавание — дождитесь его окончания";
 "analysis.busy.other" = "Анализ уже идёт у другой записи";
+"speakers.suggest.button" = "Угадать имена";
+"speakers.suggest.help" = "ИИ на этом Mac ищет в разговоре, как зовут говорящих (по представлениям и обращениям), и замечает, если одного человека разделили на двух. Без вашего подтверждения ничего не меняется.";
+"speakers.suggest.running" = "Ищу имена…";
+"speakers.suggest.title" = "Подсказки ИИ";
+"speakers.suggest.none" = "Представлений и обращений по имени в разговоре не нашлось";
+"speakers.suggest.failed" = "Не удалось подобрать имена: %@";
+"speakers.suggest.modelNeeded" = "Для подсказок нужна языковая модель на этом Mac.";
+"speakers.suggest.quote" = "«%@»";
+"speakers.suggest.and" = "и";
+"speakers.suggest.samePerson" = "— один человек?";
+"speakers.suggest.apply" = "Применить";
+"speakers.suggest.merge" = "Объединить";
+"speakers.suggest.dismiss" = "Нет";
+"speakers.suggest.applyAll" = "Применить всё";
+"speakers.suggest.close" = "Скрыть";
+"speakers.suggest.covered" = "Запись длинная — смотрел первые %d мин";
+"speakers.suggest.busy.analysis" = "Модель занята анализом — дождитесь его окончания";
+"speakers.suggest.busy.other" = "Имена уже подбираются у другой записи";
+"analysis.busy.speakerNames" = "Модель занята подбором имён спикеров — дождитесь окончания";
 "analysis.error.empty" = "Модель ничего не написала — попробуйте другой шаблон";
 "analysis.error.notSaved" = "Отчёт не сохранён — перезапустите DOKA и повторите анализ";
 "analysis.error.tooLong" = "Запись слишком длинная для анализа на этом Mac";

@@ -36,6 +36,8 @@ struct DictionarySectionView: View {
                 .dsProminentButton()
             }
 
+            DictationCleanupCard()
+
             if settings.replacements.isEmpty {
                 emptyState
             } else {
