@@ -176,7 +176,7 @@ enum SpeakerNameSuggester {
         let raw = firstJSONObject(in: output)
             .flatMap { $0.data(using: .utf8) }
             .flatMap { try? JSONDecoder().decode(RawAnswer.self, from: $0) }
-        let names = raw.map { names(from: $0, prepared: prepared) } ?? []
+        let names = raw.map { Self.names(from: $0, prepared: prepared) } ?? []
         return Suggestions(names: names, merges: continuationMerges(prepared: prepared, names: names))
     }
 
