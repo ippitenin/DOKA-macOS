@@ -312,7 +312,9 @@ struct HomeSectionView: View {
                     Button {
                         checkAndSave()
                     } label: {
+                        // Высота капсулы фиксирована: перенос подписи её бы обрезал.
                         Text(L("home.save"))
+                            .fixedSize()
                             .font(.callout.weight(.medium))
                             .foregroundStyle(canSaveKey ? AnyShapeStyle(DS.accent)
                                                         : AnyShapeStyle(.tertiary))
