@@ -31,7 +31,6 @@ enum SpeakerNameSuggester {
     struct Prepared: Equatable {
         let speakers: [Speaker]
         let lines: [TranscriptLLMInput.Line]
-        let duration: Double?
     }
 
     struct NameSuggestion: Equatable, Identifiable {
@@ -93,7 +92,7 @@ enum SpeakerNameSuggester {
                                      words: [], llmOutput: nil)
         let input = TranscriptLLMInput.build(title: "", result: plain)
         guard !input.isEmpty else { return nil }
-        return Prepared(speakers: speakers, lines: input.lines, duration: result.duration)
+        return Prepared(speakers: speakers, lines: input.lines)
     }
 
     /// Сколько первых строк влезает в бюджет токенов. Строки не режутся:
@@ -162,10 +161,11 @@ enum SpeakerNameSuggester {
 
     // MARK: - Разбор ответа
 
+    /// Тайм-код из ответа модели не читается: правила `attribute` сами
+    /// проходят по всем строкам, где имя звучит, и берут время оттуда.
     private struct RawAnswer: Decodable {
         struct Name: Decodable {
             let name: String?
-            let time: String?
         }
         let names: [Lossy<Name>]?
     }
@@ -183,8 +183,7 @@ enum SpeakerNameSuggester {
     private static func names(from raw: RawAnswer, prepared: Prepared) -> [NameSuggestion] {
         let byTag = Dictionary(prepared.speakers.map { ($0.tag.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
 
-        // Кандидаты от модели: уникальные имена (тайм-код модели не нужен —
-        // правила сами проходят по всем строкам, где имя звучит).
+        // Кандидаты от модели: уникальные имена.
         var candidates: [String] = []
         for entry in (raw.names ?? []).compactMap(\.value) {
             guard let name = cleanName(entry.name),
@@ -200,12 +199,10 @@ enum SpeakerNameSuggester {
             if let current = best[speaker.id], current.attribution.score >= attribution.score { continue }
             best[speaker.id] = (attribution, order)
         }
-        let names = best.sorted { $0.value.order < $1.value.order }.map { id, entry in
+        return best.sorted { $0.value.order < $1.value.order }.map { id, entry in
             NameSuggestion(speakerID: id, name: entry.attribution.name,
                            quote: cleanQuote(entry.attribution.quote), time: entry.attribution.time)
         }
-
-        return names
     }
 
     // MARK: - Дубликаты
@@ -440,18 +437,6 @@ enum SpeakerNameSuggester {
         var common = 0
         while common < min(a.count, b.count), a[common] == b[common] { common += 1 }
         return common >= max(3, b.count - 2) && common >= min(a.count, b.count) - 2
-    }
-
-    /// «м:сс» или «ч:мм:сс» → секунды; за пределами записи — nil.
-    static func parseTime(_ raw: String, limit: Double?) -> Double? {
-        let parts = raw.trimmingCharacters(in: CharacterSet(charactersIn: "[] ")).split(separator: ":")
-        guard (2...3).contains(parts.count) else { return nil }
-        let numbers = parts.compactMap { Int($0) }
-        guard numbers.count == parts.count, numbers.allSatisfy({ $0 >= 0 }),
-              numbers.dropFirst().allSatisfy({ $0 < 60 }) else { return nil }
-        let seconds = Double(numbers.reduce(0) { $0 * 60 + $1 })
-        if let limit, seconds > limit + 1 { return nil }
-        return seconds
     }
 
     /// Первый сбалансированный объект `{…}` в тексте: модель может обернуть
