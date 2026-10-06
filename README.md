@@ -34,9 +34,9 @@ written in Russian.
 
 ## Features
 
-- **Voice dictation** — global hotkey (or push-to-talk, a mouse button, or the Fn/🌐 key) →
-  recording → transcription → dictionary replacements → text pasted into the active app through
-  the clipboard and a synthetic ⌘V. Two dictations in a row into the same field get a space
+- **Voice dictation** — global hotkey (or push-to-talk, or a mouse button) → recording →
+  transcription → dictionary replacements → text pasted into the active app through the
+  clipboard and a synthetic ⌘V. Two dictations in a row into the same field get a space
   between them, so the words don't run together. Optional AI cleanup on your Mac removes
   stumbles, understands self-corrections ("Wednesday, no, Thursday"), turns spoken punctuation
   into marks and follows your own wishes ("start with a lowercase letter").
@@ -230,7 +230,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 942 checks in a few seconds, and
+Pure logic is covered by tests — `swift test` runs 931 checks in a few seconds, and
 CI runs them on every pull request along with the build and a localisation check. The
 local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
 see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder
