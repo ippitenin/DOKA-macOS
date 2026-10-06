@@ -79,6 +79,7 @@ final class SettingsStore: ObservableObject {
         static let language = "language"
         static let soundsEnabled = "soundsEnabled"
         static let restoreClipboard = "restoreClipboard"
+        static let smartSpacing = "smartSpacing"
         static let replacements = "replacements"
         static let onboardingCompleted = "onboardingCompleted"
         static let provider = "provider"
@@ -135,6 +136,11 @@ final class SettingsStore: ObservableObject {
     }
     @Published var restoreClipboard: Bool {
         didSet { defaults.set(restoreClipboard, forKey: Key.restoreClipboard) }
+    }
+    /// Пробел перед диктовкой, продолжающей прошлую вставку в том же поле
+    /// («…слово Слово…», а не «…словоСлово…»). См. `PasteSpacing`.
+    @Published var smartSpacing: Bool {
+        didSet { defaults.set(smartSpacing, forKey: Key.smartSpacing) }
     }
     @Published var replacements: [ReplacementRule] {
         didSet {
@@ -356,6 +362,7 @@ final class SettingsStore: ObservableObject {
             Key.language: "ru",
             Key.soundsEnabled: true,
             Key.restoreClipboard: true,
+            Key.smartSpacing: true,
             Key.onboardingCompleted: false,
             Key.provider: TranscriptionProvider.builtin.rawValue,
             Key.saveAudio: false,
@@ -392,6 +399,7 @@ final class SettingsStore: ObservableObject {
         openWindowAtLaunch = defaults.bool(forKey: Key.openWindowAtLaunch)
         mouseShortcutButton = defaults.integer(forKey: Key.mouseShortcutButton)
         restoreClipboard = defaults.bool(forKey: Key.restoreClipboard)
+        smartSpacing = defaults.bool(forKey: Key.smartSpacing)
         onboardingCompleted = defaults.bool(forKey: Key.onboardingCompleted)
         providerID = defaults.string(forKey: Key.provider) ?? TranscriptionProvider.builtin.rawValue
         if let data = defaults.data(forKey: Key.customServices),

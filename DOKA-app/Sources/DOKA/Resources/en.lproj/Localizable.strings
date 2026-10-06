@@ -163,6 +163,8 @@
 "general.uiLanguage" = "Interface language:";
 "general.transcriptionLanguage" = "Transcription language:";
 "general.restoreClipboard" = "Restore the clipboard after pasting";
+"general.smartSpacing" = "Space between dictations";
+"general.smartSpacing.help" = "When you dictate twice in a row into the same field, DOKA adds a space between the phrases so the words don't run together. No space is added if you typed, clicked, switched apps or more than three minutes passed between dictations.";
 "general.launchAtLogin" = "Launch at login";
 "general.recorderPanel" = "Recording panel";
 "general.restartAlert.title" = "Restart DOKA";

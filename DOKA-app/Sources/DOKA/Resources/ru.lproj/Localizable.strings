@@ -163,6 +163,8 @@
 "general.uiLanguage" = "Язык интерфейса:";
 "general.transcriptionLanguage" = "Язык распознавания:";
 "general.restoreClipboard" = "Восстанавливать буфер обмена после вставки";
+"general.smartSpacing" = "Пробел между диктовками";
+"general.smartSpacing.help" = "Если продиктовать дважды подряд в то же поле, DOKA поставит пробел между фразами, чтобы слова не слиплись. Пробел не ставится, если между диктовками вы печатали, кликали, ушли в другое приложение или прошло больше трёх минут.";
 "general.launchAtLogin" = "Запускать при входе в систему";
 "general.recorderPanel" = "Панель записи";
 "general.restartAlert.title" = "Перезапуск DOKA";
