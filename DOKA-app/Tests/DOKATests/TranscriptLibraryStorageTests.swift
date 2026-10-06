@@ -256,6 +256,54 @@ final class TranscriptLibraryStorageTests: XCTestCase {
         XCTAssertFalse(store.hasBackgroundWork)
     }
 
+    /// Архив, записанный CAF до исправления имени `.part`, на старте
+    /// перепаковывается в M4A на том же месте; нормальный архив не трогается.
+    func testRepairLegacyArchivesRemuxesCAFOnly() async throws {
+        let store = makeStore()
+        let legacy = makeDoneRecord(in: store)
+        let fine = makeDoneRecord(in: store)
+        let source = try makeSineWav(seconds: 1.0)
+        // Обе записи получают архив штатным путём…
+        for id in [legacy, fine] {
+            store.archiveAudio(id, from: source)
+            for _ in 0..<300 where store.record(id)?.audioFileName == nil || store.hasBackgroundWork {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        // …а у одной он подменён архивом прежней версии: CAF под именем m4a.
+        let legacyPart = dir.appendingPathComponent(TranscriptLibraryFiles.legacyAudioPartFileName)
+        _ = try await SourceAudioArchiver.archive(source: source, to: legacyPart)
+        try FileManager.default.removeItem(at: store.files.audioURL(legacy))
+        try FileManager.default.moveItem(at: legacyPart, to: store.files.audioURL(legacy))
+        let fineBytes = try Data(contentsOf: store.files.audioURL(fine))
+        XCTAssertTrue(TranscriptLibraryFiles.isCAF(store.files.audioURL(legacy)))
+
+        store.repairLegacyArchives()
+        for _ in 0..<300 where TranscriptLibraryFiles.isCAF(store.files.audioURL(legacy)) || store.hasBackgroundWork {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(TranscriptLibraryFiles.isCAF(store.files.audioURL(legacy)))
+        XCTAssertFalse(exists(store.files.audioPartURL(legacy)))
+        XCTAssertEqual(try Data(contentsOf: store.files.audioURL(fine)), fineBytes)
+        XCTAssertFalse(store.hasBackgroundWork)
+        let decoded = try await AudioFileDecoder.decodeToWav(store.files.audioURL(legacy))
+        try? FileManager.default.removeItem(at: decoded.url)
+        XCTAssertEqual(decoded.duration, 1.0, accuracy: 0.1)
+    }
+
+    /// Синусоида 16 кГц mono — источник для настоящего архиватора.
+    private func makeSineWav(seconds: Double) throws -> URL {
+        let url = dir.appendingPathComponent("source-\(UUID().uuidString).wav")
+        let writer = try WavWriter(url: url)
+        let count = Int(seconds * Double(WavWriter.sampleRate))
+        let samples = (0..<count).map { i in
+            Int16(sin(2 * .pi * 440 * Double(i) / Double(WavWriter.sampleRate)) * 0.5 * Double(Int16.max))
+        }
+        writer.append(samples.withUnsafeBufferPointer { Data(buffer: $0) })
+        try writer.finalize()
+        return url
+    }
+
     /// Удалённая за время копирования запись не воскресает папкой с одним аудио.
     func testCloneAudioSkipsDeletedRecord() async throws {
         let store = makeStore()
