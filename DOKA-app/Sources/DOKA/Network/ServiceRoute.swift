@@ -20,6 +20,12 @@ enum ServiceRoute {
         case .remote(_, let config): return config.model
         }
     }
+
+    /// Распознаёт ли модель на этом Mac (ускоритель и ОЗУ заняты речевой моделью).
+    var isLocal: Bool {
+        if case .local = self { return true }
+        return false
+    }
 }
 
 // MARK: - Фасад активного сервиса

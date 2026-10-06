@@ -119,7 +119,7 @@ final class SpeakerNameSuggesterTests: XCTestCase {
             SpeakerNameSuggester.Speaker(id: item.0, tag: "S\(index + 1)", label: item.2 ? "Игорь" : "Спикер",
                                          hasCustomName: item.2, segmentCount: item.1)
         }
-        return SpeakerNameSuggester.Prepared(speakers: list, lines: lines(turns), duration: 60)
+        return SpeakerNameSuggester.Prepared(speakers: list, lines: lines(turns))
     }
 
     func testCutGoesToSpeakerWithMoreReplicas() {
@@ -223,14 +223,6 @@ final class SpeakerNameSuggesterTests: XCTestCase {
         let p = try prepared()
         let answer = #"{"names":[{"name":true},{"name":"Паша"}],"merge":[]}"#
         XCTAssertEqual(SpeakerNameSuggester.parse(answer, prepared: p).names.map(\.name), ["Паша"])
-    }
-
-    func testTimeParsing() {
-        XCTAssertEqual(SpeakerNameSuggester.parseTime("1:05", limit: nil), 65)
-        XCTAssertEqual(SpeakerNameSuggester.parseTime("[1:02:03]", limit: nil), 3723)
-        XCTAssertNil(SpeakerNameSuggester.parseTime("1:75", limit: nil))
-        XCTAssertNil(SpeakerNameSuggester.parseTime("около минуты", limit: nil))
-        XCTAssertNil(SpeakerNameSuggester.parseTime("9:00", limit: 30), "за пределами записи")
     }
 
     func testFirstJSONObjectRespectsStrings() {

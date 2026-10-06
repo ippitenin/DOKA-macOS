@@ -187,4 +187,16 @@ final class LLMTextTests: XCTestCase {
         XCTAssertFalse(LLMText.containsCJK("Совещание"))
         XCTAssertFalse(LLMText.containsCJK("Meeting #1 — 12:34"))
     }
+
+    /// Один признак на анализ, «Угадать имена» и ИИ-обработку диктовки.
+    func testBanCJKByLanguage() {
+        XCTAssertTrue(LLMGenerationOptions.banCJK(forLanguage: "ru"))
+        XCTAssertTrue(LLMGenerationOptions.banCJK(forLanguage: "en-US"))
+        XCTAssertTrue(LLMGenerationOptions.banCJK(forLanguage: nil), "язык неизвестен — бан")
+        XCTAssertTrue(LLMGenerationOptions.banCJK(forLanguage: ""))
+        XCTAssertFalse(LLMGenerationOptions.banCJK(forLanguage: "zh"))
+        XCTAssertFalse(LLMGenerationOptions.banCJK(forLanguage: "zh-CN"))
+        XCTAssertFalse(LLMGenerationOptions.banCJK(forLanguage: "JA"))
+        XCTAssertFalse(LLMGenerationOptions.banCJK(forLanguage: "ko_KR"))
+    }
 }
