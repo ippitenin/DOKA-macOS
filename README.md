@@ -99,7 +99,10 @@ written in Russian.
   recognized text becomes the caption for the video. While recording, a mirror slides out of
   the screen notch: a live view of your mouth that calmly follows your face, with a glowing
   lip mask in the Aurora palette (peach to indigo) drawn on the very frame it was measured
-  on. For now this only collects data — DOKA can’t read lips yet.
+  on. Sound can’t caption silent pairs, so there is a Training window: it shows a phrase — from
+  your past dictations or a built-in (Russian) list — that you mouth with your lips only, and
+  the phrase itself becomes the caption. For now this only collects data — DOKA can’t read lips
+  yet.
 - **Dictionary** — case-insensitive replacement rules applied to every transcript. Rules match whole words: “doka” → “DOKA” no longer touches “document”; the per-rule “Inside words” switch brings back substring matching (e.g. “ё” → “е”). Optionally applied to file transcripts as well.
 
 ## Privacy
@@ -219,7 +222,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 832 checks in a few seconds, and
+Pure logic is covered by tests — `swift test` runs 855 checks in a few seconds, and
 CI runs them on every pull request along with the build and a localisation check. The
 local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
 see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder
