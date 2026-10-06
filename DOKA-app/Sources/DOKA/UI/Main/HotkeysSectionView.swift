@@ -5,6 +5,11 @@ import KeyboardShortcuts
 /// Секция «Клавиши»: глобальные горячие клавиши диктовки, кнопка мыши
 /// и шорткаты окна (отражаются в меню-баре).
 struct HotkeysSectionView: View {
+    @ObservedObject private var settings = SettingsStore.shared
+    /// Системное действие на 🌐 — читается при появлении и при возврате в
+    /// DOKA (человек мог поменять его в Системных настройках).
+    @State private var systemFnFree = SystemFnKeyUsage.doesNothing
+
     var body: some View {
         SettingsForm(title: L("section.hotkeys")) {
             SettingsCard(header: L("hotkeys.card.dictation"),
@@ -21,6 +26,26 @@ struct HotkeysSectionView: View {
                 SettingsRow(title: L("hotkeys.mouseButton"),
                             help: L("hotkeys.mouseButton.hint")) {
                     MouseShortcutRecorder()
+                }
+                CardDivider()
+                SettingsRow(title: L("hotkeys.fnKey"),
+                            help: L("hotkeys.fnKey.hint")) {
+                    SettingsPopup(selection: $settings.fnKeyMode, title: \.title)
+                }
+                if settings.fnKeyMode != .off && !systemFnFree {
+                    HStack(spacing: 10) {
+                        Text(L("hotkeys.fnKey.systemConflict"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        Button(L("hotkeys.fnKey.openKeyboardSettings")) {
+                            SystemFnKeyUsage.openKeyboardSettings()
+                        }
+                        .dsGlassButton()
+                    }
+                    .padding(.horizontal, DS.Spacing.cardPadding)
+                    .padding(.bottom, 9)
                 }
                 CardDivider()
                 SettingsRow(title: L("hotkeys.pasteLast")) {
@@ -43,6 +68,10 @@ struct HotkeysSectionView: View {
                     KeyboardShortcuts.Recorder(for: .openHistoryWindow)
                 }
             }
+        }
+        .onAppear { systemFnFree = SystemFnKeyUsage.doesNothing }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            systemFnFree = SystemFnKeyUsage.doesNothing
         }
     }
 }
