@@ -68,7 +68,7 @@ final class LipDataFilesTests: XCTestCase {
         try commitTake(UUID(), mode: .silent, source: .training, text: "Сохранённая фраза")
         let pendingID = UUID()
         _ = try makePending(pendingID, files: [LipDataLayout.rawVideo])
-        var job = LipJob(text: "Фраза в обработке", language: "ru", provider: "training", model: "builtin",
+        var job = LipJob(text: "Фраза в обработке", language: "ru", provider: "training", model: "work",
                          historyID: nil, date: Date(), duration: 3, speechSeconds: 0, quietSpeechSeconds: 0,
                          quiet: false, microphone: nil, hostStart: 1, inputLatency: 0, speechOnset: 0.5,
                          maxClockDrift: 0)

@@ -60,8 +60,8 @@ final class LipTakeModelsTests: XCTestCase {
     /// договор с импортёром WISLIP, как и первая.
     private let trainingFixture = """
     {"schemaVersion":1,"id":"7A2B3C4D-0000-4000-8000-000000000002","date":"2026-10-06T12:00:00Z",
-     "source":"training","mode":"silent","text":"Слушай, давай перенесём созвон на завтра","language":"ru",
-     "provider":"training","model":"builtin",
+     "source":"training","mode":"silent","text":"Слушай, посмотри ещё раз на главную страницу.","language":"ru",
+     "provider":"training","model":"work",
      "duration":4.2,"speechSeconds":0,"quietSpeechSeconds":0.1,"speechOnset":0.86,"quiet":false,
      "video":{"width":512,"height":512,"fps":30,"validFrom":0.62,"validTo":4.2,"faceCoverage":1,
       "faceGaps":[],"cropRect":[402,96,560,560],"cameraFrame":[1280,720],
@@ -78,18 +78,19 @@ final class LipTakeModelsTests: XCTestCase {
         XCTAssertEqual(meta.mode, .silent)
         XCTAssertNil(meta.historyID)
         XCTAssertEqual(meta.speechOnset, 0.86)
-        XCTAssertEqual(meta.text, "Слушай, давай перенесём созвон на завтра")
+        XCTAssertEqual(meta.text, "Слушай, посмотри ещё раз на главную страницу.")
+        XCTAssertEqual(meta.model, LipTrainingPhrase.Origin.work.rawValue)
         XCTAssertNil(meta.audio.microphone)
     }
 
     /// Подпись тренировки: показанная фраза, беззвучно, без записи истории.
     func testTrainingCaption() {
-        let caption = LipCaption.training(phrase: "Купи хлеба по дороге", origin: "builtin")
+        let caption = LipCaption.training(phrase: "Купи хлеба по дороге", origin: LipTrainingPhrase.Origin.everyday.rawValue)
         XCTAssertEqual(caption.source, .training)
         XCTAssertEqual(caption.mode, .silent)
         XCTAssertNil(caption.historyID)
         XCTAssertEqual(caption.provider, LipCaption.trainingProvider)
-        XCTAssertEqual(caption.model, "builtin")
+        XCTAssertEqual(caption.model, "everyday")
         XCTAssertEqual(caption.text, "Купи хлеба по дороге")
     }
 
