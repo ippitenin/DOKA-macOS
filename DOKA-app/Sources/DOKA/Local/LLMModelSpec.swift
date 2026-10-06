@@ -89,3 +89,10 @@ struct LLMModelSpec: Sendable, Equatable {
         Self.isLowMemoryMac ? min(maxContext, Self.lowMemoryContext) : maxContext
     }
 }
+
+extension LLMSampling {
+    /// Жадный выбор: у задач с одним верным ответом (имена, чистка текста)
+    /// случайность только вредит, а один и тот же вход даёт один и тот же итог.
+    static let greedy = LLMSampling(temperature: 0, topK: 1, topP: 1, minP: 0,
+                                    repeatPenalty: 1, repeatLastN: 0, seed: 0)
+}

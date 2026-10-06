@@ -29,6 +29,9 @@ struct SpeakerStrip: View {
             } else {
                 Spacer(minLength: 0)
             }
+            if canEdit && !roster.isEmpty {
+                SpeakerSuggestButton(document: document)
+            }
             if showsReset {
                 Button(L("transcribe.edits.resetAll"), action: onReset)
                     .buttonStyle(.plain)

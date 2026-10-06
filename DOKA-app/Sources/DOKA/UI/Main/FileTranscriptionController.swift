@@ -376,7 +376,8 @@ final class FileTranscriptionController: ObservableObject {
         // локальное распознавание — поверх анализа. Иначе речевая модель на ANE
         // и языковая на Metal дерутся за ускоритель, а на маке с 8 ГБ ещё и за
         // память. Сетевому распознаванию анализ не мешает.
-        if case .local = route, AnalysisController.shared.isRunning {
+        if case .local = route,
+           AnalysisController.shared.isRunning || SpeakerSuggestionController.shared.isRunning {
             return .rejected(L("transcribe.busy.analysis"))
         }
         if let message = params.rolesValidationMessage { return .rejected(message) }

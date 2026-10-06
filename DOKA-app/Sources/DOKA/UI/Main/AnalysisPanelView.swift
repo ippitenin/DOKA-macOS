@@ -416,6 +416,7 @@ struct AnalysisPanelView: View {
         case .modelMissing: return L("analysis.model.needed")
         case .busyTranscribing: return L("analysis.busy.transcribing")
         case .busyOtherRecord: return L("analysis.busy.other")
+        case .busySpeakerNames: return L("analysis.busy.speakerNames")
         case .emptyTranscript: return L("analysis.error.empty")
         case .notReady: return L("transcribe.recordMissing")
         case .frozen: return L("transcribe.error.restartRequired")
