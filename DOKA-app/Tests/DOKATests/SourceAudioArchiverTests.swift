@@ -39,6 +39,45 @@ final class SourceAudioArchiverTests: XCTestCase {
         return url
     }
 
+    /// Регрессия: библиотека пишет архив во временное имя, и контейнер
+    /// `AVAudioFile` выбирает ПО РАСШИРЕНИЮ. Прежнее `audio.m4a.part` давало
+    /// CAF под именем `audio.m4a`, который наш же декодер не открывал.
+    func testLibraryPartNameProducesM4AContainer() async throws {
+        let source = try makeSineWav(seconds: 1.0)
+        let part = tmp.appendingPathComponent(TranscriptLibraryFiles.audioPartFileName)
+        _ = try await SourceAudioArchiver.archive(source: source, to: part)
+        XCTAssertFalse(TranscriptLibraryFiles.isCAF(part))
+
+        let archive = tmp.appendingPathComponent(TranscriptLibraryFiles.audioFileName)
+        try FileManager.default.moveItem(at: part, to: archive)
+        let decoded = try await AudioFileDecoder.decodeToWav(archive)
+        defer { try? FileManager.default.removeItem(at: decoded.url) }
+        XCTAssertEqual(decoded.duration, 1.0, accuracy: 0.1)
+    }
+
+    /// Старый архив (CAF под именем m4a) перепаковывается без перекодирования
+    /// и снова открывается декодером.
+    func testRemuxCAFMakesLegacyArchiveReadable() async throws {
+        let source = try makeSineWav(seconds: 1.5)
+        let legacyPart = tmp.appendingPathComponent(TranscriptLibraryFiles.legacyAudioPartFileName)
+        _ = try await SourceAudioArchiver.archive(source: source, to: legacyPart)
+        let archive = tmp.appendingPathComponent(TranscriptLibraryFiles.audioFileName)
+        try FileManager.default.moveItem(at: legacyPart, to: archive)
+        XCTAssertTrue(TranscriptLibraryFiles.isCAF(archive), "прежнее имя давало CAF — ради этого и перепаковка")
+        do {
+            let broken = try await AudioFileDecoder.decodeToWav(archive)
+            try? FileManager.default.removeItem(at: broken.url)
+            XCTFail("CAF под именем m4a не должен был открыться — ловушка исчезла, перепаковка не нужна")
+        } catch {}
+
+        let remuxed = tmp.appendingPathComponent("remuxed.m4a")
+        try await SourceAudioArchiver.remuxCAF(archive, to: remuxed)
+        XCTAssertFalse(TranscriptLibraryFiles.isCAF(remuxed))
+        let decoded = try await AudioFileDecoder.decodeToWav(remuxed)
+        defer { try? FileManager.default.removeItem(at: decoded.url) }
+        XCTAssertEqual(decoded.duration, 1.5, accuracy: 0.1)
+    }
+
     func testArchiveProducesReadableM4A() async throws {
         let source = try makeSineWav(seconds: 1.5)
         let destination = tmp.appendingPathComponent("test.m4a")
