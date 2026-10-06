@@ -130,14 +130,10 @@ struct LipsSectionView: View {
             HStack(spacing: 10) {
                 Text(L("lips.camera.denied"))
                     .foregroundStyle(.secondary)
-                Button(L("lips.camera.openSettings")) { permissions.openCameraSettings() }
-                    .dsGlassButton()
+                CameraAccessButton()
             }
         } else {
-            Button(L("lips.camera.allow")) {
-                Task { _ = await permissions.requestCamera() }
-            }
-            .dsGlassButton()
+            CameraAccessButton()
         }
     }
 
@@ -152,6 +148,25 @@ struct LipsSectionView: View {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
             NSWorkspace.shared.activateFileViewerSelecting([AppDataFolder.defaultURL])
+        }
+    }
+}
+
+/// Доступ к камере: «Открыть настройки», если в нём отказано (повторно
+/// система не спросит), иначе «Разрешить» — системный запрос. Общая у
+/// раздела «Губы» и окна «Тренировка».
+struct CameraAccessButton: View {
+    @ObservedObject private var permissions = PermissionsManager.shared
+
+    var body: some View {
+        if permissions.cameraDenied {
+            Button(L("lips.camera.openSettings")) { permissions.openCameraSettings() }
+                .dsGlassButton()
+        } else {
+            Button(L("lips.camera.allow")) {
+                Task { _ = await permissions.requestCamera() }
+            }
+            .dsGlassButton()
         }
     }
 }

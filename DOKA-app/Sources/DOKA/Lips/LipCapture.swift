@@ -160,6 +160,13 @@ final class LipCapture: ObservableObject {
         freeSpace.refresh()
     }
 
+    /// Прервать дубль: камера гаснет, дубль выбрасывается. Для отказов на
+    /// старте и отмен — когда судьбу дубля решать уже некому.
+    func abortTake(_ take: LipTake?) {
+        stopCamera()
+        discard(take)
+    }
+
     /// Выбросить дубль; nil — дубля не было (сбор выключен или камера не
     /// взлетела), делать нечего.
     func discard(_ take: LipTake?) {

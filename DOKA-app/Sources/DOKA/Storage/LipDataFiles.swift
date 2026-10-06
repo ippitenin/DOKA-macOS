@@ -188,20 +188,15 @@ final class LipDataFiles: @unchecked Sendable {
     /// «Тренировка» их больше не предлагает. Отброшенные сюда не попадают —
     /// такие фразы вернутся.
     func trainingTexts() -> [String] {
-        var texts: [String] = []
-        for folder in children(takesRoot) {
-            guard let data = try? Data(contentsOf: folder.appendingPathComponent(LipDataLayout.meta)),
-                  let caption = try? LipTakeMeta.decoder.decode(SourceAndText.self, from: data),
-                  caption.source == LipSource.training.rawValue else { continue }
-            texts.append(caption.text)
+        // Пара — по `meta.json`, дубль в обработке — по своему `job.json`.
+        [(takesRoot, LipDataLayout.meta), (pendingRoot, LipDataLayout.job)].flatMap { root, file in
+            children(root).compactMap { folder -> String? in
+                guard let data = try? Data(contentsOf: folder.appendingPathComponent(file)),
+                      let caption = try? LipTakeMeta.decoder.decode(SourceAndText.self, from: data),
+                      caption.source == LipSource.training.rawValue else { return nil }
+                return caption.text
+            }
         }
-        for folder in children(pendingRoot) {
-            guard let data = try? Data(contentsOf: folder.appendingPathComponent(LipDataLayout.job)),
-                  let caption = try? LipTakeMeta.decoder.decode(SourceAndText.self, from: data),
-                  caption.source == LipSource.training.rawValue else { continue }
-            texts.append(caption.text)
-        }
-        return texts
     }
 
     /// У заказа диктовки `source` нет — такой заказ не тренировка.

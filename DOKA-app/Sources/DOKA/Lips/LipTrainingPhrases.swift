@@ -3,13 +3,22 @@ import Foundation
 /// Фраза окна «Тренировка»: что показать и откуда она.
 struct LipTrainingPhrase: Equatable, Hashable, Sendable {
     /// Откуда фраза; `rawValue` идёт в поле `model` пары (`LipCaption.training`).
-    enum Origin: String, CaseIterable, Sendable {
+    enum Origin: String, Sendable {
         /// Предложение из истории диктовок — своя лексика.
         case history
         /// Готовый список, рабочие фразы.
         case work
         /// Готовый список, бытовые фразы.
         case everyday
+
+        /// Подпись в карточке фразы.
+        var title: String {
+            switch self {
+            case .history: return L("training.origin.history")
+            case .work: return L("training.origin.work")
+            case .everyday: return L("training.origin.everyday")
+            }
+        }
     }
 
     let text: String

@@ -26,6 +26,9 @@ struct LipTrainingQueue {
         self.items = items
     }
 
+    /// Пустая очередь — пока фразы сеанса грузятся.
+    static let empty = LipTrainingQueue(pools: [], done: [], seed: 0)
+
     /// Фраза на экране; nil — фразы кончились.
     var current: LipTrainingPhrase? { items.first }
     var count: Int { items.count }

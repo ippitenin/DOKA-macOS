@@ -13,7 +13,9 @@ import QuartzCore
 /// `LipTrainingCheck` ловит фразу, сказанную вслух.
 ///
 /// Прошлая пара фиксируется не сразу, а при старте следующей фразы или
-/// закрытии окна: до этого «Переписать прошлую» — просто выброс.
+/// закрытии окна: до этого «Переписать прошлую» — просто выброс. Этот учёт
+/// (очередь, отложенная фраза, обработка, прошлая) — чистый
+/// `LipTrainingSession`; контроллер держит камеру, микрофон и таймеры.
 @MainActor
 final class LipTrainingController: ObservableObject {
     static let shared = LipTrainingController()
@@ -43,51 +45,25 @@ final class LipTrainingController: ObservableObject {
         case microphoneFailed
     }
 
-    /// Судьба прошлой фразы.
-    struct Last: Equatable {
-        enum Result: Equatable {
-            /// Записана, ещё можно переписать (R).
-            case held
-            /// Ушла в обработку.
-            case processing
-            case saved
-            /// nil — данные потерялись (не решение по паре).
-            case rejected(LipRejectReason?)
-        }
-
-        let phrase: LipTrainingPhrase
-        var result: Result
-    }
-
     @Published private(set) var phase: Phase = .idle
-    @Published private(set) var current: LipTrainingPhrase?
     @Published private(set) var notice: Notice?
-    @Published private(set) var last: Last?
-    @Published private(set) var sessionSaved = 0
+    @Published private(set) var session = LipTrainingSession()
     /// Фразы ещё грузятся (история, уже записанное).
     @Published private(set) var isLoading = false
-    /// Фразы кончились.
-    var isExhausted: Bool { !isLoading && current == nil }
-    var canRewrite: Bool { phase == .idle && held != nil }
 
-    private struct Held {
-        let take: LipTake
-        let audio: RecordedDictation
-        let phrase: LipTrainingPhrase
-    }
+    /// Фраза на экране; nil — фразы кончились или ещё грузятся.
+    var current: LipTrainingPhrase? { session.current }
+    var last: LipTrainingSession.Last? { session.last }
+    var sessionSaved: Int { session.saved }
+    var canRewrite: Bool { phase == .idle && session.canRewrite }
 
-    private var queue = LipTrainingQueue(pools: [], done: [], seed: 0)
     private let recorder = AudioRecorder()
     private var activeTake: LipTake?
     /// Хост-время подсказки «Говорите» — начало фразы на шкале WAV.
     private var cueHost: TimeInterval?
-    private var held: Held?
-    /// Зафиксированные фразы, ждущие исхода обработки.
-    private var inFlight: [UUID: LipTrainingPhrase] = [:]
     private var autoStop: Task<Void, Never>?
     private var cueTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
-    private var sessionActive = false
     private var cancellables: Set<AnyCancellable> = []
 
     private init() {
@@ -111,19 +87,15 @@ final class LipTrainingController: ObservableObject {
 
     /// Окно открыто: собрать очередь фраз и подготовить камеру.
     func beginSession() {
-        guard !sessionActive else { return }
-        sessionActive = true
-        sessionSaved = 0
+        guard session.open() else { return }
         notice = nil
-        last = nil
         LipCapture.shared.prepareIfEnabled(for: .training)
         loadPhrases()
     }
 
     /// Окно закрыто: идущая фраза выбрасывается, отложенная — фиксируется.
     func endSession() {
-        guard sessionActive else { return }
-        sessionActive = false
+        guard session.close() else { return }
         loadTask?.cancel()
         if phase.isActive { cancel(notice: nil) }
         commitHeld()
@@ -139,23 +111,20 @@ final class LipTrainingController: ObservableObject {
 
     private func loadPhrases() {
         isLoading = true
-        current = nil
+        session.reload(.empty)
         let history = LipTrainingPhrases.fromHistory(HistoryStore.shared.records.map(\.text))
             .map { LipTrainingPhrase(text: $0, origin: .history) }
         let builtin = LipTrainingPhrases.builtin()
         loadTask = Task { [weak self] in
             let done = await LipDataStore.shared.trainingTexts()
-            guard let self, !Task.isCancelled, self.sessionActive else { return }
-            // Фразы, записанные в этом процессе, но ещё не дошедшие до диска.
-            var doneKeys = Set(done.map(LipTrainingPhrases.normalize))
-            if let held = self.held { doneKeys.insert(LipTrainingPhrases.normalize(held.phrase.text)) }
-            for phrase in self.inFlight.values { doneKeys.insert(LipTrainingPhrases.normalize(phrase.text)) }
-            self.queue = LipTrainingQueue(
+            guard let self, !Task.isCancelled, self.session.isOpen else { return }
+            // Плюс фразы, записанные в этом процессе, но ещё не дошедшие до диска.
+            let doneKeys = Set(done.map(LipTrainingPhrases.normalize)).union(self.session.pendingKeys)
+            self.session.reload(LipTrainingQueue(
                 pools: [history,
                         builtin.filter { $0.origin == .work },
                         builtin.filter { $0.origin == .everyday }],
-                done: doneKeys, seed: UInt64.random(in: 0...UInt64.max))
-            self.current = self.queue.current
+                done: doneKeys, seed: UInt64.random(in: 0...UInt64.max)))
             self.isLoading = false
         }
     }
@@ -171,7 +140,7 @@ final class LipTrainingController: ObservableObject {
     }
 
     func start() {
-        guard sessionActive, phase == .idle, let phrase = current else { return }
+        guard session.isOpen, phase == .idle, let phrase = current else { return }
         guard !DictationController.isActive else {
             notice = .dictationActive
             return
@@ -193,8 +162,7 @@ final class LipTrainingController: ObservableObject {
             _ = try recorder.start(quiet: false)
         } catch {
             NSLog("DOKA: тренировка — микрофон не стартовал: %@", error.localizedDescription)
-            LipCapture.shared.stopCamera()
-            LipCapture.shared.discard(take)
+            LipCapture.shared.abortTake(take)
             notice = .microphoneFailed
             return
         }
@@ -208,7 +176,7 @@ final class LipTrainingController: ObservableObject {
         // Камера могла уже видеть губы (фаза публикуется только на смене).
         cameraPhaseChanged(LipCapture.shared.phase)
         autoStop = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(LipTrainingCheck.maxDuration * 1_000_000_000))
+            try? await Task.sleep(for: .seconds(LipTrainingCheck.maxDuration))
             guard !Task.isCancelled, let self, self.activeTake == take else { return }
             self.stop()
         }
@@ -224,8 +192,7 @@ final class LipTrainingController: ObservableObject {
         activeTake = nil
         phase = .idle
         guard let result = recorder.stop() else {
-            LipCapture.shared.stopCamera()
-            LipCapture.shared.discard(take)
+            LipCapture.shared.abortTake(take)
             notice = .microphoneFailed
             return
         }
@@ -260,11 +227,8 @@ final class LipTrainingController: ObservableObject {
                                       microphone: recorder.currentInputDeviceName,
                                       quiet: false, quietSpeechDuration: result.quietSpeechDuration,
                                       timing: timing, lipTake: take)
-        held = Held(take: take, audio: audio, phrase: phrase)
-        last = Last(phrase: phrase, result: .held)
+        session.hold(.init(take: take, audio: audio, phrase: phrase))
         notice = nil
-        queue.advance()
-        current = queue.current
     }
 
     /// Esc во время фразы: дубль выбрасывается, фраза остаётся.
@@ -277,21 +241,16 @@ final class LipTrainingController: ObservableObject {
     /// «Пропустить» — фраза уходит в конец очереди.
     func skip() {
         guard phase == .idle else { return }
-        queue.skip()
-        current = queue.current
+        session.skip()
         notice = nil
     }
 
     /// «Переписать прошлую» (R): отложенная пара выбрасывается, её фраза
     /// снова на экране.
     func rewritePrevious() {
-        guard phase == .idle, let held else { return }
-        self.held = nil
+        guard phase == .idle, let held = session.rewrite() else { return }
         LipCapture.shared.discard(held.take)
         Self.removeFile(held.audio.url)
-        queue.pushFront(held.phrase)
-        current = queue.current
-        last = nil
         notice = nil
     }
 
@@ -310,8 +269,7 @@ final class LipTrainingController: ObservableObject {
         activeTake = nil
         phase = .idle
         recorder.cancelAndDelete()
-        LipCapture.shared.stopCamera()
-        LipCapture.shared.discard(take)
+        LipCapture.shared.abortTake(take)
         self.notice = notice
     }
 
@@ -323,7 +281,7 @@ final class LipTrainingController: ObservableObject {
     private func cameraPhaseChanged(_ cameraPhase: LipMirrorPhase) {
         guard phase == .warming, let take = activeTake, cameraPhase == .face, cueTask == nil else { return }
         cueTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(Self.cueDelay * 1_000_000_000))
+            try? await Task.sleep(for: .seconds(Self.cueDelay))
             guard !Task.isCancelled, let self else { return }
             self.cueTask = nil
             guard self.phase == .warming, self.activeTake == take else { return }
@@ -335,34 +293,38 @@ final class LipTrainingController: ObservableObject {
     // MARK: - Фиксация и исходы
 
     private func commitHeld() {
-        guard let held else { return }
-        self.held = nil
+        // Фраза встаёт в обработку ДО фиксации: исход сбоя её найдёт.
+        guard let held = session.releaseHeld() else { return }
         let caption = LipCaption.training(phrase: held.phrase.text, origin: held.phrase.origin.rawValue)
         // Жёсткая ссылка на WAV берётся синхронно — затем исходник удаляется.
         LipDataStore.shared.commit(held.take, caption: caption, audio: held.audio)
         Self.removeFile(held.audio.url)
-        inFlight[held.take.id] = held.phrase
-        if last?.phrase == held.phrase { last?.result = .processing }
     }
 
     private func handle(_ outcome: LipTakeOutcome) {
-        guard let phrase = inFlight.removeValue(forKey: outcome.id) else { return }
-        switch outcome {
-        case .saved:
-            if sessionActive { sessionSaved += 1 }
-            if last?.phrase == phrase { last?.result = .saved }
-        case .rejected(_, let reason):
-            // Отброшенная фраза вернётся позже: причина (свет, ладонь) могла уйти.
-            if sessionActive {
-                queue.requeue(phrase)
-                if current == nil { current = queue.current }
-            }
-            last = Last(phrase: phrase, result: .rejected(reason))
-        }
+        guard session.apply(outcome) else { return }
         LipDataStore.shared.refreshSummary()
     }
 
     private static func removeFile(_ url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+}
+
+extension LipTrainingController.Notice {
+    /// Сообщение под фразой.
+    var text: String {
+        switch self {
+        case .tooShort: return L("training.notice.tooShort")
+        case .voiced: return L("training.notice.voiced")
+        case .notReady: return L("training.notice.notReady")
+        case .interrupted: return L("training.notice.interrupted")
+        case .dictationActive: return L("training.notice.dictationActive")
+        case .cameraPermission: return L("training.notice.cameraPermission")
+        case .microphonePermission: return L("training.notice.microphonePermission")
+        case .noRoom: return L("training.notice.noRoom")
+        case .cameraUnavailable: return L("training.notice.cameraUnavailable")
+        case .microphoneFailed: return L("training.notice.microphoneFailed")
+        }
     }
 }
