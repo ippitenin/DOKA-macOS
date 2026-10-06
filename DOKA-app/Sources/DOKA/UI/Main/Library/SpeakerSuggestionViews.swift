@@ -66,9 +66,16 @@ struct SpeakerSuggestionsPanel: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        if let content {
+        if let state {
             VStack(alignment: .leading, spacing: 8) {
-                content
+                switch state {
+                case .modelNeeded:
+                    modelNeeded
+                case .ready(let suggestions, let covered):
+                    ready(suggestions, covered: covered)
+                case .failed(let message):
+                    header(L("speakers.suggest.failed", message), showsApplyAll: false)
+                }
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -83,16 +90,23 @@ struct SpeakerSuggestionsPanel: View {
         }
     }
 
-    private var content: AnyView? {
+    /// Что показывать; nil — плашки нет вовсе (и её рамки тоже).
+    private enum PanelState {
+        case modelNeeded
+        case ready(SpeakerNameSuggester.Suggestions, covered: Double?)
+        case failed(String)
+    }
+
+    private var state: PanelState? {
         let recordID = document.recordID
         if controller.modelRequestRecordID == recordID && !models.isDownloaded(.llm) {
-            return AnyView(modelNeeded)
+            return .modelNeeded
         }
         switch controller.phase(for: recordID) {
         case .ready(_, let suggestions, let covered):
-            return AnyView(ready(suggestions, covered: covered))
+            return .ready(suggestions, covered: covered)
         case .failed(_, let message):
-            return AnyView(header(L("speakers.suggest.failed", message), showsApplyAll: false))
+            return .failed(message)
         case .running, .idle, nil:
             return nil
         }
