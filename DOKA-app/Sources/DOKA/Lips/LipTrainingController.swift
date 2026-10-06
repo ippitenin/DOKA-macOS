@@ -85,6 +85,7 @@ final class LipTrainingController: ObservableObject {
     /// Зафиксированные фразы, ждущие исхода обработки.
     private var inFlight: [UUID: LipTrainingPhrase] = [:]
     private var autoStop: Task<Void, Never>?
+    private var cueTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var sessionActive = false
     private var cancellables: Set<AnyCancellable> = []
@@ -218,6 +219,8 @@ final class LipTrainingController: ObservableObject {
         guard phase.isActive, let take = activeTake, let phrase = current else { return }
         let reachedCue = cueHost != nil
         autoStop?.cancel()
+        cueTask?.cancel()
+        cueTask = nil
         activeTake = nil
         phase = .idle
         guard let result = recorder.stop() else {
@@ -301,6 +304,8 @@ final class LipTrainingController: ObservableObject {
 
     private func cancel(notice: Notice?) {
         autoStop?.cancel()
+        cueTask?.cancel()
+        cueTask = nil
         let take = activeTake
         activeTake = nil
         phase = .idle
@@ -310,10 +315,21 @@ final class LipTrainingController: ObservableObject {
         self.notice = notice
     }
 
+    /// Подсказка — не на первом кадре с губами, а чуть позже: первые кадры
+    /// холодной камеры уходят на прогрев экспозиции (`LipSync.warmupMin`), и
+    /// фраза, начатая сразу, считалась бы «началом без видео».
+    static let cueDelay: TimeInterval = 0.3
+
     private func cameraPhaseChanged(_ cameraPhase: LipMirrorPhase) {
-        guard phase == .warming, activeTake != nil, cameraPhase == .face else { return }
-        cueHost = CACurrentMediaTime()
-        phase = .recording(since: Date())
+        guard phase == .warming, let take = activeTake, cameraPhase == .face, cueTask == nil else { return }
+        cueTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.cueDelay * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            self.cueTask = nil
+            guard self.phase == .warming, self.activeTake == take else { return }
+            self.cueHost = CACurrentMediaTime()
+            self.phase = .recording(since: Date())
+        }
     }
 
     // MARK: - Фиксация и исходы

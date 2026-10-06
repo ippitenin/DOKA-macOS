@@ -183,11 +183,13 @@ struct LipTrainingView: View {
         } else {
             switch controller.phase {
             case .idle:
-                HStack(spacing: 6) {
-                    KeyHint(L("training.key.space"))
-                    Text(L("training.status.idle"))
+                if controller.current != nil {
+                    HStack(spacing: 6) {
+                        KeyHint(L("training.key.space"))
+                        Text(L("training.status.idle"))
+                    }
+                    .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.secondary)
             case .warming:
                 Text(L("training.status.warming"))
                     .foregroundStyle(.secondary)
