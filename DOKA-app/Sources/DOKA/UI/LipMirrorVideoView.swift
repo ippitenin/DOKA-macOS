@@ -89,7 +89,7 @@ final class LipMirrorVideoNSView: NSView {
         let capture = LipCapture.shared
         phase = capture.phase
         owner = capture.mirrorFeed.attach(target: target) { [weak self] frame in self?.show(frame) }
-        // Лицо пропало или камера встала — маску прячем сразу: новых кадров
+        // Губы пропали или камера встала — маску прячем сразу: новых кадров
         // может и не прийти. @Published отдаёт значение до записи в свойство.
         phaseSubscription = capture.$phase.sink { [weak self] phase in
             guard let self else { return }

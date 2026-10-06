@@ -7,8 +7,10 @@ enum LipMirrorPhase: Equatable {
     case idle
     /// Камера включается, кадров ещё нет.
     case warming
+    /// Губы видны.
     case face
-    case noFace
+    /// Губ не видно: лица нет, губы за краем кадра или закрыты.
+    case noLips
     /// Кадров нет — камеру забрали или она отключилась.
     case unavailable
 }
@@ -41,10 +43,10 @@ final class LipCapture: ObservableObject {
 
     private var takeStartedAt = Date.distantPast
     private var lastSampleAt: Date?
-    private var lastFaceAt: Date?
+    private var lastLipsAt: Date?
     private var phaseTimer: Timer?
-    /// Лица нет дольше — «Лица не видно».
-    private static let faceLostAfter = LipMirrorCamera.lostAfter
+    /// Губ не видно дольше — «Губ не видно».
+    private static let lipsLostAfter = LipMirrorCamera.lostAfter
     /// Кадров нет дольше — «Камера недоступна».
     private static let cameraLostAfter: TimeInterval = 2.5
 
@@ -121,7 +123,7 @@ final class LipCapture: ObservableObject {
         activeTake = take
         takeStartedAt = Date()
         lastSampleAt = nil
-        lastFaceAt = nil
+        lastLipsAt = nil
         phase = .warming
         startPhaseTimer()
         return take
@@ -158,7 +160,7 @@ final class LipCapture: ObservableObject {
         guard activeTake != nil else { return }
         let now = Date()
         lastSampleAt = now
-        if sample.box != nil { lastFaceAt = now }
+        if sample.lipsVisible { lastLipsAt = now }
         updatePhase(now: now)
     }
 
@@ -168,12 +170,12 @@ final class LipCapture: ObservableObject {
         if let last = lastSampleAt {
             if now.timeIntervalSince(last) > Self.cameraLostAfter {
                 next = .unavailable
-            } else if let face = lastFaceAt, now.timeIntervalSince(face) <= Self.faceLostAfter {
+            } else if let lips = lastLipsAt, now.timeIntervalSince(lips) <= Self.lipsLostAfter {
                 next = .face
-            } else if now.timeIntervalSince(lastFaceAt ?? takeStartedAt) > Self.faceLostAfter {
-                next = .noFace
+            } else if now.timeIntervalSince(lastLipsAt ?? takeStartedAt) > Self.lipsLostAfter {
+                next = .noLips
             } else {
-                next = phase == .warming ? .warming : .noFace
+                next = phase == .warming ? .warming : .noLips
             }
         } else {
             next = now.timeIntervalSince(takeStartedAt) > Self.cameraLostAfter ? .unavailable : .warming

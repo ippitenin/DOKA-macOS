@@ -21,7 +21,7 @@ final class LipTakeVerdictTests: XCTestCase {
             speechOnset: 0.8,
             validFrom: 0.3,
             validTo: 10,
-            faceSamples: stride(from: 0.3, to: 10, by: 1.0 / 15).map { LipFaceMark(t: $0, hasFace: true) },
+            faceSamples: stride(from: 0.3, to: 10, by: 1.0 / 15).map { LipFaceMark(t: $0, lipsVisible: true) },
             faceInOutputPx: 200)
         change(&f)
         return f
@@ -56,9 +56,9 @@ final class LipTakeVerdictTests: XCTestCase {
     /// Лицо было в кадре меньше половины времени — пара не годится.
     func testMissingFaceIsRejected() {
         let rejected = LipTakeVerdict.decide(facts {
-            $0.faceSamples = $0.faceSamples.enumerated().map { LipFaceMark(t: $1.t, hasFace: $0 % 3 == 0) }
+            $0.faceSamples = $0.faceSamples.enumerated().map { LipFaceMark(t: $1.t, lipsVisible: $0 % 3 == 0) }
         })
-        XCTAssertEqual(rejected, .reject(.noFace))
+        XCTAssertEqual(rejected, .reject(.noLips))
     }
 
     /// Полезного видео меньше полутора секунд, хотя лицо было всё время —
@@ -75,9 +75,9 @@ final class LipTakeVerdictTests: XCTestCase {
     /// Окно видео длинное, но лицо в кадре меньше половины времени — «лица не видно».
     func testShortFaceTimeInLongWindowIsNoFace() {
         let rejected = LipTakeVerdict.decide(facts {
-            $0.faceSamples = $0.faceSamples.map { LipFaceMark(t: $0.t, hasFace: $0.t < 2.0) }
+            $0.faceSamples = $0.faceSamples.map { LipFaceMark(t: $0.t, lipsVisible: $0.t < 2.0) }
         })
-        XCTAssertEqual(rejected, .reject(.noFace))
+        XCTAssertEqual(rejected, .reject(.noLips))
     }
 
     func testSmallFaceIsRejected() {
@@ -98,9 +98,9 @@ final class LipTakeVerdictTests: XCTestCase {
     /// Пропуски лица дольше 0,2 с попадают в `faceGaps` — импортёр WISLIP
     /// не режет фразы через них.
     func testFaceGaps() {
-        var samples = stride(from: 0.0, to: 4.0, by: 1.0 / 15).map { LipFaceMark(t: $0, hasFace: true) }
-        for i in samples.indices where samples[i].t >= 1.0 && samples[i].t < 1.6 { samples[i].hasFace = false }
-        for i in samples.indices where samples[i].t >= 2.0 && samples[i].t < 2.1 { samples[i].hasFace = false }
+        var samples = stride(from: 0.0, to: 4.0, by: 1.0 / 15).map { LipFaceMark(t: $0, lipsVisible: true) }
+        for i in samples.indices where samples[i].t >= 1.0 && samples[i].t < 1.6 { samples[i].lipsVisible = false }
+        for i in samples.indices where samples[i].t >= 2.0 && samples[i].t < 2.1 { samples[i].lipsVisible = false }
         let gaps = LipTakeVerdict.faceGaps(samples, validFrom: 0, validTo: 4)
         XCTAssertEqual(gaps.count, 1)
         XCTAssertEqual(gaps[0][0], 1.0, accuracy: 0.07)
@@ -108,8 +108,8 @@ final class LipTakeVerdictTests: XCTestCase {
     }
 
     func testFaceCoverageCountsOnlyValidWindow() {
-        let samples = [LipFaceMark(t: 0.1, hasFace: false), LipFaceMark(t: 0.5, hasFace: true),
-                       LipFaceMark(t: 0.9, hasFace: true)]
+        let samples = [LipFaceMark(t: 0.1, lipsVisible: false), LipFaceMark(t: 0.5, lipsVisible: true),
+                       LipFaceMark(t: 0.9, lipsVisible: true)]
         XCTAssertEqual(LipTakeVerdict.faceCoverage(samples, validFrom: 0.3, validTo: 1.0), 1.0, accuracy: 1e-9)
     }
 }

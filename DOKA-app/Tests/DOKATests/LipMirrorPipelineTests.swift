@@ -258,4 +258,30 @@ final class LipMirrorPipelineTests: XCTestCase {
         XCTAssertNil(rig.hold(LipSyntheticFace.faceWithoutLips(mouth: mouth), seconds: 1.5))
         assertEqual(rig.next, scene, accuracy: 0.5)
     }
+
+    /// Губы закрыты ладонью: Vision дорисовал их, маски нет — но камера
+    /// остаётся на рте сколько угодно долго (зеркало показывает ладонь, то
+    /// есть ПОЧЕМУ губ не видно), а не уезжает на сцену, как без лица.
+    func testHiddenLipsGiveNoPathsButCameraStaysOnMouth() throws {
+        let rig = Rig(camera: camera, target: target, take: take)
+        let mouth = CGPoint(x: 820, y: 460)
+        rig.hold(LipSyntheticFace.sample(mouth: mouth), seconds: 1)
+        let tracked = rig.next
+
+        var covered = LipSyntheticFace.sample(mouth: mouth)
+        covered.lipsHidden = true
+        XCTAssertNotNil(rig.step(covered), "один кадр — удержание маски, как при промахе")
+        XCTAssertNil(rig.hold(covered, seconds: 0.3), "маска погасла")
+        XCTAssertNil(rig.hold(covered, seconds: 1.5))
+        XCTAssertEqual(rig.next.midX, tracked.midX, accuracy: 5)
+        XCTAssertEqual(rig.next.width, tracked.width, accuracy: tracked.width * 0.1)
+
+        // Ладонь убрали — маска возвращается сразу, из настоящих точек.
+        let paths = try XCTUnwrap(rig.step(LipSyntheticFace.sample(mouth: mouth)))
+        let fresh = LipMirrorPipeline()
+        _ = fresh.region(take: take, camera: camera, target: target)
+        let expected = try XCTUnwrap(fresh.update(sample: LipSyntheticFace.sample(mouth: mouth), host: 0,
+                                                  camera: camera, region: rig.lastRegion, target: target))
+        XCTAssertEqual(paths.band.boundingBoxOfPath.midX, expected.band.boundingBoxOfPath.midX, accuracy: 1)
+    }
 }

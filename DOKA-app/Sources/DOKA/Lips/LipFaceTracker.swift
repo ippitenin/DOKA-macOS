@@ -18,6 +18,20 @@ struct LipFaceSample: Equatable {
     /// контуров, а не зрачки: зрачки Vision при моргании неточны. Пусто —
     /// хотя бы одного глаза не нашлось.
     var eyes: [CGPoint] = []
+    /// Неточность точек по оценке самого Vision (`precisionEstimatesPerPoint`,
+    /// среднее): внешний контур губ и оба глаза. На закрытом рте Vision губы
+    /// не теряет, а дорисовывает по форме лица — и сам же ставит им высокую
+    /// неточность; по ней `LipVisibility` и решает «губы закрыты». nil —
+    /// оценок нет (их даёт только созвездие 76 точек).
+    var lipsUncertainty: Double?
+    var eyesUncertainty: Double?
+    /// Губы не видны при найденном лице (закрыты или за краем кадра). Ставит
+    /// движок по решению `LipVisibility`, детектор не трогает.
+    var lipsHidden = false
+
+    /// Губы видны: лицо найдено и губы не скрыты. Это и есть «лицо» для фазы
+    /// зеркала, маски и журнала дубля.
+    var lipsVisible: Bool { box != nil && !lipsHidden }
 
     static let none = LipFaceSample(box: nil, count: 0, outerLips: [], innerLips: [])
 
@@ -94,12 +108,23 @@ final class LipFaceTracker: LipFaceDetecting {
         }
         let outer = landmarks?.outerLips, inner = landmarks?.innerLips
         let eyes = [centroid(landmarks?.leftEye), centroid(landmarks?.rightEye)].compactMap { $0 }
+        let eyeUncertainties = [uncertainty(landmarks?.leftEye), uncertainty(landmarks?.rightEye)].compactMap { $0 }
         return LipFaceSample(box: box, count: faces.count,
                              outerLips: points(outer), innerLips: points(inner),
-                             eyes: eyes.count == 2 ? eyes : [])
+                             eyes: eyes.count == 2 ? eyes : [],
+                             lipsUncertainty: uncertainty(outer),
+                             eyesUncertainty: eyeUncertainties.count == 2
+                                ? (eyeUncertainties[0] + eyeUncertainties[1]) / 2 : nil)
     }
 
     private func area(_ rect: CGRect) -> CGFloat { rect.width * rect.height }
+
+    /// Средняя оценка неточности точек области; nil — оценок нет или они не числа.
+    private func uncertainty(_ region: VNFaceLandmarkRegion2D?) -> Double? {
+        guard let values = region?.precisionEstimatesPerPoint, !values.isEmpty else { return nil }
+        let mean = Double(values.reduce(0, +)) / Double(values.count)
+        return mean.isFinite ? mean : nil
+    }
 
     /// Один раз за жизнь детектора: сколько точек реально отдаёт Vision и
     /// как камера размечает цвет кадра (матрица YCbCr, первичные цвета,

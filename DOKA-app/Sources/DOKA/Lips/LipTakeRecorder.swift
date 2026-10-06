@@ -46,6 +46,8 @@ final class LipTakeRecorder {
 
     var frameCount: Int { frames.count }
     var faceCount: Int { faces.count }
+    /// Отметок журнала, где лицо есть, а губы скрыты, — для лога дубля.
+    var hiddenLipsCount: Int { faces.filter { $0.lipsHidden == true }.count }
     var isDiscarded: Bool { discarded }
     var firstFrameHost: Double? { frames.first?.host }
     var lastFrameHost: Double? { frames.last?.host }
@@ -91,7 +93,9 @@ final class LipTakeRecorder {
     func addFace(_ sample: LipFaceSample, host: Double) {
         guard !finishing else { return }
         let box = sample.box.map { [Double($0.minX), Double($0.minY), Double($0.width), Double($0.height)] }
-        faces.append(.init(host: host, box: box, count: sample.count))
+        // Скрытые губы — только при лице: без бокса «губ не видно» и так.
+        let hidden = sample.box != nil && sample.lipsHidden
+        faces.append(.init(host: host, box: box, count: sample.count, lipsHidden: hidden ? true : nil))
     }
 
     /// Камеру отключили или забрали посреди дубля.
