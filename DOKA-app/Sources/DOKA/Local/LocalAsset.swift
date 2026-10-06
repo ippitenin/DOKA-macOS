@@ -22,7 +22,7 @@ enum LocalAsset: Hashable {
     var approxDownloadBytes: Int64 {
         switch self {
         case .speech(let model): return model.approxDownloadBytes
-        case .diarizer: return 23_000_000
+        case .diarizer: return 220_000_000   // pyannote ~22 МБ + Nemotron ~195 МБ
         case .llm: return LLMModelSpec.current.bytes
         }
     }

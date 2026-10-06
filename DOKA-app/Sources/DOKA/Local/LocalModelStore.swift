@@ -78,6 +78,13 @@ final class LocalModelStore: ObservableObject {
     nonisolated static let diarizerModelFolder = diarizerFolder
         .appendingPathComponent("speaker-diarization", isDirectory: true)
 
+    /// Nemotron живёт в той же папке диаризатора (`loadFromHuggingFace` с
+    /// `cacheDirectory: diarizerFolder` создаёт внутри папку репозитория):
+    /// для пользователя это одна «модель разделения по спикерам» — одна
+    /// строка, одно скачивание и одно удаление.
+    nonisolated static let nemotronFolder = diarizerFolder
+        .appendingPathComponent(Repo.nemotron3Diarization.folderName, isDirectory: true)
+
     /// Папка языковой модели анализа. Скачиваем её сами (`HTTPModelDownloader`),
     /// поэтому раскладка простая: один GGUF-файл по имени из спеки.
     nonisolated static let llmFolder = AppDataFolder.modelsURL
@@ -128,7 +135,7 @@ final class LocalModelStore: ObservableObject {
             // Свой аналог `modelsExist` — у офлайнового диаризатора такого API нет.
             return diarizerRequiredFiles.allSatisfy {
                 fm.fileExists(atPath: diarizerModelFolder.appendingPathComponent($0).path)
-            }
+            } && isNemotronOnDisk()
         case .llm:
             // Дешёвый stat: хэш проверен при установке, пересчитывать 2.5 ГБ
             // на каждом запуске нельзя. Размер отсекает огрызок с чужим именем.
@@ -145,6 +152,25 @@ final class LocalModelStore: ObservableObject {
         ModelNames.OfflineDiarizer.pldaRhoFile,
         ModelNames.OfflineDiarizer.pldaParameters
     ]
+
+    /// Nemotron целиком: манифест скомпилированной модели, вектор тишины и
+    /// маркер версии весов. Маркер обязателен: при смене весов в новой
+    /// FluidAudio `loadFromHuggingFace` сам стирает старый кэш и молча качает
+    /// ~195 МБ — без маркера это случилось бы прямо посреди транскрибации,
+    /// без прогресса; с ним модель честно показывается «не скачанной».
+    private nonisolated static func isNemotronOnDisk() -> Bool {
+        let config = Nemotron3Config.offline
+        let bundle = nemotronFolder.appendingPathComponent(config.hubSubdirectory)
+            .appendingPathComponent(config.modelFileName)
+        let marker = nemotronFolder.appendingPathComponent(ModelNames.Nemotron3.weightsVersionFile)
+        let version = (try? String(contentsOf: marker, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fm = FileManager.default
+        return fm.fileExists(atPath: bundle.appendingPathComponent("coremldata.bin").path)
+            && fm.fileExists(atPath: nemotronFolder
+                .appendingPathComponent(ModelNames.Nemotron3.silenceEmbeddingFile).path)
+            && version == ModelNames.Nemotron3.weightsVersion
+    }
 
     /// Размер для состояния `.ready`: последний посчитанный, до него — оценка.
     private func readySize(_ asset: LocalAsset) -> Int64 {
@@ -223,11 +249,18 @@ final class LocalModelStore: ObservableObject {
                         progressHandler: { sink.report(fraction: $0.fractionCompleted) }
                     )
                 case .diarizer:
-                    // У офлайнового диаризатора скачивание и загрузка — один
-                    // вызов; загруженные модели тут не нужны, их возьмёт прогрев.
+                    // У обеих моделей скачивание и загрузка — один вызов;
+                    // загруженные модели тут не нужны, их возьмёт прогрев.
+                    // Шкала общая: pyannote (~22 МБ) — первые 10 %, Nemotron
+                    // (~195 МБ) — остальное. Уже скачанное не качается заново.
                     _ = try await OfflineDiarizerModels.load(
                         from: Self.diarizerFolder,
-                        progressHandler: { sink.report(fraction: $0.fractionCompleted) }
+                        progressHandler: { sink.report(fraction: $0.fractionCompleted * 0.1) }
+                    )
+                    try Task.checkCancellation()
+                    _ = try await Nemotron3Models.loadFromHuggingFace(
+                        config: .offline, cacheDirectory: Self.diarizerFolder,
+                        progressHandler: { sink.report(fraction: 0.1 + $0.fractionCompleted * 0.9) }
                     )
                 case .llm:
                     let spec = LLMModelSpec.current
