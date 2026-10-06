@@ -13,9 +13,15 @@ struct LipTrainingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
 
-    /// Пропорции — как у зеркала панели записи: кадр рта под ту же камеру.
-    static let mirrorSize = CGSize(width: 448, height: 240)
     static let width: CGFloat = 520
+    static let padding: CGFloat = 24
+    /// На всю ширину контента — по одной линии с карточкой фразы и кнопками.
+    /// Пропорции — как у зеркала панели записи: кадр рта под ту же камеру.
+    static let mirrorSize: CGSize = {
+        let width = Self.width - 2 * Self.padding
+        let aspect = LipMirrorGeometry.videoSize.height / LipMirrorGeometry.videoSize.width
+        return CGSize(width: width, height: (width * aspect).rounded())
+    }()
 
     var body: some View {
         VStack(spacing: 16) {
@@ -26,7 +32,7 @@ struct LipTrainingView: View {
             if !permissions.cameraAuthorized { cameraPermissionRow }
             controls
         }
-        .padding(24)
+        .padding(Self.padding)
         .frame(width: Self.width)
         .background(AppBackground().ignoresSafeArea())
         // Клавиши — на корне, а не скрытыми кнопками с `keyboardShortcut`:
@@ -67,41 +73,43 @@ struct LipTrainingView: View {
     // MARK: - Шапка
 
     private var header: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Label(L("training.mode"), systemImage: "mouth")
-                    .font(.headline)
-                Spacer()
-                Text(L("training.counts", controller.sessionSaved, store.summary.silent))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            Label(L("training.mode"), systemImage: "mouth")
+                .font(.headline)
             Text(L("training.instruction"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Фраза
 
     private var phraseCard: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Text(phraseText)
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(controller.current == nil ? .secondary : .primary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            if let origin = controller.current?.origin {
-                Text(originTitle(origin))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, minHeight: 88)
+            // Нижняя строка карточки: источник фразы слева, счётчик справа —
+            // оба прижаты к краям карточки, а не висят в шапке.
+            HStack {
+                if let origin = controller.current?.origin {
+                    Text(originTitle(origin))
+                }
+                Spacer(minLength: 12)
+                Text(L("training.counts", controller.sessionSaved, store.summary.silent))
+                    .monospacedDigit()
             }
+            .font(.caption)
+            .foregroundStyle(.tertiary)
         }
-        .frame(maxWidth: .infinity, minHeight: 110)
         .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
         .glassSurface()
     }
 
