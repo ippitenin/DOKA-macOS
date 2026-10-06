@@ -22,56 +22,18 @@ final class LipTakeEncoderTests: XCTestCase {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    /// Сырое видео 1280×720: кадры по меткам `times`, цвет растёт с номером кадра.
+    /// Сырое видео 1280×720 (`LipSyntheticTake.writeRawVideo`) в папке теста.
     private func makeRawVideo(times: [Double], topWhiteRows: Int? = nil, gray: ((Int) -> Int)? = nil,
                               timeScale: CMTimeScale? = nil) throws -> URL {
         let url = folder.appendingPathComponent("raw.mp4")
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 1280, AVVideoHeightKey: 720
-        ])
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: 1280, kCVPixelBufferHeightKey as String: 720
-        ])
-        if let timeScale { input.mediaTimeScale = timeScale }
-        writer.add(input)
-        XCTAssertTrue(writer.startWriting())
-        writer.startSession(atSourceTime: .zero)
-        for (i, t) in times.enumerated() {
-            while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.005) }
-            var buffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, adaptor.pixelBufferPool!, &buffer)
-            let pixel = try XCTUnwrap(buffer)
-            CVPixelBufferLockBaseAddress(pixel, [])
-            let base = CVPixelBufferGetBaseAddress(pixel)!
-            if let rows = topWhiteRows {
-                // Верхние `rows` строк белые, остальное чёрное.
-                let rowBytes = CVPixelBufferGetBytesPerRow(pixel)
-                memset(base, 0, CVPixelBufferGetDataSize(pixel))
-                memset(base, 255, rows * rowBytes)
-            } else {
-                memset(base, Int32(gray?(i) ?? (i * 2 % 256)), CVPixelBufferGetDataSize(pixel))
-            }
-            CVPixelBufferUnlockBaseAddress(pixel, [])
-            XCTAssertTrue(adaptor.append(pixel, withPresentationTime: CMTime(seconds: t, preferredTimescale: 1_000_000_000)))
-        }
-        input.markAsFinished()
-        let done = expectation(description: "raw")
-        writer.finishWriting { done.fulfill() }
-        wait(for: [done], timeout: 20)
-        XCTAssertEqual(writer.status, .completed)
+        try LipSyntheticTake.writeRawVideo(to: url, times: times, topWhiteRows: topWhiteRows, gray: gray,
+                                           timeScale: timeScale)
         return url
     }
 
     private func makeWav(seconds: Double) throws -> URL {
         let url = folder.appendingPathComponent("audio.wav")
-        let writer = try WavWriter(url: url)
-        let rate = Double(WavWriter.sampleRate)
-        var samples = [Int16](repeating: 0, count: Int(seconds * rate))
-        for i in samples.indices { samples[i] = Int16(sin(Double(i) * 2 * .pi * 440 / rate) * 8000) }
-        writer.append(samples.withUnsafeBufferPointer { Data(buffer: $0) })
-        try writer.finalize()
+        try LipSyntheticTake.writeWav(to: url, seconds: seconds)
         return url
     }
 

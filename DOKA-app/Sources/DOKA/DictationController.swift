@@ -291,10 +291,7 @@ final class DictationController: ObservableObject {
         do {
             _ = try recorder.start(quiet: settings.quietMode)
         } catch {
-            if let lipTake {
-                LipCapture.shared.stopCamera()
-                LipCapture.shared.discard(lipTake)
-            }
+            LipCapture.shared.abortTake(lipTake)
             showError(error.localizedDescription)
             return
         }
@@ -597,8 +594,7 @@ final class DictationController: ObservableObject {
             micBooster.endBoost()
             // Камера гаснет вместе с записью. Дубль, который никто не забрал
             // (Esc, ошибка), выбрасывается.
-            LipCapture.shared.stopCamera()
-            LipCapture.shared.discard(activeLipTake)
+            LipCapture.shared.abortTake(activeLipTake)
             activeLipTake = nil
         }
         state = newState

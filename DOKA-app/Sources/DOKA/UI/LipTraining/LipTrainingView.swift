@@ -97,7 +97,7 @@ struct LipTrainingView: View {
             // оба прижаты к краям карточки, а не висят в шапке.
             HStack {
                 if let origin = controller.current?.origin {
-                    Text(originTitle(origin))
+                    Text(origin.title)
                 }
                 Spacer(minLength: 12)
                 Text(L("training.counts", controller.sessionSaved, store.summary.silent))
@@ -116,14 +116,6 @@ struct LipTrainingView: View {
     private var phraseText: String {
         if let phrase = controller.current { return phrase.text }
         return controller.isLoading ? L("training.loading") : L("training.exhausted")
-    }
-
-    private func originTitle(_ origin: LipTrainingPhrase.Origin) -> String {
-        switch origin {
-        case .history: return L("training.origin.history")
-        case .work: return L("training.origin.work")
-        case .everyday: return L("training.origin.everyday")
-        }
     }
 
     // MARK: - Зеркало
@@ -185,7 +177,7 @@ struct LipTrainingView: View {
     @ViewBuilder
     private var statusLine: some View {
         if let notice = controller.notice {
-            Label(noticeText(notice), systemImage: "exclamationmark.triangle.fill")
+            Label(notice.text, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
                 .multilineTextAlignment(.center)
         } else {
@@ -218,22 +210,7 @@ struct LipTrainingView: View {
         }
     }
 
-    private func noticeText(_ notice: LipTrainingController.Notice) -> String {
-        switch notice {
-        case .tooShort: return L("training.notice.tooShort")
-        case .voiced: return L("training.notice.voiced")
-        case .notReady: return L("training.notice.notReady")
-        case .interrupted: return L("training.notice.interrupted")
-        case .dictationActive: return L("training.notice.dictationActive")
-        case .cameraPermission: return L("training.notice.cameraPermission")
-        case .microphonePermission: return L("training.notice.microphonePermission")
-        case .noRoom: return L("training.notice.noRoom")
-        case .cameraUnavailable: return L("training.notice.cameraUnavailable")
-        case .microphoneFailed: return L("training.notice.microphoneFailed")
-        }
-    }
-
-    private func lastText(_ last: LipTrainingController.Last) -> String {
+    private func lastText(_ last: LipTrainingSession.Last) -> String {
         switch last.result {
         case .held: return L("training.last.held")
         case .processing: return L("training.last.processing")
@@ -243,7 +220,7 @@ struct LipTrainingView: View {
         }
     }
 
-    private func lastIsProblem(_ last: LipTrainingController.Last) -> Bool {
+    private func lastIsProblem(_ last: LipTrainingSession.Last) -> Bool {
         if case .rejected = last.result { return true }
         return false
     }
@@ -252,17 +229,9 @@ struct LipTrainingView: View {
 
     private var cameraPermissionRow: some View {
         HStack(spacing: 10) {
-            Text(L("training.notice.cameraPermission"))
+            Text(LipTrainingController.Notice.cameraPermission.text)
                 .foregroundStyle(.secondary)
-            if permissions.cameraDenied {
-                Button(L("lips.camera.openSettings")) { permissions.openCameraSettings() }
-                    .dsGlassButton()
-            } else {
-                Button(L("lips.camera.allow")) {
-                    Task { _ = await permissions.requestCamera() }
-                }
-                .dsGlassButton()
-            }
+            CameraAccessButton()
         }
     }
 
