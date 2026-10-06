@@ -111,7 +111,7 @@ DOKA_SMOKE=1 DOKA_SMOKE_LLM=/путь/к/Qwen3.5-4B-Q4_K_M.gguf swift test --fil
     собирается только под arm64, и эта причина снята, но обновление любого из них —
     отдельная правка со своим smoke. «Патчи» FluidAudio патчами не являются
     (0.15.5 → 0.15.7 — это 237 файлов), поэтому пин точный.
-  - **llama.cpp — `binaryTarget` с пином на один релиз (`b11146` = v0.5.0) по url + checksum.**
+  - **llama.cpp — `binaryTarget` с пином на один релиз (`b11429` = v0.6.0) по url + checksum.**
     Релизы выходят по нескольку раз в день и меняют C-API без semver. Его macOS-срез
     universal, `build.sh` вырезает из него x86_64. Смена пина — это новый checksum, полный
     `./build.sh` и smoke ИИ-анализа.
