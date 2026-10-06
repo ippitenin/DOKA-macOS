@@ -81,6 +81,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Записи библиотеки идут фоновой очередью, а exit() её не ждёт:
         // без flush готовая запись после перезапуска оказалась бы «прерванной».
         TranscriptHistoryStore.shared.flush()
+        // Отложенная фраза тренировки фиксируется ДО ожидания очереди стора
+        // губ: её заказ дописывает та же очередь.
+        if SettingsStore.shared.lipsExperiment {
+            LipTrainingController.shared.prepareForTermination()
+        }
         LipCapture.shared.shutdown()
         LipDataStore.shared.prepareForTermination()
     }

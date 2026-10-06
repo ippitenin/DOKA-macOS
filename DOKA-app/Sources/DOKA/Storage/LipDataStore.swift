@@ -288,6 +288,12 @@ final class LipDataStore: ObservableObject {
 
     // MARK: - Сводка и удаление
 
+    /// Тексты уже записанных фраз тренировки (сохранённые и в обработке).
+    func trainingTexts() async -> [String] {
+        let files = self.files
+        return await onIO { files.trainingTexts() }
+    }
+
     func refreshSummary() {
         let files = self.files
         ioQueue.async {
