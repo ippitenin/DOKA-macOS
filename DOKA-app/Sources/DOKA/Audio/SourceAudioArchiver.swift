@@ -36,6 +36,24 @@ enum SourceAudioArchiver {
         }
     }
 
+    /// Перепаковка архива, записанного CAF под именем `audio.m4a` (см.
+    /// `TranscriptLibraryFiles.audioPartFileName`), в настоящий M4A — без
+    /// перекодирования: AAC тот же, качество не теряется. Тип источника
+    /// задаётся явно — по расширению `.m4a` `AVURLAsset` CAF не узнаёт.
+    static func remuxCAF(_ source: URL, to destination: URL) async throws {
+        try? FileManager.default.removeItem(at: destination)
+        let asset = AVURLAsset(url: source, options: [AVURLAssetOverrideMIMETypeKey: "audio/x-caf"])
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+            throw AudioFileDecoder.DecoderError.readFailed
+        }
+        do {
+            try await session.export(to: destination, as: .m4a)
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
+    }
+
     private static func archiveWork(source: URL, destination: URL) async throws -> TimeInterval {
         do {
             let (reader, output) = try await AudioFileDecoder.makePCMReader(source, float: true)

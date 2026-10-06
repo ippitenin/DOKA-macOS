@@ -43,9 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Библиотека транскрибаций: загрузка (синхронно, с миграцией журнала
         // v1) при первом обращении, чистка по сроку и добор незавершённых
-        // async-задач Nexara (задача переживает перезапуск приложения).
+        // async-задач Nexara (задача переживает перезапуск приложения), затем —
+        // разовая перепаковка архивов звука, записанных CAF до исправления.
         TranscriptHistoryStore.shared.prune(retention: settings.transcriptRetention)
         TranscriptHistoryStore.shared.resumePendingJobs()
+        TranscriptHistoryStore.shared.repairLegacyArchives()
 
         // Эксперимент «Губы»: сессия камеры настраивается заранее (камера при
         // этом не включается), чтобы старт дубля был только `startRunning`.
