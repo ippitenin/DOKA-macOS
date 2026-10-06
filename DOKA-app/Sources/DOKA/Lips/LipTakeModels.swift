@@ -92,22 +92,44 @@ struct LipCaptureLog: Codable, Equatable, Sendable {
 enum LipMode: String, Codable, Sendable {
     case voice
     case whisper
-    /// Беззвучные фразы — зарезервировано под окно «Тренировка».
+    /// Беззвучная фраза окна «Тренировка»: текст известен заранее, звука нет.
     case silent
 
     /// По снимку тихого режима на старте записи (`RecordedDictation.quiet`).
     init(quiet: Bool) { self = quiet ? .whisper : .voice }
 }
 
-/// Подпись к дубле: сказанный текст и откуда он. Текст — результат
-/// распознавания ПОСЛЕ фильтра галлюцинаций и ДО словаря замен: нужно то,
-/// что сказано, а не то, во что текст превратил словарь.
+/// Откуда дубль — поле `source` в `meta.json`.
+enum LipSource: String, Codable, Sendable {
+    /// Обычная диктовка: текст дало распознавание.
+    case dictation
+    /// Окно «Тренировка»: фраза показана на экране, текст известен заранее.
+    case training
+}
+
+/// Подпись к дублю: сказанный текст и откуда он. У диктовки текст —
+/// результат распознавания ПОСЛЕ фильтра галлюцинаций и ДО словаря замен:
+/// нужно то, что сказано, а не то, во что текст превратил словарь. У
+/// тренировки — показанная фраза.
 struct LipCaption: Equatable {
-    let text: String
-    let language: String
-    let provider: String
-    let model: String
-    let historyID: UUID
+    var text: String
+    var language: String
+    var provider: String
+    var model: String
+    var historyID: UUID?
+    var source: LipSource = .dictation
+    /// nil — по снимку тихого режима записи (диктовка).
+    var mode: LipMode? = nil
+
+    /// Провайдер подписи тренировки: текст не распознавали, его показали.
+    static let trainingProvider = "training"
+
+    /// Подпись беззвучной фразы тренировки. `origin` — откуда фраза
+    /// (`LipTrainingPhrase.Origin.rawValue`), идёт в поле `model`.
+    static func training(phrase: String, origin: String) -> LipCaption {
+        LipCaption(text: phrase, language: "ru", provider: trainingProvider, model: origin,
+                   historyID: nil, source: .training, mode: .silent)
+    }
 }
 
 /// Заказ на обработку дубля (`job.json`): подпись и всё о записи звука.
@@ -117,7 +139,8 @@ struct LipJob: Codable, Equatable, Sendable {
     var language: String
     var provider: String
     var model: String
-    var historyID: UUID
+    /// nil — у тренировки записи в истории нет.
+    var historyID: UUID?
     var date: Date
     var duration: Double
     var speechSeconds: Double
@@ -129,6 +152,10 @@ struct LipJob: Codable, Equatable, Sendable {
     var inputLatency: Double
     var speechOnset: Double?
     var maxClockDrift: Double
+    /// nil — диктовка: заказы прошлых версий этих полей не знали.
+    var source: LipSource? = nil
+    /// nil — по `quiet`.
+    var mode: LipMode? = nil
 
     var timing: RecordingTiming? {
         hostStart.map {
@@ -182,7 +209,8 @@ struct LipTakeMeta: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var id: UUID
     var date: Date
-    /// "dictation"; "training" — зарезервировано под окно «Тренировка».
+    /// `LipSource`: "dictation" или "training". Строкой, а не enum: договор
+    /// v1 с WISLIP, новое значение не должно ронять чтение старой версией.
     var source: String
     var mode: LipMode
     var text: String

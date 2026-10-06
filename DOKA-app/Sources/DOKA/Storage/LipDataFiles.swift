@@ -184,6 +184,32 @@ final class LipDataFiles: @unchecked Sendable {
     /// Для сводки достаточно режима — остальные поля не декодируем.
     private struct ModeOnly: Decodable { let mode: LipMode }
 
+    /// Тексты фраз тренировки — сохранённые пары и дубли в обработке: окно
+    /// «Тренировка» их больше не предлагает. Отброшенные сюда не попадают —
+    /// такие фразы вернутся.
+    func trainingTexts() -> [String] {
+        var texts: [String] = []
+        for folder in children(takesRoot) {
+            guard let data = try? Data(contentsOf: folder.appendingPathComponent(LipDataLayout.meta)),
+                  let caption = try? LipTakeMeta.decoder.decode(SourceAndText.self, from: data),
+                  caption.source == LipSource.training.rawValue else { continue }
+            texts.append(caption.text)
+        }
+        for folder in children(pendingRoot) {
+            guard let data = try? Data(contentsOf: folder.appendingPathComponent(LipDataLayout.job)),
+                  let caption = try? LipTakeMeta.decoder.decode(SourceAndText.self, from: data),
+                  caption.source == LipSource.training.rawValue else { continue }
+            texts.append(caption.text)
+        }
+        return texts
+    }
+
+    /// У заказа диктовки `source` нет — такой заказ не тренировка.
+    private struct SourceAndText: Decodable {
+        let source: String?
+        let text: String
+    }
+
     /// Удаление — сначала мгновенный rename в корзину, потом стирание: прерванное
     /// стирание не оставит полупустую папку, похожую на живую.
     private func trash(_ url: URL) {
