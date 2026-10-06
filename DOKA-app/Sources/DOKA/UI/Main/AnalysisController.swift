@@ -37,6 +37,7 @@ final class AnalysisController: ObservableObject {
         case modelMissing
         case busyTranscribing      // идёт ЛОКАЛЬНОЕ распознавание — конкуренция за ANE/GPU
         case busyOtherRecord       // анализ уже идёт, но у другой записи
+        case busySpeakerNames      // модель занята подсказкой имён спикеров
         case emptyTranscript
         case notReady              // запись ещё не готова или тела нет
         case frozen                // библиотека заморожена переносом «Папки данных»
@@ -92,6 +93,9 @@ final class AnalysisController: ObservableObject {
         if FileTranscriptionController.shared.runningUsesLocalEngine {
             return .busyTranscribing
         }
+        // Контекст модели один на приложение: анализ и «Угадать имена» не
+        // идут одновременно (обратная проверка — в SpeakerSuggestionController).
+        if SpeakerSuggestionController.shared.isRunning { return .busySpeakerNames }
         if let summary = record.summary, summary.wordCount == 0 { return .emptyTranscript }
         return .ok
     }

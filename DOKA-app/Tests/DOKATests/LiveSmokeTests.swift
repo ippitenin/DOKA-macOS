@@ -201,6 +201,57 @@ final class LiveSmokeTests: XCTestCase {
         try await longRecordingInParts(modelURL: modelURL, dialog: dialog.result)
     }
 
+    // MARK: - «Угадать имена» вживую
+
+    /// Подсказка имён настоящей моделью по готовой расшифровке (без звука):
+    /// представление, обращения с ответом следующей репликой, упомянутый
+    /// третий человек (его имя никому давать нельзя) и спикер, на которого
+    /// разметка разрезала одного человека посреди фразы.
+    func testSpeakerNameSuggestions() async throws {
+        let modelURL = ProcessInfo.processInfo.environment["DOKA_SMOKE_LLM"]
+            .map { URL(fileURLWithPath: $0) } ?? LocalModelStore.llmFile
+        try requireModel(modelURL, "языковая модель (DOKA_SMOKE_LLM)")
+        let turns: [(String, Double, String)] = [
+            ("speaker_0", 0, "Добрый день, коллеги. Меня зовут Анна, я руководитель проекта. Сегодня обсуждаем релиз."),
+            ("speaker_0", 6, "Игорь, расскажешь, что со сборкой?"),
+            ("speaker_1", 10, "Да, Анна. Сборка готова, тесты зелёные с четверга. Осталось дождаться"),
+            ("speaker_3", 15, "финальных текстов от редакции, и тогда можно выпускать."),
+            ("speaker_2", 20, "А Марина в курсе? Она обещала прислать отчёт по аналитике."),
+            ("speaker_0", 25, "Да, Марина пришлёт отчёт в пятницу. Сергей, а у тебя что по оплате?"),
+            ("speaker_2", 30, "По оплате пока не готово, нужно ещё три дня."),
+            ("speaker_1", 35, "Тогда релиз переносим на понедельник."),
+            ("speaker_0", 40, "Договорились. Игорь, Сергей, спасибо."),
+        ]
+        let segments = turns.map { TranscriptSegment(speaker: $0.0, start: $0.1, end: $0.1 + 4.5, text: $0.2) }
+        let result = TranscriptResult(fullText: "", language: "ru", duration: 45, segments: segments,
+                                      rawSegments: segments, words: [], llmOutput: nil)
+            .withEdits(TranscriptEdits(), detail: .server)
+        let prepared = try XCTUnwrap(SpeakerNameSuggester.prepare(result: result, roster: result.speakerRoster))
+
+        let engine = LocalLLMEngine()
+        try await engine.load(fileURL: modelURL)
+        let options = LLMGenerationOptions(maxTokens: SpeakerNameSuggester.answerTokens,
+                                           sampling: .greedy, banCJK: true)
+        let answer = try await engine.generate(SpeakerNameSuggester.messages(for: prepared),
+                                               options: options, emit: { _ in })
+        // Выгрузка — до конца теста: освобождение Metal-ресурсов на выходе
+        // процесса роняет xctest ассертом ggml.
+        await engine.unload()
+        log(String(format: "Имена спикеров: промпт %d ток., ответ %d ток., %.1f с", answer.promptTokens,
+                   answer.generatedTokens, answer.seconds))
+        log("Ответ модели: \(answer.text)")
+
+        let suggestions = SpeakerNameSuggester.parse(answer.text, prepared: prepared)
+        let names = Dictionary(uniqueKeysWithValues: suggestions.names.map { ($0.speakerID, $0.name) })
+        log("Имена: \(names), объединения: \(suggestions.merges.map { "\($0.sourceID)→\($0.targetID)" })")
+        XCTAssertTrue(["Анна", "Аня"].contains(names["speaker_0"] ?? ""), "ведущая представилась сама")
+        XCTAssertEqual(names["speaker_1"], "Игорь", "к нему обратились, он ответил следующей репликой")
+        XCTAssertEqual(names["speaker_2"], "Сергей", "обращение в конце реплики — тому, кто ответил")
+        XCTAssertFalse(names.values.contains("Марина"), "Марину только упоминают — её имя никому не дают")
+        XCTAssertEqual(suggestions.merges.map { [$0.sourceID, $0.targetID] }, [["speaker_3", "speaker_1"]],
+                       "разрез фразы «…дождаться / финальных…» — один человек")
+    }
+
     // MARK: - Шаблоны Memento вживую
 
     /// Все шаблоны установленного Memento импортируются без отказов.

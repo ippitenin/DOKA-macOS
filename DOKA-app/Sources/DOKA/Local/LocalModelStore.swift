@@ -383,6 +383,7 @@ final class LocalModelStore: ObservableObject {
             // переименование папки из-под живого mmap оставило бы его без
             // файла на следующем обращении.
             AnalysisController.shared.cancelIfRunning()
+            SpeakerSuggestionController.shared.cancel()
             LocalEngineManager.shared.unloadLLM()
         }
         Self.removePartial(asset)

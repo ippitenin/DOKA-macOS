@@ -277,6 +277,7 @@ final class DictationController: ObservableObject {
         // Сетевой сервис распознавания ОЗУ не держит: там анализ не трогаем.
         if settings.isLocalService && LLMModelSpec.isLowMemoryMac {
             AnalysisController.shared.cancelIfRunning(message: L("analysis.interruptedByDictation"))
+            SpeakerSuggestionController.shared.cancel()
             LocalEngineManager.shared.unloadLLM()
         }
 

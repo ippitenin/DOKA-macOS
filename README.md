@@ -71,7 +71,10 @@ written in Russian.
   speakers into one and split them back, reassign a line (or part of a long one) to
   another speaker, fix the text of a line with a double click. Edits survive any timestamp
   detail level, reach copying and every export format, and can be undone line by line or
-  all at once; the original recognition result is never overwritten.
+  all at once; the original recognition result is never overwritten. "Guess names" asks the
+  local language model to find the speakers' names in the conversation (introductions and
+  direct address) and notices when one person was split into two — every suggestion waits for
+  your confirmation.
 - **AI analysis on your own Mac** — meeting minutes, a short summary, action items, lecture
   notes, an interview breakdown, chapters, or your own prompt. The report is written by a
   language model running right on the machine (llama.cpp + Qwen3.5 4B): no internet, no key,
@@ -223,7 +226,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 893 checks in a few seconds, and
+Pure logic is covered by tests — `swift test` runs 915 checks in a few seconds, and
 CI runs them on every pull request along with the build and a localisation check. The
 local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
 see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder
