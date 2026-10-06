@@ -50,9 +50,11 @@ written in Russian.
   runs asynchronously: it survives network loss, sleep, and even an app restart — the
   result is collected without re-uploading the file or paying twice.
 - **Speaker diarization, on-device** — with a local model (or your own OpenAI-compatible
-  service, which has no diarization of its own) DOKA separates speakers on your Mac: a
-  22 MB model downloaded once, no internet and no billing. Roughly 12× faster than
-  real time on Apple silicon.
+  service, which has no diarization of its own) DOKA separates speakers on your Mac with
+  NVIDIA Nemotron 3 Diarization: a ~220 MB model downloaded once, no internet and no
+  billing. An hour and a half of conversation is split in about 12 seconds on Apple
+  silicon; if you know how many people speak, the hint switches to pyannote, which
+  honours an exact speaker count.
 - **Transcription library** — every transcribed file is kept together with its audio:
   search by title and text, groups by date, renaming, batch export (one Markdown or .txt
   file, or separate TXT/SRT/VTT files per record). A record opens with a player: click a
@@ -222,7 +224,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 869 checks in a few seconds, and
+Pure logic is covered by tests — `swift test` runs 883 checks in a few seconds, and
 CI runs them on every pull request along with the build and a localisation check. The
 local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
 see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder
