@@ -370,7 +370,7 @@
 "lips.mirror.variant.continuation" = "Продолжение выреза";
 "lips.mirror.variant.bottom" = "Снизу экрана";
 "lips.mirror.warming" = "Камера…";
-"lips.mirror.noFace" = "Лица не видно";
+"lips.mirror.noLips" = "Губ не видно";
 "lips.mirror.unavailable" = "Камера недоступна";
 "lips.data.header" = "Данные";
 "lips.data.footer" = "Видео лица — биометрические данные. Они хранятся только на этом Mac, никуда не отправляются и сами не удаляются.";
@@ -378,7 +378,7 @@
 "lips.stats.pairs" = "Вслух: %ld · шёпотом: %ld";
 "lips.stats.pending" = "В обработке";
 "lips.stats.rejected" = "Отброшено";
-"lips.stats.rejected.hint" = "Дубли, которые не стали парами: плохая пара хуже отсутствующей — модель учится на шуме. Чаще всего лица не видно или камера не успела включиться.";
+"lips.stats.rejected.hint" = "Дубли, которые не стали парами: плохая пара хуже отсутствующей — модель учится на шуме. Чаще всего губ не видно (лицо вне кадра или рот закрыт рукой) или камера не успела включиться.";
 "lips.stats.headMissing" = "Начало без видео";
 "lips.stats.headMissing.hint" = "Пары, где вы начали говорить раньше, чем включилась камера. Они сохранены: инструмент обучения использует только часть, где видео есть.";
 "lips.usage" = "Занято: %@";
@@ -392,7 +392,7 @@
 "lips.reject.syncLost" = "Сбой синхронизации";
 "lips.reject.lowFps" = "Мало кадров в секунду";
 "lips.reject.tooShort" = "Слишком коротко";
-"lips.reject.noFace" = "Лица не видно";
+"lips.reject.noLips" = "Губ не видно";
 "lips.reject.faceTooSmall" = "Лицо слишком далеко";
 "lips.reject.lateCamera" = "Камера не успела";
 "lips.reject.encodeFailed" = "Ошибка кодирования";

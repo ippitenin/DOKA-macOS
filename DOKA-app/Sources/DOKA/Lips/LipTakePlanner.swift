@@ -30,9 +30,13 @@ enum LipTakePlanner {
         let validFrom = schedule?.validFrom ?? 0
         let validTo = schedule?.validTo ?? 0
 
-        // Лицо — на той же шкале WAV.
+        // Лицо — на той же шкале WAV. Отметка «хорошая», только если губы
+        // видны: закрытые ладонью губы — такая же дыра, как пропуск лица.
+        // Кроп — по всем боксам: закрытый рот лицо не двигает.
         let faceTimes = timing.map { LipSync.wavTimes(hosts: log.faces.map(\.host), timing: $0) } ?? []
-        let marks = zip(faceTimes, log.faces).map { LipFaceMark(t: $0, hasFace: $1.box != nil) }
+        let marks = zip(faceTimes, log.faces).map {
+            LipFaceMark(t: $0, lipsVisible: $1.box != nil && $1.lipsHidden != true)
+        }
         let boxes: [CGRect] = zip(faceTimes, log.faces).compactMap { t, face in
             guard t >= validFrom, t <= validTo, let b = face.box, b.count == 4 else { return nil }
             return CGRect(x: b[0], y: b[1], width: b[2], height: b[3])
@@ -56,7 +60,7 @@ enum LipTakePlanner {
             faceSamples: marks,
             faceInOutputPx: crop?.faceInOutputPx ?? 0)
         var verdict = LipTakeVerdict.decide(facts)
-        if case .keep = verdict, crop == nil { verdict = .reject(.noFace) }
+        if case .keep = verdict, crop == nil { verdict = .reject(.noLips) }
 
         return Plan(verdict: verdict, schedule: schedule, sourcePTS: valid.map(\.t), crop: crop,
                     faceCoverage: LipTakeVerdict.faceCoverage(marks, validFrom: validFrom, validTo: validTo),

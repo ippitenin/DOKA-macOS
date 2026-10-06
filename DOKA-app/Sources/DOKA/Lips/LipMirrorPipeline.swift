@@ -206,15 +206,22 @@ final class LipMirrorPipeline {
         var lips: CGRect?
         if let box = sample.box, !sample.outerLips.isEmpty, !sample.innerLips.isEmpty {
             let axis = Self.eyeAxis(sample.eyes)
-            let raw = sample.outerLips + sample.innerLips
-            let filtered = points.filter(raw, at: host, scale: LipPointsFilter.valueScale(faceBox: box))
-            let outer = Array(filtered.prefix(sample.outerLips.count))
-            let inner = Array(filtered.suffix(sample.innerLips.count))
-            if let contours = LipContours.vision(outer: outer, inner: inner, axis: axis) {
-                mesh = LipMesh.make(contours, calibration: calibrator.update(contours))
+            // Скрытые губы (ладонь, край кадра) маски не дают: точки там Vision
+            // дорисовал по форме лица. Ни фильтр, ни калибровка их не видят —
+            // маска вернётся из настоящих точек.
+            if !sample.lipsHidden {
+                let raw = sample.outerLips + sample.innerLips
+                let filtered = points.filter(raw, at: host, scale: LipPointsFilter.valueScale(faceBox: box))
+                let outer = Array(filtered.prefix(sample.outerLips.count))
+                let inner = Array(filtered.suffix(sample.innerLips.count))
+                if let contours = LipContours.vision(outer: outer, inner: inner, axis: axis) {
+                    mesh = LipMesh.make(contours, calibration: calibrator.update(contours))
+                }
             }
             // Камера — по СЫРЫМ точкам: у неё свой фильтр, медленнее, и
-            // двойное сглаживание только добавило бы запаздывания.
+            // двойное сглаживание только добавило бы запаздывания. За скрытыми
+            // губами она идёт тоже: дорисованный рот стоит там же, где ладонь,
+            // и зеркало показывает, ПОЧЕМУ губ не видно.
             let corners = LipContours.vision(outer: sample.outerLips, inner: sample.innerLips, axis: axis)?
                 .outer.corners
             fix = LipMirrorCamera.fix(corners: corners, eyes: sample.eyes, box: box)

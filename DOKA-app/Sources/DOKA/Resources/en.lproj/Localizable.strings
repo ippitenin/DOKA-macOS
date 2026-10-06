@@ -370,7 +370,7 @@
 "lips.mirror.variant.continuation" = "Extend the notch";
 "lips.mirror.variant.bottom" = "Bottom of the screen";
 "lips.mirror.warming" = "Camera…";
-"lips.mirror.noFace" = "Face not visible";
+"lips.mirror.noLips" = "Lips not visible";
 "lips.mirror.unavailable" = "Camera unavailable";
 "lips.data.header" = "Data";
 "lips.data.footer" = "Face video is biometric data. It stays on this Mac, is never uploaded, and is never deleted automatically.";
@@ -378,7 +378,7 @@
 "lips.stats.pairs" = "Aloud: %ld · whispered: %ld";
 "lips.stats.pending" = "Processing";
 "lips.stats.rejected" = "Rejected";
-"lips.stats.rejected.hint" = "Takes that did not become pairs: a bad pair is worse than none — the model would learn from noise. Most often the face was not visible or the camera started too late.";
+"lips.stats.rejected.hint" = "Takes that did not become pairs: a bad pair is worse than none — the model would learn from noise. Most often the lips were not visible (face out of frame or mouth covered by a hand) or the camera started too late.";
 "lips.stats.headMissing" = "Start without video";
 "lips.stats.headMissing.hint" = "Pairs where you started speaking before the camera turned on. They are kept: the training tool uses only the part that has video.";
 "lips.usage" = "Used: %@";
@@ -392,7 +392,7 @@
 "lips.reject.syncLost" = "Sync lost";
 "lips.reject.lowFps" = "Low frame rate";
 "lips.reject.tooShort" = "Too short";
-"lips.reject.noFace" = "Face not visible";
+"lips.reject.noLips" = "Lips not visible";
 "lips.reject.faceTooSmall" = "Face too far";
 "lips.reject.lateCamera" = "Camera too late";
 "lips.reject.encodeFailed" = "Encoding error";

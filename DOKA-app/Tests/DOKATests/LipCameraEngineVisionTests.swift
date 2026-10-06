@@ -72,6 +72,22 @@ final class LipCameraEngineVisionTests: XCTestCase {
         }
     }
 
+    /// Отдаёт сэмплы по очереди (последний — дальше без конца).
+    private final class ScriptedDetector: LipFaceDetecting, @unchecked Sendable {
+        private let lock = NSLock()
+        private let samples: [LipFaceSample]
+        private var index = 0
+
+        init(_ samples: [LipFaceSample]) { self.samples = samples }
+
+        func detect(in pixelBuffer: CVPixelBuffer) throws -> LipFaceSample {
+            lock.withLock {
+                defer { index += 1 }
+                return samples[min(index, samples.count - 1)]
+            }
+        }
+    }
+
     private final class Events: @unchecked Sendable {
         private let lock = NSLock()
         private var items: [String] = []
@@ -196,6 +212,39 @@ final class LipCameraEngineVisionTests: XCTestCase {
         for (got, want) in zip(journalHosts, expected) {
             XCTAssertEqual(got, want, accuracy: 1e-9)
         }
+    }
+
+    /// Ладонь на губах: лицо найдено, а Vision ставит дорисованным губам
+    /// высокую неточность. Движок помечает такие строки журнала
+    /// `lipsHidden` (по ним планировщик режет `faceGaps`), а `onFace` видит
+    /// то же решение, что и журнал.
+    func testCoveredLipsAreMarkedInJournal() throws {
+        var open = Self.face
+        open.lipsUncertainty = 0.0063
+        open.eyesUncertainty = 0.0064
+        var covered = Self.face
+        covered.lipsUncertainty = 0.0150
+        covered.eyesUncertainty = 0.0138
+        let detector = ScriptedDetector([open, covered, covered, open])
+        let events = Events()
+        let engine = makeEngine(detector, events)
+        let seen = Events()
+        engine.onFace = { sample in seen.add(sample.lipsVisible ? "видны" : "скрыты") }
+        let take = try begin(engine)
+
+        // Кадры через 0,1 с — каждый результат Vision идёт в журнал.
+        for host in [1.0, 1.1, 1.2, 1.3] {
+            try feed(engine, host: host)
+            engine.videoQueue.sync {}
+            engine.visionQueue.sync {}
+        }
+        engine.end()
+        waitUntil { events.all == ["captured"] }
+
+        let log = try journal(take)
+        XCTAssertEqual(log.faces.map(\.lipsHidden), [nil, true, true, nil])
+        XCTAssertEqual(log.faces.map(\.box), Array(repeating: Self.faceBox, count: 4), "лицо в журнале на месте")
+        XCTAssertEqual(seen.all, ["видны", "скрыты", "скрыты", "видны"])
     }
 
     /// Vision упал на кадре — флаг занятости всё равно снят: следующие кадры

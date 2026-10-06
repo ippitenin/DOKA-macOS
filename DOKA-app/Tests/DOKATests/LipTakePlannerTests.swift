@@ -64,6 +64,46 @@ final class LipTakePlannerTests: XCTestCase {
         XCTAssertEqual(LipTakePlanner.plan(job: job(hostStart: nil), log: log()).verdict, .reject(.syncLost))
     }
 
+    /// Губы закрыты ладонью с 1,2 по 1,8 с: лицо на месте (кроп не меняется),
+    /// но этот кусок — дыра в `faceGaps`, как пропуск лица, и покрытие падает.
+    func testHiddenLipsBecomeGap() throws {
+        var covered = log()
+        for i in covered.faces.indices {
+            let t = covered.faces[i].host - 100.0
+            if t >= 1.2 && t < 1.8 { covered.faces[i].lipsHidden = true }
+        }
+        let plan = LipTakePlanner.plan(job: job(), log: covered)
+        XCTAssertEqual(plan.verdict, .keep(headMissing: false))
+        XCTAssertEqual(plan.faceGaps.count, 1)
+        let gap = try XCTUnwrap(plan.faceGaps.first)
+        XCTAssertEqual(gap[0], 1.2, accuracy: 0.07)
+        XCTAssertEqual(gap[1], 1.8, accuracy: 0.07)
+        XCTAssertLessThan(plan.faceCoverage, 0.8)
+        XCTAssertEqual(plan.crop, LipTakePlanner.plan(job: job(), log: log()).crop, "кроп по боксам лица")
+    }
+
+    /// Губы закрыты почти весь дубль — пары нет: «губ не видно».
+    func testMostlyHiddenLipsAreRejected() {
+        var covered = log()
+        for i in covered.faces.indices where i % 4 != 0 { covered.faces[i].lipsHidden = true }
+        XCTAssertEqual(LipTakePlanner.plan(job: job(), log: covered).verdict, .reject(.noLips))
+    }
+
+    /// Журнал прошлой версии без `lipsHidden` читается как «губы видны», а
+    /// видимые губы в журнал этого поля не пишут — файл как раньше.
+    func testJournalWithoutLipsHiddenReadsAsVisible() throws {
+        let old = #"{"host":100.3,"box":[490,210,300,300],"count":1}"#
+        let face = try JSONDecoder().decode(LipCaptureLog.Face.self, from: Data(old.utf8))
+        XCTAssertNil(face.lipsHidden)
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(face), encoding: .utf8))
+        XCTAssertFalse(encoded.contains("lipsHidden"))
+
+        var hidden = face
+        hidden.lipsHidden = true
+        let decoded = try JSONDecoder().decode(LipCaptureLog.Face.self, from: JSONEncoder().encode(hidden))
+        XCTAssertEqual(decoded.lipsHidden, true)
+    }
+
     /// Камера не дала ни одного кадра.
     func testEmptyCaptureIsCameraFailure() {
         var empty = log()

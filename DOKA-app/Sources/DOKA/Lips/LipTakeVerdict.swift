@@ -3,7 +3,8 @@ import Foundation
 /// Отметка трекера лиц на шкале WAV.
 struct LipFaceMark: Equatable {
     var t: Double
-    var hasFace: Bool
+    /// Лицо найдено, губы в кадре и не закрыты.
+    var lipsVisible: Bool
 }
 
 /// Всё, что известно о дубле к моменту решения.
@@ -30,7 +31,9 @@ enum LipRejectReason: String, Codable, CaseIterable {
     case lowFps
     /// Полезного видео меньше полутора секунд — фраза короче, чем нужно модели.
     case tooShort
-    case noFace
+    /// Губ не видно большую часть окна: лица нет, губы за краем кадра или
+    /// закрыты. rawValue прежний — по нему считаются отбраковки в `stats.json`.
+    case noLips = "noFace"
     case faceTooSmall
     case lateCamera
     case encodeFailed
@@ -42,7 +45,7 @@ enum LipRejectReason: String, Codable, CaseIterable {
         case .syncLost: return L("lips.reject.syncLost")
         case .lowFps: return L("lips.reject.lowFps")
         case .tooShort: return L("lips.reject.tooShort")
-        case .noFace: return L("lips.reject.noFace")
+        case .noLips: return L("lips.reject.noLips")
         case .faceTooSmall: return L("lips.reject.faceTooSmall")
         case .lateCamera: return L("lips.reject.lateCamera")
         case .encodeFailed: return L("lips.reject.encodeFailed")
@@ -66,7 +69,7 @@ enum LipTakeVerdict: Equatable {
     /// вчетверо кадре его не найдёт.
     static let minFacePx = 110.0
     static let minSpeechCoverage = 0.5
-    /// Пропуск лица дольше этого — «дыра» в `faceGaps`.
+    /// Губ не видно дольше этого — «дыра» в `faceGaps`.
     static let minGap = 0.2
     /// Камера опоздала к речи больше чем на столько — счётчик «начало без видео».
     static let headTolerance = 0.1
@@ -77,12 +80,12 @@ enum LipTakeVerdict: Equatable {
         if !f.timingKnown || f.maxClockDrift > maxClockDrift { return .reject(.syncLost) }
         if f.measuredFps < minFps { return .reject(.lowFps) }
 
-        // Сначала длина окна, потом лицо: короткая фраза при хорошем свете — это
-        // «слишком коротко», а не «лица не видно».
+        // Сначала длина окна, потом губы: короткая фраза при хорошем свете — это
+        // «слишком коротко», а не «губ не видно».
         let window = max(0, f.validTo - f.validFrom)
         if window < minUsefulSeconds { return .reject(.tooShort) }
         let coverage = faceCoverage(f.faceSamples, validFrom: f.validFrom, validTo: f.validTo)
-        if coverage < minFaceCoverage || window * coverage < minUsefulSeconds { return .reject(.noFace) }
+        if coverage < minFaceCoverage || window * coverage < minUsefulSeconds { return .reject(.noLips) }
         if f.faceInOutputPx < minFacePx { return .reject(.faceTooSmall) }
 
         let speechStart = f.speechOnset ?? 0
@@ -94,20 +97,20 @@ enum LipTakeVerdict: Equatable {
         return .keep(headMissing: f.validFrom > speechStart + headTolerance)
     }
 
-    /// Доля отметок с лицом внутри полезного окна.
+    /// Доля отметок с видимыми губами внутри полезного окна.
     static func faceCoverage(_ samples: [LipFaceMark], validFrom: Double, validTo: Double) -> Double {
         let inside = samples.filter { $0.t >= validFrom && $0.t <= validTo }
         guard !inside.isEmpty else { return 0 }
-        return Double(inside.filter(\.hasFace).count) / Double(inside.count)
+        return Double(inside.filter(\.lipsVisible).count) / Double(inside.count)
     }
 
-    /// Интервалы без лица дольше `minGap` внутри полезного окна, [начало, конец].
+    /// Интервалы, где губ не видно дольше `minGap`, внутри полезного окна, [начало, конец].
     static func faceGaps(_ samples: [LipFaceMark], validFrom: Double, validTo: Double) -> [[Double]] {
         let inside = samples.filter { $0.t >= validFrom && $0.t <= validTo }
         var gaps: [[Double]] = []
         var start: Double?
         for mark in inside {
-            if mark.hasFace {
+            if mark.lipsVisible {
                 if let s = start, mark.t - s >= minGap { gaps.append([s, mark.t]) }
                 start = nil
             } else if start == nil {

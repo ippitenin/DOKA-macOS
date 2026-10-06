@@ -46,7 +46,7 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
     /// поток, который его взял.
     private let visionGate = OSAllocatedUnfairLock(initialState: false)
 
-    /// Результат Vision для фазы зеркала («лицо есть / нет»). Зовётся на
+    /// Результат Vision для фазы зеркала («губы видны / нет»). Зовётся на
     /// `videoQueue` на ритме журнала — не чаще ~15 раз в секунду.
     var onFace: (@Sendable (LipFaceSample) -> Void)?
     /// Сырьё дубля дописано (не выброшенного). Зовётся на `videoQueue`.
@@ -68,6 +68,8 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
 
     // Состояние visionQueue.
     private var cadence = LipJournalCadence()
+    /// Видны ли губы — одно решение на кадр для журнала, фазы и маски.
+    private var visibility = LipVisibility()
     private var visionStats = TimingStats()
     /// Та же сводка времени — для рендера зеркала; «ошибка» — картинки нет.
     private var renderStats = TimingStats()
@@ -271,10 +273,11 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
                     recorder.finish { [self] ok in
                         recorders[recorder.take.id] = nil
                         let span = (recorder.lastFrameHost ?? 0) - (recorder.firstFrameHost ?? 0)
-                        NSLog("DOKA: губы — дубль %@: кадров %d, %@; Vision %d из %d (p50 %.1f мс, p95 %.1f мс, ошибок %d), журнал лица %d (%.1f/с); зеркало: кадров %d, рендер p50 %.1f мс, p95 %.1f мс, без картинки %d, латентность p50 %.1f мс, p95 %.1f мс; сброшено камерой: опоздали %d, нет буферов %d, разрыв %d, без причины %d, прочие %d",
+                        NSLog("DOKA: губы — дубль %@: кадров %d, %@; Vision %d из %d (p50 %.1f мс, p95 %.1f мс, ошибок %d), журнал лица %d (%.1f/с, губы скрыты %d); зеркало: кадров %d, рендер p50 %.1f мс, p95 %.1f мс, без картинки %d, латентность p50 %.1f мс, p95 %.1f мс; сброшено камерой: опоздали %d, нет буферов %d, разрыв %d, без причины %d, прочие %d",
                               recorder.take.id.uuidString, recorder.frameCount, ok ? "записан" : "сбой",
                               vision.count, frames.seen, vision.p50, vision.p95, vision.failures,
                               recorder.faceCount, span > 0 ? Double(recorder.faceCount) / span : 0,
+                              recorder.hiddenLipsCount,
                               render.count, render.p50, render.p95, render.failures, latency?.p50 ?? 0, latency?.p95 ?? 0,
                               frames.droppedLate, frames.droppedOutOfBuffers, frames.droppedDiscontinuity,
                               frames.droppedNoReason, frames.droppedOther)
@@ -408,7 +411,7 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
             }
 
             let started = CACurrentMediaTime()
-            let sample: LipFaceSample
+            var sample: LipFaceSample
             let failed: Bool
             do {
                 sample = try detector.detect(in: pixelBuffer)
@@ -420,6 +423,9 @@ final class LipCameraEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDeleg
                 failed = true
             }
             visionStats.add(CACurrentMediaTime() - started, failed: failed, take: take)
+            // Закрытые или ушедшие за край губы — до журнала и зеркала: все
+            // видят одно решение.
+            sample.lipsHidden = visibility.lipsHidden(in: sample, frame: size, take: take)
             group.wait()
 
             // Журнал — на прежнем ритме и до зеркала: запись в журнал встаёт

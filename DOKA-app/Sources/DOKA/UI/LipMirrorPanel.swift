@@ -98,7 +98,7 @@ struct LipMirrorView: View {
         return ZStack {
             LipMirrorVideoView(size: layout.video.size, reduceMotion: reduceMotion)
             if capture.phase != .face {
-                Color.black.opacity(capture.phase == .noFace ? 0.55 : 0.75)
+                Color.black.opacity(capture.phase == .noLips ? 0.55 : 0.75)
                 if let caption {
                     Text(caption)
                         .font(.caption.weight(.medium))
@@ -114,7 +114,7 @@ struct LipMirrorView: View {
     private var caption: String? {
         switch capture.phase {
         case .warming, .idle: return L("lips.mirror.warming")
-        case .noFace: return L("lips.mirror.noFace")
+        case .noLips: return L("lips.mirror.noLips")
         case .unavailable: return L("lips.mirror.unavailable")
         case .face: return nil
         }
