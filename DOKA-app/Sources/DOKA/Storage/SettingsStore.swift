@@ -121,8 +121,23 @@ final class SettingsStore: ObservableObject {
         static let lipsMirrorNotchVariant = "lipsMirrorNotchVariant"
     }
 
+    /// Язык распознавания; по умолчанию «Авто». С явным языком Whisper пишет
+    /// ТОЛЬКО на нём и английскую речь при `ru` вставлял русским переводом.
     @Published var language: String {
         didSet { defaults.set(language, forKey: Key.language) }
+    }
+
+    /// Прежнее умолчание — «Русский» — было лишь зарегистрированным значением:
+    /// кто язык не выбирал, у того ключа нет, и смена умолчания на «Авто» тихо
+    /// переключила бы и его. Поэтому прошлым установкам без выбранного языка
+    /// один раз записывается `ru`; признак прошлого запуска — сохранённый
+    /// `servicesMigrated` (его пишет каждый запуск) или `onboardingCompleted`.
+    /// Зовётся до `register(defaults:)`, иначе `object(forKey:)` вернёт умолчание.
+    nonisolated static func pinLegacyLanguage(in defaults: UserDefaults) {
+        guard defaults.object(forKey: Key.language) == nil,
+              defaults.object(forKey: Key.servicesMigrated) != nil
+                || defaults.object(forKey: Key.onboardingCompleted) != nil else { return }
+        defaults.set("ru", forKey: Key.language)
     }
     @Published var soundsEnabled: Bool {
         didSet { defaults.set(soundsEnabled, forKey: Key.soundsEnabled) }
@@ -433,8 +448,9 @@ final class SettingsStore: ObservableObject {
     }
 
     private init() {
+        Self.pinLegacyLanguage(in: defaults)
         defaults.register(defaults: [
-            Key.language: "ru",
+            Key.language: "auto",
             Key.soundsEnabled: true,
             Key.restoreClipboard: true,
             Key.smartSpacing: true,
@@ -471,7 +487,7 @@ final class SettingsStore: ObservableObject {
         cleanupRules = defaults.stringArray(forKey: Key.cleanupRules) ?? []
         libraryRetentionNoticeDismissed = defaults.bool(forKey: Key.libraryRetentionNoticeDismissed)
         saveTranscriptAudio = defaults.bool(forKey: Key.saveTranscriptAudio)
-        language = defaults.string(forKey: Key.language) ?? "ru"
+        language = defaults.string(forKey: Key.language) ?? "auto"
         soundsEnabled = defaults.bool(forKey: Key.soundsEnabled)
         soundVolume = defaults.double(forKey: Key.soundVolume)
         micAutoBoost = defaults.bool(forKey: Key.micAutoBoost)
