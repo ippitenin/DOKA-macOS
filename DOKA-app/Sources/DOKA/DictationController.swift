@@ -430,7 +430,7 @@ final class DictationController: ObservableObject {
             let cleaned = await DictationCleanupRunner.run(raw, localRecognition: route.isLocal,
                                                            language: requestLanguage)
             guard generation == gen else { return }   // Esc во время обработки
-            let text = ReplacementEngine.apply(cleaned ?? raw, rules: settings.replacements)
+            let text = ReplacementEngine.apply(cleaned ?? raw, rules: settings.activeReplacements)
             // Кодируем аудио в m4a ДО выхода (settle уберёт исходный WAV). id фиксируем заранее,
             // чтобы имя файла и запись истории гарантированно совпадали. Если сохранение аудио
             // выключено — кодирование пропускаем целиком, и вставка не ждёт его (быстрее).

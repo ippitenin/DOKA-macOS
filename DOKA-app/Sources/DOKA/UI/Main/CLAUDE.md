@@ -2,7 +2,7 @@
 
 Страница «Транскрибация», дашборд, история, «Сервис», «Расширенные» и онбординг. Общие правила проекта, команды, гейты и сквозные инварианты — в корневом `CLAUDE.md`, там же карта всех документов; пути вида `Storage/CLAUDE.md` — от `DOKA-app/Sources/DOKA`.
 
-Где описаны остальные файлы папки: `AnalysisController`, `AnalysisPanelView`, `AnalysisTemplatesSheet`, `SpeakerSuggestionController` — `Util/CLAUDE.md` (ИИ-анализ); `LipsSectionView` — `Lips/CLAUDE.md`; `DictationCleanupCard`, `DictionarySectionView` — `Text/CLAUDE.md`; `SoundSectionView` — `Audio/CLAUDE.md`; `HotkeysSectionView` — `Managers/CLAUDE.md`; общие правила вёрстки — `UI/CLAUDE.md`.
+Где описаны остальные файлы папки: `AnalysisController`, `AnalysisPanelView`, `AnalysisTemplatesSheet`, `SpeakerSuggestionController` — `Util/CLAUDE.md` (ИИ-анализ); `LipsSectionView` — `Lips/CLAUDE.md`; `DictationCleanupCard`, `DictionarySectionView`, `SystemDictionaryView`, `ReplacementRulesList` — `Text/CLAUDE.md`; `SoundSectionView` — `Audio/CLAUDE.md`; `HotkeysSectionView` — `Managers/CLAUDE.md`; общие правила вёрстки — `UI/CLAUDE.md`.
 
 ## Транскрибация файлов
 

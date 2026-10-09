@@ -43,6 +43,8 @@ enum DictationCleanupRunner {
         }
         let wishes = settings.cleanupWishes
         let rules = settings.cleanupRules
+        // Только личные правила: системный словарь — сотни брендов, промпту
+        // они не нужны, а глоссарий ограничен 40 терминами.
         let glossary = DictationCleanup.glossary(from: settings.replacements)
         let words = raw.dokaWordCount
         let started = Date()

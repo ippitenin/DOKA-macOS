@@ -221,7 +221,7 @@ final class TranscriptDocument: ObservableObject {
     /// `TranscriptOutput`). Сырой результат при этом не меняется.
     func output(detail: TimestampDetail) -> TranscriptResult? {
         let settings = SettingsStore.shared
-        let rules = settings.applyDictionaryToFiles ? settings.replacements : nil
+        let rules = settings.applyDictionaryToFiles ? settings.activeReplacements : nil
         let key = OutputKey(detail: detail, dictionary: rules, revision: revision)
         if let cachedOutput, cachedOutput.key == key { return cachedOutput.result }
         guard let source = source(detail: detail) else { return nil }

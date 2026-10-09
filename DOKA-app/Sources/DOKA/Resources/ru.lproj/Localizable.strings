@@ -264,6 +264,23 @@
 "dictionary.insideWords.badge" = "в словах";
 "dictionary.more" = "Действия";
 "dictionary.enabled" = "Правило включено";
+"dictionary.reorder" = "Перетащите, чтобы поменять порядок. Порядок — только для удобства: длинные шаблоны всё равно применяются первыми.";
+"dictionary.wordForms" = "Все формы слова";
+"dictionary.wordForms.help" = "Ловить и падежи: «в телеграме» → «в Telegram». Работает, когда замена не кончается кириллицей, а слово без окончания — от четырёх букв.";
+"systemDictionary.title" = "Системный словарь";
+"systemDictionary.toggle.help" = "Общие названия сервисов и брендов: «в телеграме» → «в Telegram», «чат гпт» → «ChatGPT». Падежи ловятся сами. Ваши правила ниже главнее системных.";
+"systemDictionary.summary" = "Правил: %ld";
+"systemDictionary.summaryWithOff" = "Правил: %ld · выключено: %ld";
+"systemDictionary.open" = "Открыть";
+"systemDictionary.back" = "Словарь";
+"systemDictionary.subtitle" = "Встроенный список общих замен. Правила можно править, выключать, удалять и добавлять — это ваша копия. Новые версии DOKA только добавляют записи, ваши правки остаются.";
+"systemDictionary.search" = "Поиск по словарю";
+"systemDictionary.search.clear" = "Очистить поиск";
+"systemDictionary.notFound" = "Ничего не найдено";
+"systemDictionary.reset" = "Вернуть исходный словарь…";
+"systemDictionary.reset.title" = "Вернуть исходный словарь?";
+"systemDictionary.reset.confirm" = "Вернуть";
+"systemDictionary.reset.message" = "Правки, выключенные, удалённые и добавленные правила системного словаря пропадут. Личный словарь не изменится.";
 
 /* Секция «Сервис» */
 "service.provider" = "Сервис распознавания:";
