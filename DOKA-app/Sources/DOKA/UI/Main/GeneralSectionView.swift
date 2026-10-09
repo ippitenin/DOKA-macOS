@@ -64,10 +64,7 @@ struct GeneralSectionView: View {
                 }
             }
 
-            // Материал, а не Liquid Glass: у такой высокой карточки зона
-            // преломления у кромок отражала пилюлю сайдбара, тумблер и текст
-            // карточки выше — пятна слева и «плита» под первым рядом плашек.
-            SettingsCard(header: L("general.recorderPanel"), forceMaterial: true) {
+            SettingsCard(header: L("general.recorderPanel")) {
                 RecorderStylePicker(selection: $settings.recorderStyle)
                     .padding(.horizontal, DS.Spacing.cardPadding)
                     .padding(.vertical, 10)

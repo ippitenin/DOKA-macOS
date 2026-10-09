@@ -63,6 +63,22 @@ extension View {
     }
 }
 
+extension View {
+    /// Лента стеклянных карточек в прокрутке («История», «Библиотека»): на
+    /// macOS 26 — общий `GlassEffectContainer`, способ Apple рисовать группу
+    /// стекла одним проходом. Без него пачка `glassEffect` в ScrollView рисовала
+    /// под собой общую серую плиту на весь viewport. `spacing: 0` — соседние
+    /// карточки не сливаются. На macOS 15 — как есть.
+    @ViewBuilder
+    func glassGroup() -> some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 0) { self }
+        } else {
+            self
+        }
+    }
+}
+
 private struct GlassSurfaceModifier: ViewModifier {
     let shape: GlassSurfaceShape
     let tint: Color?
