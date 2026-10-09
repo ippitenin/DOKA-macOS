@@ -15,8 +15,62 @@ final class ReplacementEngineTests: XCTestCase {
     }
 
     func testIsCaseInsensitive() {
-        let result = ReplacementEngine.apply("Привет ПРИВЕТ привет", rules: [rule("привет", "hi")])
-        XCTAssertEqual(result, "hi hi hi")
+        // Не с начала текста: там замена получила бы заглавную (тест ниже).
+        let result = ReplacementEngine.apply("а Привет ПРИВЕТ привет", rules: [rule("привет", "hi")])
+        XCTAssertEqual(result, "а hi hi hi")
+    }
+
+    /// Замена со строчной в начале предложения получает заглавную — иначе
+    /// «Stories тоже сделаем» с «Stories» → «сторис» вставлялось бы как
+    /// «сторис тоже сделаем». В середине предложения — как в правиле.
+    func testCapitalizesReplacementAtSentenceStart() {
+        let rules = [rule("Stories", "сторис")]
+        XCTAssertEqual(ReplacementEngine.apply("Stories тоже сделаем. Потом Stories выложим.", rules: rules),
+                       "Сторис тоже сделаем. Потом сторис выложим.")
+    }
+
+    func testSentenceStartAfterEndsNewlineAndQuotes() {
+        let rules = [rule("Reels", "рилс")]
+        XCTAssertEqual(ReplacementEngine.apply("Ура! Reels вышел", rules: rules), "Ура! Рилс вышел")
+        XCTAssertEqual(ReplacementEngine.apply("Что? Reels", rules: rules), "Что? Рилс")
+        XCTAssertEqual(ReplacementEngine.apply("Так… Reels", rules: rules), "Так… Рилс")
+        XCTAssertEqual(ReplacementEngine.apply("строка\nReels", rules: rules), "строка\nРилс")
+        XCTAssertEqual(ReplacementEngine.apply("Готово. «Reels вышел»", rules: rules), "Готово. «Рилс вышел»")
+        XCTAssertEqual(ReplacementEngine.apply("Он сказал: «Reels вышел»", rules: rules), "Он сказал: «рилс вышел»",
+                       "после двоеточия — не начало предложения")
+    }
+
+    /// Whisper пишет «Reels» с заглавной и посреди фразы — там правило
+    /// просит строчную, и заглавная не переносится.
+    func testMidSentenceKeepsRuleCase() {
+        XCTAssertEqual(ReplacementEngine.apply("вышел Reels, и всё", rules: [rule("Reels", "рилс")]),
+                       "вышел рилс, и всё")
+    }
+
+    /// Замена, которая сама начинается с заглавной или не с буквы, остаётся
+    /// как в правиле, а строчное найденное в начале — тоже.
+    func testOnlyLowercaseReplacementOfCapitalizedMatchChanges() {
+        XCTAssertEqual(ReplacementEngine.apply("Телеграм лежит.", rules: [rule("телеграм", "Telegram")]),
+                       "Telegram лежит.")
+        XCTAssertEqual(ReplacementEngine.apply("Апи отдаёт ошибку.", rules: [rule("апи", "API")]),
+                       "API отдаёт ошибку.")
+        XCTAssertEqual(ReplacementEngine.apply("э-э, привет", rules: [rule("э-э, ", "")]), "привет")
+        XCTAssertEqual(ReplacementEngine.apply("prompt готов", rules: [rule("prompt", "промпт")]), "промпт готов")
+    }
+
+    /// Однобуквенный нормализатор сохраняет регистр где угодно: «Ёлка» → «Елка».
+    func testSingleCharacterRuleKeepsCase() {
+        let rule = ReplacementRule(from: "ё", to: "е", matchInsideWords: true)
+        XCTAssertEqual(ReplacementEngine.apply("Ёлка и ёж, ЁЖ", rules: [rule]), "Елка и еж, ЕЖ")
+    }
+
+    /// Словарь на выходном слое файлов применяется на каждом рендере —
+    /// повторный проход не должен ничего менять.
+    func testCapitalizationIsIdempotent() {
+        let rules = [rule("Stories", "сторис"), ReplacementRule(from: "ё", to: "е", matchInsideWords: true)]
+        let once = ReplacementEngine.apply("Stories готовы. Ёлка и Stories.", rules: rules)
+        XCTAssertEqual(once, "Сторис готовы. Елка и сторис.")
+        XCTAssertEqual(ReplacementEngine.apply(once, rules: rules), once)
     }
 
     func testSkipsDisabledRules() {

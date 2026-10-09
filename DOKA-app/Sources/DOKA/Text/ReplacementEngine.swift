@@ -41,6 +41,11 @@ extension ReplacementRule {
 /// сам включил разделитель в правило («э-э, » → «»). Как и у `\b` в
 /// регулярках, дефис и апостроф — разделители: «кто» → «who» превратит
 /// «кто-то» в «who-то».
+///
+/// Регистр замены — как в правиле, кроме одного случая: найденное начинается
+/// с заглавной, замена — со строчной, и это начало предложения (или правило
+/// однобуквенное). Тогда первая буква замены поднимается: «Stories тоже
+/// сделаем» с «stories» → «сторис» даёт «Сторис тоже сделаем».
 enum ReplacementEngine {
     static func apply(_ text: String, rules: [ReplacementRule]) -> String {
         var result = text
@@ -82,7 +87,7 @@ enum ReplacementEngine {
                 || !isWordCharacter(text[found.upperBound])
             if leftOK && rightOK {
                 output += text[copiedUpTo..<found.lowerBound]
-                output += rule.to
+                output += casedReplacement(rule, matched: text[found], in: text)
                 copiedUpTo = found.upperBound
                 searchFrom = found.upperBound
             } else {
@@ -94,4 +99,36 @@ enum ReplacementEngine {
         output += text[copiedUpTo...]
         return output
     }
+
+    /// Замена с заглавной, если найденное начинается с заглавной, а замена —
+    /// со строчной, и совпадение открывает предложение или правило из одного
+    /// символа («Ёлка» с «ё» → «е» — «Елка»). В середине предложения — как в
+    /// правиле: Whisper пишет «вышел Reels» с заглавной и там, а правило
+    /// «Reels» → «рилс» просит строчную. Повторный проход ничего не меняет:
+    /// результат начинается с заглавной, и подъём ему не нужен.
+    private static func casedReplacement(_ rule: ReplacementRule, matched: Substring,
+                                         in text: String) -> String {
+        guard let first = rule.to.first, first.isLowercase,
+              matched.first?.isUppercase == true,
+              rule.from.count == 1 || opensSentence(text, at: matched.startIndex) else { return rule.to }
+        return first.uppercased() + rule.to.dropFirst()
+    }
+
+    /// Начало предложения: перед позицией — начало текста, конец предложения
+    /// (`.`, `!`, `?`, `…`) или перевод строки; пробелы и открывающие кавычки
+    /// и скобки между ними не в счёт. После двоеточия — не начало.
+    static func opensSentence(_ text: String, at index: String.Index) -> Bool {
+        var i = index
+        while i > text.startIndex {
+            i = text.index(before: i)
+            let c = text[i]
+            if c.isNewline || sentenceEnds.contains(c) { return true }
+            if c.isWhitespace || openers.contains(c) { continue }
+            return false
+        }
+        return true
+    }
+
+    private static let sentenceEnds: Set<Character> = [".", "!", "?", "…"]
+    private static let openers: Set<Character> = ["«", "\"", "„", "“", "(", "["]
 }
