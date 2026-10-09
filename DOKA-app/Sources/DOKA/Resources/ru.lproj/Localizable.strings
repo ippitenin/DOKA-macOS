@@ -440,6 +440,7 @@
 "training.origin.history" = "Из ваших диктовок";
 "training.origin.work" = "Работа";
 "training.origin.everyday" = "Быт";
+"training.origin.mixed" = "С английскими словами";
 "training.mirror.idle" = "Камера включится по пробелу";
 "training.key.space" = "пробел";
 "training.status.idle" = "начать фразу";
