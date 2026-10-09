@@ -25,4 +25,4 @@
 - `TranscriptFormatter`, `TranscriptSegmentSplitter`, `TranscriptOutput`, `SpeakerName`, `SpeakerRolesParser`, `WordCount`, `HistoryExport`, `PerformanceMetrics` — `UI/Main/CLAUDE.md` (страница «Транскрибация», дашборд, история);
 - `TranscriptEdits`, `LibrarySearch`, `LibraryGrouping`, `LibraryExport`, `SegmentTimeline`, `RetryPlanner` — `UI/Main/Library/CLAUDE.md` (поиск на диске — ещё и `Storage/CLAUDE.md`);
 - `SpeakerAssignment`, `SpeakerFrames` — `Local/CLAUDE.md` (локальная диаризация);
-- `Smoothing` — `Audio/CLAUDE.md` (уровень микрофона) и `UI/CLAUDE.md`; `TimeFormat` — `UI/CLAUDE.md`; `Percentile` — `Lips/CLAUDE.md`; `AppRelaunch` — `Storage/CLAUDE.md` («Папка данных»).
+- `Smoothing` — `Audio/CLAUDE.md` (уровень микрофона) и `UI/CLAUDE.md`; `TimeFormat` — `UI/CLAUDE.md`; `Percentile` — `Lips/CLAUDE.md` (ближайший ранг) и `Audio/CLAUDE.md` (линейный, как numpy, — для «!» по интонации); `AppRelaunch` — `Storage/CLAUDE.md` («Папка данных»).
