@@ -418,26 +418,35 @@ final class DictationController: ObservableObject {
 
         do {
             let started = Date()
-            let raw = try await recognize(uploadURL, route: route, language: requestLanguage, generation: gen)
+            let recognized = try await recognize(uploadURL, route: route, language: requestLanguage,
+                                                 generation: gen)
             let transcriptionTime = Date().timeIntervalSince(started)
             guard generation == gen else { return }   // отменено пользователем
             // Весь результат — дежурная фраза Whisper на тишине («Thank you.»,
             // «Продолжение следует...»): это пустая запись, прошедшая гейт, а не
             // диктовка. Ведём как отсев гейта. Повтор из меню фильтр обходит —
             // там пользователь сам просит распознать.
-            if case .live = source, HallucinationFilter.isHallucination(raw, quiet: audio.quiet) {
+            if case .live = source,
+               HallucinationFilter.isHallucination(recognized, quiet: audio.quiet, language: language) {
                 NSLog("DOKA: отброшена галлюцинация на тишине «%@» (запись %.2f с, речи %.2f с%@)",
-                      raw, audio.duration, audio.gateSpeechDuration, audio.quiet ? ", тихий режим" : "")
+                      recognized, audio.duration, audio.gateSpeechDuration, audio.quiet ? ", тихий режим" : "")
                 outcome = .gated(L("error.noSpeech"))
                 showError(L("error.noSpeech"), sound: .cancel)
                 return
+            }
+            // Та же фраза, приклеенная к концу настоящей диктовки, — тишина перед
+            // остановкой записи («…вдруг. Thank you.»). Срезается и у повтора:
+            // хвост — мусор при любом источнике.
+            let raw = HallucinationFilter.trimmingTrailingArtifacts(recognized)
+            if raw != recognized {
+                NSLog("DOKA: срезан хвост-галлюцинация «%@»", String(recognized.dropFirst(raw.count)))
             }
             // ИИ-обработка — после фильтра галлюцинаций и ДО словаря: правила
             // пользователя главнее правки модели. Подпись губ — сырой `raw`.
             let cleaned = await DictationCleanupRunner.run(raw, localRecognition: route.isLocal,
                                                            language: requestLanguage)
             guard generation == gen else { return }   // Esc во время обработки
-            let replaced = ReplacementEngine.apply(cleaned ?? raw, rules: settings.replacements)
+            let replaced = ReplacementEngine.apply(cleaned ?? raw, rules: settings.activeReplacements)
             // Точка в конце → «!», если тон конца речи — восклицание. После словаря и
             // ИИ-обработки: меняется только последний знак, слова уже окончательные.
             let exclamationProbability = await exclamation.value

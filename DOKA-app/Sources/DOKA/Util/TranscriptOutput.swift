@@ -40,6 +40,6 @@ enum TranscriptOutput {
     static func prepare(_ result: TranscriptResult) -> TranscriptResult {
         let settings = SettingsStore.shared
         guard settings.applyDictionaryToFiles else { return result }
-        return applyingDictionary(result, rules: settings.replacements)
+        return applyingDictionary(result, rules: settings.activeReplacements)
     }
 }

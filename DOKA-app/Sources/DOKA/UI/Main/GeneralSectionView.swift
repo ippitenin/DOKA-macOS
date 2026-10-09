@@ -15,18 +15,19 @@ struct GeneralSectionView: View {
     @State private var showAdvanced = false
 
     var body: some View {
-        // Смена экрана мгновенная, без слайда — как в SuperWhisper.
-        Group {
-            if showAdvanced {
-                AdvancedSettingsView { showAdvanced = false }
-            } else {
-                generalForm
-            }
+        DrillIn(isPresented: showAdvanced) {
+            generalForm
+        } detail: {
+            AdvancedSettingsView { showAdvanced = false }
         }
         // Переход «сразу в Расширенные» извне (плашка библиотеки о сроке
-        // хранения): секция пересоздаётся при каждом показе, запрос забираем тут.
+        // хранения): секция пересоздаётся при каждом показе, запрос забираем
+        // тут — без сдвига, секция и так появляется своей анимацией.
         .onAppear {
-            if WindowManager.shared.consumeAdvancedRequest() { showAdvanced = true }
+            guard WindowManager.shared.consumeAdvancedRequest() else { return }
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) { showAdvanced = true }
         }
     }
 
@@ -110,21 +111,7 @@ struct GeneralSectionView: View {
 
             // Плашка-переход в «Расширенные» (Dock, окно при запуске, папка данных).
             SettingsCard {
-                Button {
-                    showAdvanced = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Text(L("general.advanced"))
-                        Spacer(minLength: 16)
-                        Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, DS.Spacing.cardPadding)
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                SettingsLinkRow(title: L("general.advanced")) { showAdvanced = true }
             }
         }
         .onChange(of: settings.appLanguage) { oldValue, _ in

@@ -22,6 +22,35 @@ struct VisualEffectView: NSViewRepresentable {
 }
 
 /// Крупный заголовок секции контент-области.
+/// Переход раздела на под-страницу и обратно: под-страница выезжает справа
+/// и проявляется, раздел уходит влево и гаснет; «назад» — зеркально, потому
+/// что каждая страница уходит туда, откуда пришла. Нативный NavigationStack
+/// на macOS меняет страницы мгновенно — пользователю это казалось резким.
+/// При Reduce Motion — только прозрачность.
+struct DrillIn<Root: View, Detail: View>: View {
+    let isPresented: Bool
+    @ViewBuilder var root: Root
+    @ViewBuilder var detail: Detail
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if isPresented {
+                detail.transition(slide(30))
+            } else {
+                root.transition(slide(-30))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .animation(DS.Anim.section, value: isPresented)
+    }
+
+    private func slide(_ dx: CGFloat) -> AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .offset(x: dx))
+    }
+}
+
 struct SectionHeader: View {
     let title: String
     var subtitle: String? = nil

@@ -81,6 +81,10 @@ final class SettingsStore: ObservableObject {
         static let restoreClipboard = "restoreClipboard"
         static let smartSpacing = "smartSpacing"
         static let replacements = "replacements"
+        static let systemDictionaryEnabled = "systemDictionaryEnabled"
+        static let systemReplacements = "systemReplacements"
+        static let systemDictionaryVersion = "systemDictionaryVersion"
+        static let systemDictionaryRemoved = "systemDictionaryRemoved"
         static let onboardingCompleted = "onboardingCompleted"
         static let provider = "provider"
         static let customEndpoint = "customEndpoint"
@@ -151,6 +155,50 @@ final class SettingsStore: ObservableObject {
                 defaults.set(data, forKey: Key.replacements)
             }
         }
+    }
+    /// Системный словарь включён (по умолчанию да): его правила применяются
+    /// вместе с личными, личные главнее (`SystemDictionary.active`).
+    @Published var systemDictionaryEnabled: Bool {
+        didSet { defaults.set(systemDictionaryEnabled, forKey: Key.systemDictionaryEnabled) }
+    }
+    /// Рабочая копия системного словаря: заполняется из бандла при первом
+    /// запуске, дальше её правит пользователь; новая версия списка в бандле
+    /// только добавляет записи (`SystemDictionary.merge`).
+    @Published var systemReplacements: [ReplacementRule] {
+        didSet {
+            if let data = try? JSONEncoder().encode(systemReplacements) {
+                defaults.set(data, forKey: Key.systemReplacements)
+            }
+        }
+    }
+    /// `id` удалённых пользователем встроенных записей — чтобы новая версия
+    /// списка их не вернула.
+    private var systemDictionaryRemoved: Set<UUID> {
+        didSet {
+            defaults.set(systemDictionaryRemoved.map(\.uuidString).sorted(), forKey: Key.systemDictionaryRemoved)
+        }
+    }
+
+    /// Правила для движка: личные плюс системные, если словарь включён.
+    /// Единая точка для диктовки, файлов и анализа.
+    var activeReplacements: [ReplacementRule] {
+        SystemDictionary.active(user: replacements, system: systemReplacements,
+                                systemEnabled: systemDictionaryEnabled)
+    }
+
+    /// Удалить правило системного словаря; встроенное запоминается как
+    /// удалённое, и обновление списка его не вернёт.
+    func removeSystemRule(id: UUID) {
+        systemReplacements.removeAll { $0.id == id }
+        systemDictionaryRemoved.insert(id)
+    }
+
+    /// «Вернуть исходный словарь»: рабочая копия — снова список из бандла.
+    func resetSystemDictionary() {
+        let bundled = SystemDictionary.bundled()
+        systemDictionaryRemoved = []
+        systemReplacements = bundled.rules
+        defaults.set(bundled.version, forKey: Key.systemDictionaryVersion)
     }
     @Published var onboardingCompleted: Bool {
         didSet { defaults.set(onboardingCompleted, forKey: Key.onboardingCompleted) }
@@ -257,6 +305,15 @@ final class SettingsStore: ObservableObject {
     /// Применять «Словарь» к расшифровкам файлов — на выходном слое
     /// (`TranscriptOutput`): показ, копирование, «Сохранить как…». По
     /// умолчанию выключено — изоляция пайплайна файлов сохраняется.
+    /// В `init` `didSet` не срабатывает — рабочую копию и версию пишем сами
+    /// (статически: метод экземпляра до конца `init` звать нельзя).
+    private static func saveSystemDictionary(_ rules: [ReplacementRule], version: Int, to defaults: UserDefaults) {
+        if let data = try? JSONEncoder().encode(rules) {
+            defaults.set(data, forKey: Key.systemReplacements)
+        }
+        defaults.set(version, forKey: Key.systemDictionaryVersion)
+    }
+
     @Published var applyDictionaryToFiles: Bool {
         didSet { defaults.set(applyDictionaryToFiles, forKey: Key.applyDictionaryToFiles) }
     }
@@ -393,6 +450,7 @@ final class SettingsStore: ObservableObject {
             Key.skipSilentRecordings: true,
             Key.quietMode: false,
             Key.applyDictionaryToFiles: false,
+            Key.systemDictionaryEnabled: true,
             Key.dictationCleanup: false,
             Key.saveTranscriptAudio: true,
             Key.notifyFileTranscription: true,
@@ -442,6 +500,28 @@ final class SettingsStore: ObservableObject {
             replacements = rules
         } else {
             replacements = []
+        }
+        systemDictionaryEnabled = defaults.bool(forKey: Key.systemDictionaryEnabled)
+        let removedSystemRules = Set((defaults.stringArray(forKey: Key.systemDictionaryRemoved) ?? [])
+            .compactMap(UUID.init(uuidString:)))
+        systemDictionaryRemoved = removedSystemRules
+        // Рабочая копия системного словаря: нет (первый запуск) или битая —
+        // из бандла; новая версия списка в бандле — дополнить (`merge`).
+        let bundledDictionary = SystemDictionary.bundled()
+        var systemRules = bundledDictionary.rules
+        var systemNeedsSave = true
+        if let data = defaults.data(forKey: Key.systemReplacements),
+           let rules = try? JSONDecoder().decode([ReplacementRule].self, from: data) {
+            systemRules = rules
+            systemNeedsSave = bundledDictionary.version > defaults.integer(forKey: Key.systemDictionaryVersion)
+            if systemNeedsSave {
+                systemRules = SystemDictionary.merge(stored: rules, bundled: bundledDictionary.rules,
+                                                     removed: removedSystemRules)
+            }
+        }
+        systemReplacements = systemRules
+        if systemNeedsSave {
+            Self.saveSystemDictionary(systemRules, version: bundledDictionary.version, to: defaults)
         }
         // Поэлементно (как `analyses` и `edits` в теле записи): битый шаблон
         // теряет только себя. При «всё или ничего» один сбойный элемент унёс

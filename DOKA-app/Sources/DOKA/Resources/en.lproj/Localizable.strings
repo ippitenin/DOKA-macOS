@@ -264,6 +264,22 @@
 "dictionary.insideWords.badge" = "in words";
 "dictionary.more" = "Actions";
 "dictionary.enabled" = "Rule enabled";
+"dictionary.reorder" = "Drag to reorder. The order is only for convenience: longer patterns are still applied first.";
+"dictionary.wordForms" = "All word forms";
+"dictionary.wordForms.help" = "Also match Russian case forms: «в телеграме» → «в Telegram». Works when the replacement doesn't end in Cyrillic and the word stem has at least four letters.";
+"systemDictionary.title" = "System dictionary";
+"systemDictionary.toggle.help" = "Common names of services and brands: «в телеграме» → «в Telegram», «чат гпт» → «ChatGPT». Word forms are matched automatically. Your own rules below take precedence.";
+"systemDictionary.summary" = "Rules: %ld";
+"systemDictionary.summaryWithOff" = "Rules: %ld · off: %ld";
+"systemDictionary.back" = "Dictionary";
+"systemDictionary.subtitle" = "A built-in list of common replacements. You can edit, turn off, delete and add rules — this is your own copy. New DOKA versions only add entries; your edits stay.";
+"systemDictionary.search" = "Search dictionary";
+"systemDictionary.search.clear" = "Clear search";
+"systemDictionary.notFound" = "Nothing found";
+"systemDictionary.reset" = "Restore Default Dictionary…";
+"systemDictionary.reset.title" = "Restore the default dictionary?";
+"systemDictionary.reset.confirm" = "Restore";
+"systemDictionary.reset.message" = "Edited, turned off, deleted and added rules of the system dictionary will be lost. Your personal dictionary won't change.";
 
 /* Service section */
 "service.provider" = "Transcription service:";
@@ -424,6 +440,7 @@
 "training.origin.history" = "From your dictations";
 "training.origin.work" = "Work";
 "training.origin.everyday" = "Everyday";
+"training.origin.mixed" = "With English words";
 "training.mirror.idle" = "The camera turns on with Space";
 "training.key.space" = "space";
 "training.status.idle" = "start a phrase";
