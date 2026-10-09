@@ -443,6 +443,7 @@
 "training.origin.history" = "From your dictations";
 "training.origin.work" = "Work";
 "training.origin.everyday" = "Everyday";
+"training.origin.mixed" = "With English words";
 "training.mirror.idle" = "The camera turns on with Space";
 "training.key.space" = "space";
 "training.status.idle" = "start a phrase";
