@@ -224,6 +224,29 @@ struct SettingsRow<Control: View>: View {
     }
 }
 
+/// Строка-переход на под-страницу: кнопка во всю строку с шевроном справа
+/// («Расширенные» в «Общих», «Системный словарь» в «Словаре»).
+struct SettingsLinkRow: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(title)
+                Spacer(minLength: 16)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, DS.Spacing.cardPadding)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// «Вопросик» с поповером-подсказкой — тот самый, что у `SettingsRow(help:)`,
 /// но пригодный для любых заголовков (например, у списков вне форм настроек).
 struct HelpBubble: View {

@@ -185,6 +185,80 @@ final class ReplacementEngineTests: XCTestCase {
         XCTAssertEqual(ReplacementEngine.apply("ёлка", rules: [rule("ё", "е")]), "ёлка")
     }
 
+    // MARK: - Формы слова
+
+    /// Одно правило вместо пяти: падежи бренда сводятся к латинскому названию.
+    func testWordFormsCollapseToLatinReplacement() {
+        let rules = [rule("телеграм", "Telegram")]
+        XCTAssertEqual(ReplacementEngine.apply("в телеграме, телеграма нет, с телеграмом и телеграм.", rules: rules),
+                       "в Telegram, Telegram нет, с Telegram и Telegram.")
+        XCTAssertEqual(ReplacementEngine.apply("Телеграм-канал и ТЕЛЕГРАМЕ", rules: rules),
+                       "Telegram-канал и Telegram")
+    }
+
+    /// Основа без конечной гласной, «ь» или «й»: «фигма» → «фигм», «эксель» → «эксел».
+    func testStemDropsFinalVowelSoftSignOrShortI() {
+        XCTAssertEqual(ReplacementEngine.apply("в фигме и с фигмой", rules: [rule("фигма", "Figma")]),
+                       "в Figma и с Figma")
+        XCTAssertEqual(ReplacementEngine.apply("в экселе, экселем", rules: [rule("эксель", "Excel")]),
+                       "в Excel, Excel")
+        XCTAssertEqual(ReplacementEngine.apply("после деплоя", rules: [rule("деплой", "deploy")]), "после deploy")
+    }
+
+    /// После основы — только падежное окончание и граница слова: другие слова
+    /// с тем же началом и слова с приставкой не трогаются.
+    func testFormsKeepWordBoundaries() {
+        let rules = [rule("телеграм", "Telegram"), rule("гугл", "Google")]
+        XCTAssertEqual(ReplacementEngine.apply("пришла телеграмма, телеграмный адрес", rules: rules),
+                       "пришла телеграмма, телеграмный адрес")
+        XCTAssertEqual(ReplacementEngine.apply("погугли и гуглить, гугли сам, я гуглю", rules: rules),
+                       "погугли и гуглить, гугли сам, я гуглю", "глагол «гуглить» — не Google")
+    }
+
+    /// Короткие шаблоны (основа < 4 букв) ловят только точное слово: «МД»
+    /// не должно съесть «мда», «апи» — «апу».
+    func testShortStemMatchesExactWordOnly() {
+        let rules = [rule("МД", "MD"), rule("апи", "API"), rule("дока", "DOKA")]
+        XCTAssertEqual(ReplacementEngine.apply("Мда, файл МД, апи и апу, доки", rules: rules),
+                       "Мда, файл MD, API и апу, доки")
+    }
+
+    /// В кириллическую замену окончание не переносится — правило ловит
+    /// только точное слово, как раньше.
+    func testCyrillicReplacementMatchesExactWordOnly() {
+        let rules = [rule("клиент", "заказчик")]
+        XCTAssertEqual(ReplacementEngine.apply("клиент и клиенту", rules: rules), "заказчик и клиенту")
+    }
+
+    func testWordFormsCanBeTurnedOff() {
+        var exact = rule("телеграм", "Telegram")
+        exact.matchWordForms = false
+        XCTAssertEqual(ReplacementEngine.apply("телеграм и телеграме", rules: [exact]), "Telegram и телеграме")
+    }
+
+    /// Формы — у последнего слова многословного шаблона.
+    func testFormsOfMultiwordPatternUseLastWord() {
+        XCTAssertEqual(ReplacementEngine.apply("в гугл клауде", rules: [rule("гугл клауд", "Google Cloud")]),
+                       "в Google Cloud")
+    }
+
+    /// Подъём заглавной и повторный проход работают и с формой.
+    func testFormsWithCapitalizationAreIdempotent() {
+        let rules = [rule("ютуб", "youtube")]
+        let once = ReplacementEngine.apply("Ютубе смотрел. А на ютубе нет.", rules: rules)
+        XCTAssertEqual(once, "Youtube смотрел. А на youtube нет.")
+        XCTAssertEqual(ReplacementEngine.apply(once, rules: rules), once)
+    }
+
+    func testFormsStemRules() {
+        XCTAssertEqual(ReplacementEngine.formsStem(of: rule("телеграм", "Telegram")), "телеграм")
+        XCTAssertEqual(ReplacementEngine.formsStem(of: rule("фигма", "Figma")), "фигм")
+        XCTAssertNil(ReplacementEngine.formsStem(of: rule("апи", "API")), "основа короче 4")
+        XCTAssertNil(ReplacementEngine.formsStem(of: rule("Stories", "сторис")), "латинский шаблон")
+        XCTAssertNil(ReplacementEngine.formsStem(of: rule("телеграм ", "Telegram")), "кончается пробелом")
+        XCTAssertNil(ReplacementEngine.formsStem(of: rule("клиент", "заказчик")), "кириллическая замена")
+    }
+
     // MARK: - Совместимость хранения
 
     /// Словарь, сохранённый прежней версией (без `matchInsideWords`), обязан
@@ -196,6 +270,7 @@ final class ReplacementEngineTests: XCTestCase {
         XCTAssertEqual(rules[0].from, "дока")
         XCTAssertTrue(rules[0].enabled)
         XCTAssertFalse(rules[0].matchInsideWords)
+        XCTAssertTrue(rules[0].matchWordForms, "формы слова — по умолчанию и у старых правил")
     }
 
     func testRoundTripKeepsMatchInsideWords() throws {

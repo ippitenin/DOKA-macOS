@@ -369,10 +369,11 @@ final class AnalysisController: ObservableObject {
     static func makeInput(title: String, body: TranscriptBody) -> TranscriptLLMInput {
         let source = body.makeResult(detail: TranscriptLLMInput.detail)
         let settings = SettingsStore.shared
-        guard settings.applyDictionaryToFiles, !settings.replacements.isEmpty else {
+        let rules = settings.activeReplacements
+        guard settings.applyDictionaryToFiles, !rules.isEmpty else {
             return TranscriptLLMInput.build(title: title, result: source)
         }
-        let lensed = TranscriptOutput.applyingDictionary(source, rules: settings.replacements)
+        let lensed = TranscriptOutput.applyingDictionary(source, rules: rules)
         return TranscriptLLMInput.build(title: title, result: lensed, fingerprintSource: source)
     }
 
