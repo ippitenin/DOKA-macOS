@@ -32,7 +32,7 @@ has a map). It is worth reading the one relevant to your change — many
 
 ## Verification gates
 
-The pure logic is covered by tests in `Tests/DOKATests` — 931 checks that run in
+The pure logic is covered by tests in `Tests/DOKATests` — 935 checks that run in
 a few seconds. Everything else (audio capture, pasting, Keychain, the recorder panels)
 needs a real Mac with real permissions, so it is verified by hand. Five gates:
 
