@@ -1,0 +1,390 @@
+# Системный словарь DOKA: общие замены для всех пользователей.
+# Строка — «шаблон → замена»; # — комментарий. Совпадение — по целому слову
+# без учёта регистра; у кириллического шаблона с латинской заменой правило
+# само ловит падежи («в телеграме» → «в Telegram»), поэтому здесь — только
+# основная форма каждого написания.
+#
+# Правила отбора: шаблон не совпадает с обычным русским словом (поэтому НЕТ
+# «зум», «хром», «сафари», «виза», «курсор», «лама», «озон», «редис»,
+# «блендер», «канва», «асана», «питон», «дока»), и ни одна его ФОРМА тоже:
+# проверено орфографией macOS по всем формам — выкинуты «убер» (уберём),
+# «раст» (расти), «бинг» (бинго), «тильда» (символ ~), «юнити» (юниты),
+# «хероку», «сони» (у Сони); «гугли/гуглю» отсекает сам движок
+# (`ReplacementEngine.formExceptions`). Склоняемые заимствования
+# («промпт», «коммит») сюда не входят — в какую сторону их писать, решает
+# сам пользователь в личном словаре. Новая версия списка (строка version)
+# только ДОБАВЛЯЕТ записи в копию пользователя — его правки не трогаются.
+#
+# version: 1
+
+# Мессенджеры и соцсети
+телеграм → Telegram
+ватсап → WhatsApp
+вотсап → WhatsApp
+вацап → WhatsApp
+ватсапп → WhatsApp
+вотсапп → WhatsApp
+вайбер → Viber
+дискорд → Discord
+слак → Slack
+скайп → Skype
+тимс → Teams
+инстаграм → Instagram
+инстаграмм → Instagram
+фейсбук → Facebook
+фэйсбук → Facebook
+тикток → TikTok
+тик ток → TikTok
+ютуб → YouTube
+ютьюб → YouTube
+ютюб → YouTube
+твиттер → Twitter
+твитер → Twitter
+тредс → Threads
+линкедин → LinkedIn
+пинтерест → Pinterest
+реддит → Reddit
+твич → Twitch
+снапчат → Snapchat
+патреон → Patreon
+бусти → Boosty
+онлифанс → OnlyFans
+саундклауд → SoundCloud
+шазам → Shazam
+
+# Apple
+эпл → Apple
+эппл → Apple
+айфон → iPhone
+айпад → iPad
+айпэд → iPad
+макбук → MacBook
+макбук про → MacBook Pro
+макбук эйр → MacBook Air
+аймак → iMac
+мак мини → Mac mini
+мак студио → Mac Studio
+эпл вотч → Apple Watch
+эппл вотч → Apple Watch
+эйрподс → AirPods
+аирподс → AirPods
+эйртег → AirTag
+эйртэг → AirTag
+айклауд → iCloud
+эпстор → App Store
+эп стор → App Store
+ап стор → App Store
+апп стор → App Store
+фейстайм → FaceTime
+сири → Siri
+айос → iOS
+ай ос → iOS
+айпадос → iPadOS
+макос → macOS
+мак ос → macOS
+икскод → Xcode
+свифт → Swift
+свифтюай → SwiftUI
+файндер → Finder
+спотлайт → Spotlight
+кейнот → Keynote
+аймесседж → iMessage
+эпл мьюзик → Apple Music
+эпл пэй → Apple Pay
+эпл пей → Apple Pay
+эппл пэй → Apple Pay
+эпл тв → Apple TV
+карплей → CarPlay
+вижн про → Vision Pro
+тестфлайт → TestFlight
+
+# Google
+гугл → Google
+джимейл → Gmail
+гмейл → Gmail
+гугл докс → Google Docs
+гугл драйв → Google Drive
+гугл мит → Google Meet
+гугл шитс → Google Sheets
+гугл хром → Google Chrome
+гугл клауд → Google Cloud
+гугл аналитикс → Google Analytics
+андроид → Android
+андроид студио → Android Studio
+джемини → Gemini
+гемини → Gemini
+
+# Microsoft
+майкрософт → Microsoft
+виндовс → Windows
+ворд → Word
+эксель → Excel
+эксел → Excel
+пауэрпоинт → PowerPoint
+пауэр поинт → PowerPoint
+поверпоинт → PowerPoint
+аутлук → Outlook
+ванддрайв → OneDrive
+ван драйв → OneDrive
+копайлот → Copilot
+иксбокс → Xbox
+визуал студио → Visual Studio
+вс код → VS Code
+вскод → VS Code
+
+# Нейросети и ИИ
+чат гпт → ChatGPT
+чата гпт → ChatGPT
+чату гпт → ChatGPT
+чатом гпт → ChatGPT
+чате гпт → ChatGPT
+чат gpt → ChatGPT
+чата gpt → ChatGPT
+чату gpt → ChatGPT
+чатом gpt → ChatGPT
+чате gpt → ChatGPT
+чат джипити → ChatGPT
+чатгпт → ChatGPT
+чат-гпт → ChatGPT
+чат-gpt → ChatGPT
+chat gpt → ChatGPT
+chatgpt → ChatGPT
+гпт → GPT
+джипити → GPT
+опенэйай → OpenAI
+опен эй ай → OpenAI
+openai → OpenAI
+клод → Claude
+клод код → Claude Code
+claude код → Claude Code
+антропик → Anthropic
+перплексити → Perplexity
+мидджорни → Midjourney
+миджорни → Midjourney
+дипсик → DeepSeek
+deepseek → DeepSeek
+мистраль → Mistral
+грок → Grok
+квен → Qwen
+ллама → Llama
+олама → Ollama
+оллама → Ollama
+стейбл диффьюжн → Stable Diffusion
+хаггинг фейс → Hugging Face
+хагинг фейс → Hugging Face
+лэнгчейн → LangChain
+ленгчейн → LangChain
+сюно → Suno
+рунвей → Runway
+ранвей → Runway
+элевенлабс → ElevenLabs
+хейген → HeyGen
+клинг → Kling
+виндсерф → Windsurf
+лавабл → Lovable
+реплит → Replit
+нексара → Nexara
+виспер → Whisper
+паракит → Parakeet
+
+# Работа, дизайн, видео
+ноушн → Notion
+ноушен → Notion
+фигма → Figma
+миро → Miro
+трелло → Trello
+джира → Jira
+конфлюенс → Confluence
+кликап → ClickUp
+эйртейбл → Airtable
+тодуист → Todoist
+эверноут → Evernote
+календли → Calendly
+зэпиер → Zapier
+запир → Zapier
+вебфлоу → Webflow
+вордпресс → WordPress
+шопифай → Shopify
+хабспот → HubSpot
+салесфорс → Salesforce
+мейлчимп → Mailchimp
+амосрм → amoCRM
+дропбокс → Dropbox
+фотошоп → Photoshop
+лайтрум → Lightroom
+афтер эффектс → After Effects
+давинчи → DaVinci
+давинчи резолв → DaVinci Resolve
+капкат → CapCut
+файнал кат → Final Cut
+анрил → Unreal
+годот → Godot
+
+# Разработка
+гитхаб → GitHub
+гит хаб → GitHub
+гитхаб экшенс → GitHub Actions
+гитлаб → GitLab
+битбакет → Bitbucket
+гит → Git
+докер → Docker
+кубернетес → Kubernetes
+пайтон → Python
+джаваскрипт → JavaScript
+джава скрипт → JavaScript
+тайпскрипт → TypeScript
+тайп скрипт → TypeScript
+джава → Java
+котлин → Kotlin
+реакт → React
+некст джс → Next.js
+вью джс → Vue.js
+ангуляр → Angular
+свелт → Svelte
+джанго → Django
+фласк → Flask
+фастапи → FastAPI
+ларавел → Laravel
+флаттер → Flutter
+си шарп → C#
+линукс → Linux
+убунту → Ubuntu
+постгрес → Postgres
+постгрескьюэль → PostgreSQL
+монгодб → MongoDB
+верцел → Vercel
+версел → Vercel
+нетлифай → Netlify
+супабейс → Supabase
+файрбейс → Firebase
+клаудфлер → Cloudflare
+клаудфлэр → Cloudflare
+диджитал оушен → DigitalOcean
+терраформ → Terraform
+ансибл → Ansible
+дженкинс → Jenkins
+вебпак → Webpack
+постман → Postman
+свагер → Swagger
+графана → Grafana
+сентри → Sentry
+джетбрейнс → JetBrains
+интеллидж → IntelliJ
+пайчарм → PyCharm
+вебшторм → WebStorm
+стаковерфлоу → Stack Overflow
+стак оверфлоу → Stack Overflow
+апи → API
+эсдикей → SDK
+хтмл → HTML
+эскьюэль → SQL
+
+# Железо, связь, форматы
+пдф → PDF
+впн → VPN
+вайфай → Wi-Fi
+вай фай → Wi-Fi
+вай-фай → Wi-Fi
+блютуз → Bluetooth
+юсб → USB
+хдми → HDMI
+эсэсди → SSD
+самсунг → Samsung
+сяоми → Xiaomi
+шаоми → Xiaomi
+ксиаоми → Xiaomi
+хуавей → Huawei
+плейстейшн → PlayStation
+нинтендо → Nintendo
+тесла → Tesla
+стим → Steam
+майнкрафт → Minecraft
+роблокс → Roblox
+фортнайт → Fortnite
+дота → Dota
+эпик геймс → Epic Games
+
+# Сервисы и бренды
+нетфликс → Netflix
+спотифай → Spotify
+эйрбиэнби → Airbnb
+букинг → Booking
+амазон → Amazon
+алиэкспресс → AliExpress
+ибей → eBay
+пейпал → PayPal
+пэйпал → PayPal
+револют → Revolut
+мастеркард → Mastercard
+старбакс → Starbucks
+макдональдс → McDonald's
+вайлдберриз → Wildberries
+дуолинго → Duolingo
+курсера → Coursera
+юдеми → Udemy
+бинанс → Binance
+метамаск → MetaMask
+
+# Латиница: правильный регистр названий
+iphone → iPhone
+ipad → iPad
+imac → iMac
+macbook → MacBook
+ios → iOS
+ipados → iPadOS
+macos → macOS
+icloud → iCloud
+airpods → AirPods
+airtag → AirTag
+facetime → FaceTime
+imessage → iMessage
+appstore → App Store
+testflight → TestFlight
+xcode → Xcode
+swiftui → SwiftUI
+youtube → YouTube
+github → GitHub
+gitlab → GitLab
+tiktok → TikTok
+whatsapp → WhatsApp
+linkedin → LinkedIn
+paypal → PayPal
+powerpoint → PowerPoint
+onedrive → OneDrive
+javascript → JavaScript
+typescript → TypeScript
+postgresql → PostgreSQL
+mongodb → MongoDB
+wifi → Wi-Fi
+bluetooth → Bluetooth
+playstation → PlayStation
+xbox → Xbox
+capcut → CapCut
+davinci → DaVinci
+airbnb → Airbnb
+aliexpress → AliExpress
+clickup → ClickUp
+figma → Figma
+google → Google
+gmail → Gmail
+python → Python
+docker → Docker
+linux → Linux
+ubuntu → Ubuntu
+vpn → VPN
+pdf → PDF
+api → API
+sdk → SDK
+html → HTML
+css → CSS
+json → JSON
+sql → SQL
+ssd → SSD
+usb → USB
+hdmi → HDMI
+ai → AI
+ui → UI
+ux → UX
+seo → SEO
+crm → CRM
+mvp → MVP
