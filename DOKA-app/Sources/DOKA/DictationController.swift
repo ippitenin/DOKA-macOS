@@ -390,6 +390,13 @@ final class DictationController: ObservableObject {
         let providerRaw = settings.providerTagForHistory
         let modelTag = route.modelTag
 
+        // «!» по интонации считается по исходному WAV параллельно с распознаванием:
+        // к его концу результат уже готов. Шёпот — без тона, его не смотрим.
+        let quiet = audio.quiet
+        let exclamation = Task.detached(priority: .userInitiated) {
+            quiet ? nil : ExclamationDetector.probability(wavURL: url)
+        }
+
         // Копия без тишины — только для отправки: история, статистика и m4a
         // работают с оригиналом. Обрезка — CPU-работа вне главного потока.
         // Шёпот не режем: его порог −40 дБFS, отдельные согласные шёпота его
@@ -430,7 +437,15 @@ final class DictationController: ObservableObject {
             let cleaned = await DictationCleanupRunner.run(raw, localRecognition: route.isLocal,
                                                            language: requestLanguage)
             guard generation == gen else { return }   // Esc во время обработки
-            let text = ReplacementEngine.apply(cleaned ?? raw, rules: settings.replacements)
+            let replaced = ReplacementEngine.apply(cleaned ?? raw, rules: settings.replacements)
+            // Точка в конце → «!», если тон конца речи — восклицание. После словаря и
+            // ИИ-обработки: меняется только последний знак, слова уже окончательные.
+            let exclamationProbability = await exclamation.value
+            guard generation == gen else { return }
+            let text = ExclamationDetector.apply(to: replaced, probability: exclamationProbability)
+            if text != replaced {
+                NSLog("DOKA: «!» по интонации (p = %.2f)", exclamationProbability ?? 0)
+            }
             // Кодируем аудио в m4a ДО выхода (settle уберёт исходный WAV). id фиксируем заранее,
             // чтобы имя файла и запись истории гарантированно совпадали. Если сохранение аудио
             // выключено — кодирование пропускаем целиком, и вставка не ждёт его (быстрее).
