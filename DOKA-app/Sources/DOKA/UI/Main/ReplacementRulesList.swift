@@ -391,7 +391,7 @@ private struct RuleTextField: View {
         TextField(placeholder, text: text)
             .textFieldStyle(.plain)
             .lineLimit(1)
-            .ruleFieldBox(isFocused: isFocused, showsBox: showsBox)
+            .dsFieldBox(isFocused: isFocused, showsBox: showsBox)
     }
 }
 
@@ -408,17 +408,20 @@ private struct RuleTextLabel: View {
                                           : AnyShapeStyle(.primary))
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .ruleFieldBox(isFocused: false, showsBox: showsBox)
+            .dsFieldBox(isFocused: false, showsBox: showsBox)
             .contentShape(Rectangle())
             .accessibilityAddTraits(.isButton)
     }
 }
 
-private extension View {
-    /// Метрика и подложка поля правила — общие у поля ввода и его текста.
-    func ruleFieldBox(isFocused: Bool, showsBox: Bool) -> some View {
+extension View {
+    /// Рамка поля ввода в стиле DOKA — у правил словаря и пожеланий
+    /// ИИ-обработки: мягкая подложка (`showsBox`), акцентная кромка в фокусе.
+    /// Высота — 28 (как у капсульных кнопок), многострочное поле растёт вниз.
+    func dsFieldBox(isFocused: Bool, showsBox: Bool, multiline: Bool = false) -> some View {
         padding(.horizontal, 8)
-            .frame(height: 28)
+            .padding(.vertical, multiline ? 6 : 0)
+            .frame(minHeight: 28)
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
