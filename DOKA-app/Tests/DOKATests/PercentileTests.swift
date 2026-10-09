@@ -19,6 +19,18 @@ final class PercentileTests: XCTestCase {
         XCTAssertEqual(Percentile.nearestRank([CGFloat(7)], 0.95), 7)
     }
 
+    /// Линейный — как `numpy.percentile`: на нём держится совпадение
+    /// `ExclamationDetector` с моделью стенда.
+    func testLinearInterpolatesLikeNumpy() {
+        let sorted: [Double] = [1, 2, 4, 8]
+        XCTAssertEqual(Percentile.linear(sorted, 0)!, 1, accuracy: 1e-12)
+        XCTAssertEqual(Percentile.linear(sorted, 0.5)!, 3, accuracy: 1e-12)     // между 2 и 4
+        XCTAssertEqual(Percentile.linear(sorted, 0.9)!, 6.8, accuracy: 1e-12)   // 2,7 → 4 + 0,7 · 4
+        XCTAssertEqual(Percentile.linear(sorted, 1)!, 8, accuracy: 1e-12)
+        XCTAssertNil(Percentile.linear([], 0.5))
+        XCTAssertEqual(Percentile.linear([5], 0.3), 5)
+    }
+
     func testMillisecondsSummarySortsOnce() {
         let summary = Percentile.millisecondsSummary(seconds: [0.030, 0.010, 0.020])
         XCTAssertEqual(summary?.count, 3)

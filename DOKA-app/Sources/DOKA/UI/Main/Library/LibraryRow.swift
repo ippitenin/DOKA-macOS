@@ -66,9 +66,8 @@ struct LibraryRow: View {
             .opacity(isHovering && !isRenaming ? 1 : 0)
         }
         .padding(DS.Spacing.cardPadding)
-        // forceMaterial: Liquid Glass у пачки карточек в скролле рисует общий
-        // серый бэкдроп на весь viewport с резкими углами (ловушка истории).
-        .glassSurface(radius: DS.Radius.card, forceMaterial: true)
+        // Стекло — в общем `glassGroup` ленты (ловушка серой плиты истории).
+        .glassSurface(radius: DS.Radius.card)
         .overlay {
             if isSelected {
                 RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous)

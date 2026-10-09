@@ -168,6 +168,7 @@ struct HistorySectionView: View {
                     )
                 }
             }
+            .glassGroup()
             .padding(.top, Self.topFade)
             // С плашкой — на высоту фейда: последняя карточка прокручивается
             // из-под него целиком.
@@ -389,10 +390,9 @@ private struct HistoryCard: View {
             if isExpanded { expandedBody }
         }
         .padding(DS.Spacing.cardPadding)
-        // forceMaterial: Liquid Glass у пачки карточек в скролле рисует общий
-        // серый бэкдроп на весь viewport с резкими углами (особенно заметен
-        // в светлой теме) — материал такого слоя не создаёт.
-        .glassSurface(radius: DS.Radius.card, forceMaterial: true)
+        // Стекло — в общем `glassGroup` ленты: без него пачка карточек в
+        // скролле рисовала под собой серую плиту на весь viewport.
+        .glassSurface(radius: DS.Radius.card)
         .overlay {
             if isSelected {
                 RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous)

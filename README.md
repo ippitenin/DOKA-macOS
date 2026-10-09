@@ -39,7 +39,9 @@ written in Russian.
   clipboard and a synthetic ⌘V. Two dictations in a row into the same field get a space
   between them, so the words don't run together. Optional AI cleanup on your Mac removes
   stumbles, understands self-corrections ("Wednesday, no, Thursday"), turns spoken punctuation
-  into marks and follows your own wishes ("start with a lowercase letter").
+  into marks and follows your own wishes ("start with a lowercase letter"). When a phrase ends
+  as an exclamation — the pitch drops sharply at the end — the final full stop becomes "!":
+  judged by the sound, with any recognition service.
 - **Recording panel** — six styles. `aurora` and `mini` are a glowing droplet built on Metal
   shaders in the spirit of Liquid Glass: the wave inside answers your voice in both amplitude
   and speed, the glass refracts light at the rim, and while transcribing the droplet springs
@@ -231,7 +233,7 @@ machine; file transcription is deliberately isolated from the dictation pipeline
 (`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
 system lives in `UI/DesignSystem/`.
 
-Pure logic is covered by tests — `swift test` runs 964 checks in a few seconds, and
+Pure logic is covered by tests — `swift test` runs 973 checks in a few seconds, and
 CI runs them on every pull request along with the build and a localisation check. The
 local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
 see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder

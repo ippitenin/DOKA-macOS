@@ -222,6 +222,7 @@ struct LibraryListView: View {
                     }
                 }
             }
+            .glassGroup()
             .padding(.top, Self.topFade)
             .padding(.bottom, model.selection.isEmpty ? 20 : 76)
         }

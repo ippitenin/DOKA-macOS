@@ -58,6 +58,9 @@ private struct SidebarItemView: View {
     let action: () -> Void
 
     @State private var hovering = false
+    /// Счётчик прыжков иконки: растёт только при ВЫБОРЕ пункта — иначе
+    /// прыгала бы и иконка пункта, с которого ушли (у него тоже меняется `isSelected`).
+    @State private var bounceCount = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -68,7 +71,7 @@ private struct SidebarItemView: View {
                     LogoIconTile(size: 24)
                 } else {
                     IconTile(symbol: section.symbol, color: section.tileColor,
-                             size: 24, bounce: isSelected)
+                             size: 24, bounce: bounceCount)
                 }
                 Text(section.title)
                     .font(.body)
@@ -92,6 +95,9 @@ private struct SidebarItemView: View {
             }
         }
         .onHover { hovering = $0 }
+        .onChange(of: isSelected) { _, selected in
+            if selected { bounceCount += 1 }
+        }
         .animation(reduceMotion ? nil : DS.Anim.hover, value: hovering)
     }
 
@@ -119,8 +125,8 @@ struct IconTile: View {
     let symbol: String
     let color: Color
     var size: CGFloat = 24
-    /// Триггер symbol-анимации: смена значения заставляет иконку подпрыгнуть.
-    var bounce: Bool = false
+    /// Триггер symbol-анимации: каждое новое значение — один прыжок иконки.
+    var bounce: Int = 0
     /// Непрерывное «дыхание» символа (только macOS 15+, ниже — статично).
     var breathe: Bool = false
 
