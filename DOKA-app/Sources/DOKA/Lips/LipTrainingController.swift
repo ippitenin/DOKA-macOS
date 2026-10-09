@@ -123,7 +123,8 @@ final class LipTrainingController: ObservableObject {
             self.session.reload(LipTrainingQueue(
                 pools: [history,
                         builtin.filter { $0.origin == .work },
-                        builtin.filter { $0.origin == .everyday }],
+                        builtin.filter { $0.origin == .everyday },
+                        builtin.filter { $0.origin == .mixed }],
                 done: doneKeys, seed: UInt64.random(in: 0...UInt64.max)))
             self.isLoading = false
         }

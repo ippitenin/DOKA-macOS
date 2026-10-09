@@ -10,6 +10,8 @@ struct LipTrainingPhrase: Equatable, Hashable, Sendable {
         case work
         /// Готовый список, бытовые фразы.
         case everyday
+        /// Готовый список, фразы с английскими словами.
+        case mixed
 
         /// Подпись в карточке фразы.
         var title: String {
@@ -17,6 +19,7 @@ struct LipTrainingPhrase: Equatable, Hashable, Sendable {
             case .history: return L("training.origin.history")
             case .work: return L("training.origin.work")
             case .everyday: return L("training.origin.everyday")
+            case .mixed: return L("training.origin.mixed")
             }
         }
     }
@@ -28,25 +31,38 @@ struct LipTrainingPhrase: Equatable, Hashable, Sendable {
 /// Источники фраз тренировки — история диктовок и готовый список
 /// (`Resources/TrainingPhrases.ru.txt`). Чистая логика.
 ///
-/// Фраза проговаривается одними губами, поэтому годится не всякая: цифры и
-/// латиницу губами однозначно не прочесть («пять» или «5», «DOKA» или
-/// «дока»), а длинная фраза не уложится в 13 секунд дубля.
+/// Фраза проговаривается одними губами, поэтому годится не всякая: цифры
+/// губами однозначно не прочесть («пять» или «5»), а длинная фраза не
+/// уложится в 13 секунд дубля. Латиница разрешена: английские слова в живой
+/// речи — обычное дело (GitHub, Telegram, PDF), модель губ WISLIP
+/// многоязычная, а равнозначные написания («телеграм» и Telegram) сводит
+/// импортёр WISLIP — подпись пары остаётся такой, какой её прочли с экрана.
 enum LipTrainingPhrases {
     static let minWords = 3
     static let maxWords = 12
     static let maxCharacters = 90
 
-    /// Годится ли фраза: 3–12 слов, не длиннее 90 символов, только кириллица,
-    /// пробелы и простая пунктуация.
+    /// Годится ли фраза: 3–12 слов, не длиннее 90 символов, кириллица и
+    /// латиница без цифр, пробелы и простая пунктуация. Основа русская —
+    /// слов с кириллицей больше, чем с латиницей (модель губ учится с меткой
+    /// русского языка). Точка перед буквой — нет: «README.md» губами
+    /// однозначно не прочесть.
     static func isSuitable(_ text: String) -> Bool {
         guard !text.isEmpty, text.count <= maxCharacters else { return false }
+        var previous: Unicode.Scalar?
         for scalar in text.unicodeScalars {
-            if isCyrillicLetter(scalar) || scalar.properties.isWhitespace
-                || allowedPunctuation.contains(scalar) { continue }
-            return false
+            if isCyrillicLetter(scalar) || isLatinLetter(scalar) {
+                if previous == "." { return false }
+            } else if !scalar.properties.isWhitespace, !allowedPunctuation.contains(scalar) {
+                return false
+            }
+            previous = scalar
         }
         let words = text.split(whereSeparator: \.isWhitespace).filter { $0.contains(where: \.isLetter) }
-        return (minWords...maxWords).contains(words.count)
+        guard (minWords...maxWords).contains(words.count) else { return false }
+        // Слово с обеими азбуками («HTML-ки») считается латинским.
+        let latin = words.filter { $0.unicodeScalars.contains(where: isLatinLetter) }.count
+        return words.count - latin > latin
     }
 
     private static let allowedPunctuation: Set<Unicode.Scalar> = [
@@ -55,6 +71,10 @@ enum LipTrainingPhrases {
 
     private static func isCyrillicLetter(_ scalar: Unicode.Scalar) -> Bool {
         (0x0410...0x044F).contains(scalar.value) || scalar == "ё" || scalar == "Ё"
+    }
+
+    private static func isLatinLetter(_ scalar: Unicode.Scalar) -> Bool {
+        (0x41...0x5A).contains(scalar.value) || (0x61...0x7A).contains(scalar.value)
     }
 
     /// Ключ сравнения фраз: регистр и «ё» не важны, пунктуация тоже — «Ещё
@@ -78,7 +98,9 @@ enum LipTrainingPhrases {
     }
 
     /// Деление на предложения: после `.`, `!`, `?`, `…` (подряд идущие
-    /// знаки остаются с предложением) и по переводу строки.
+    /// знаки остаются с предложением) и по переводу строки. Точка прямо перед
+    /// буквой — не конец предложения: «Claude .md» иначе развалился бы на
+    /// обрывки «Claude .» и «md, Readme…», каждый из которых прошёл бы фильтр.
     static func sentences(_ text: String) -> [String] {
         var result: [String] = []
         var current = ""
@@ -95,7 +117,7 @@ enum LipTrainingPhrases {
                 continue
             }
             let isTerminator = terminators.contains(character)
-            if afterTerminator, !isTerminator {
+            if afterTerminator, !isTerminator, !(current.last == "." && character.isLetter) {
                 flush()
             }
             current.append(character)
@@ -109,7 +131,7 @@ enum LipTrainingPhrases {
 
     // MARK: - Готовый список
 
-    /// Разбор файла списка: `#` — комментарий, `[work]`/`[everyday]` —
+    /// Разбор файла списка: `#` — комментарий, `[work]`/`[everyday]`/`[mixed]` —
     /// раздел, остальные непустые строки — фразы раздела. Строки до первого
     /// раздела не учитываются.
     static func parseBuiltin(_ contents: String) -> [LipTrainingPhrase] {
