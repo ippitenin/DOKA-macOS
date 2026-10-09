@@ -3,8 +3,8 @@ import SwiftUI
 /// Секция «Словарь»: правила замен в распознанном тексте.
 ///
 /// Сверху — карточки «ИИ-обработка» и «Системный словарь» (общие названия
-/// сервисов и брендов, вход внутрь — мгновенной сменой экрана, как
-/// «Расширенные» в «Общих»), ниже — личные правила пользователя. Строки
+/// сервисов и брендов, вход внутрь — сдвигом `DrillIn`, как «Расширенные»
+/// в «Общих»), ниже — личные правила пользователя. Строки
 /// правил — общий `ReplacementRulesList`.
 struct DictionarySectionView: View {
     @ObservedObject var settings = SettingsStore.shared
@@ -15,17 +15,15 @@ struct DictionarySectionView: View {
     @State private var showSystem = false
 
     var body: some View {
-        if showSystem {
-            SystemDictionaryView { showSystem = false }
-        } else {
+        DrillIn(isPresented: showSystem) {
             personalPage
+        } detail: {
+            SystemDictionaryView { showSystem = false }
         }
     }
 
     private var personalPage: some View {
-        // Отступ под шапкой равен высоте верхнего фейда ленты: лента заходит
-        // вверх ровно в этот зазор и не перекрывает кнопку «Добавить правило».
-        VStack(alignment: .leading, spacing: ReplacementRulesList.topFade) {
+        VStack(alignment: .leading, spacing: ReplacementRulesList.cardSpacing) {
             // Шапка как у «Библиотеки»: заголовок, пояснение — в «вопросике»,
             // главное действие — напротив заголовка. Подпись в две строки под
             // заголовком упиралась в кнопку, и та «висела в воздухе».
@@ -104,7 +102,8 @@ struct DictionarySectionView: View {
     }
 }
 
-/// Карточка «Системный словарь» под «ИИ-обработкой»: тумблер и вход внутрь.
+/// Карточка «Системный словарь» под «ИИ-обработкой»: тумблер и строка-вход
+/// внутрь с числом правил и шевроном.
 private struct SystemDictionaryCard: View {
     @ObservedObject private var settings = SettingsStore.shared
     let onOpen: () -> Void
@@ -115,11 +114,7 @@ private struct SystemDictionaryCard: View {
                 SettingsSwitch(isOn: $settings.systemDictionaryEnabled)
             }
             CardDivider()
-            SettingsRow(title: summary) {
-                Button(L("systemDictionary.open"), action: onOpen)
-                    .dsGlassButton()
-                    .controlSize(.small)
-            }
+            SettingsLinkRow(title: summary, action: onOpen)
         }
     }
 

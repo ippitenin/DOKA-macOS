@@ -13,7 +13,7 @@ struct SystemDictionaryView: View {
     @State private var confirmReset = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ReplacementRulesList.topFade) {
+        VStack(alignment: .leading, spacing: ReplacementRulesList.cardSpacing) {
             VStack(alignment: .leading, spacing: 12) {
                 backButton
                 header

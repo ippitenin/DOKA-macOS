@@ -14,7 +14,7 @@ enum RuleField: Hashable {
 }
 
 /// Лента правил словаря — общая у личного и системного словарей: карточка
-/// со строками, растворение у верхней кромки, прокрутка к полю в фокусе и
+/// со строками, растворение у кромок карточки, прокрутка к полю в фокусе и
 /// перетаскивание за ручку слева.
 ///
 /// Порядок строк — только для показа: движок применяет длинные шаблоны
@@ -27,11 +27,26 @@ struct ReplacementRulesList: View {
     var focused: FocusState<RuleField?>.Binding
     let onDelete: (UUID) -> Void
 
-    /// Высота зоны растворения строк у верхней кромки ленты (как у «Истории»).
-    static let topFade: CGFloat = 20
+    /// Зазор между шапкой страницы и карточкой правил.
+    static let cardSpacing: CGFloat = 20
+    /// Высота растворения строк у кромки карточки, за которой есть ещё строки.
+    private static let edgeFade: CGFloat = 16
 
     /// Правило, которое сейчас тащат.
     @State private var dragging: UUID?
+    /// Высота всех строк: короткий список карточка облегает.
+    @State private var contentHeight: CGFloat = 0
+    /// Есть ли строки за верхней и нижней кромкой видимой области.
+    @State private var overflow = EdgeOverflow()
+    /// Лента прокручивается: строки, проезжающие под курсором, не
+    /// подсвечиваются — анимация наведения на каждой из них удваивала
+    /// процессор на прокрутке.
+    @State private var isScrolling = false
+
+    private struct EdgeOverflow: Equatable {
+        var top = false
+        var bottom = false
+    }
 
     private var visibleRules: [ReplacementRule] {
         let query = LibrarySearch.normalize(filter.trimmingCharacters(in: .whitespaces))
@@ -43,68 +58,85 @@ struct ReplacementRulesList: View {
 
     var body: some View {
         let canReorder = filter.trimmingCharacters(in: .whitespaces).isEmpty
-        ScrollViewReader { proxy in
-            ScrollView {
-                // ЛЕНИВО, как лента «Истории»: фон главного окна (`MeshBackground`,
-                // 20 кадров/с) раскладывает окно на каждом кадре, и обычный VStack
-                // держал все строки системного словаря — 352 × (два поля, меню,
-                // кнопка) ≈ 2800 NSView, построение 755 мс, кадр 7 мс, DOKA ела
-                // 40 % процессора на открытой странице.
-                LazyVStack(spacing: 0) {
-                    // По значению, а не `ForEach($rules)`: привязки по ИНДЕКСУ
-                    // роняли приложение при удалении — поле, которое ещё
-                    // редактировалось, по окончании правки читало текст по уже
-                    // несуществующему индексу (выход за границы массива).
-                    ForEach(Array(visibleRules.enumerated()), id: \.element.id) { index, rule in
-                        if index > 0 { CardDivider() }
-                        RuleRow(
-                            id: rule.id,
-                            isEnabled: rule.enabled,
-                            matchesInsideWords: rule.matchInsideWords,
-                            formsApplicable: Self.formsApplicable(rule),
-                            canReorder: canReorder,
-                            from: binding(rule.id, \.from, default: ""),
-                            to: binding(rule.id, \.to, default: ""),
-                            enabled: binding(rule.id, \.enabled, default: false),
-                            insideWords: binding(rule.id, \.matchInsideWords, default: false),
-                            wordForms: binding(rule.id, \.matchWordForms, default: true),
-                            focused: focused,
-                            onDragStart: {
-                                dragging = rule.id
-                                return NSItemProvider(object: rule.id.uuidString as NSString)
-                            },
-                            onDelete: { onDelete(rule.id) }
-                        )
-                        .id(rule.id)
-                        .onDrop(of: [.text], delegate: RuleDropDelegate(target: rule.id, rules: $rules,
-                                                                       dragging: $dragging))
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // ЛЕНИВО, как лента «Истории»: обычный VStack держал все 352
+                    // строки системного словаря (≈ 2800 NSView), и фон окна
+                    // (`MeshBackground`, 20 кадров/с) раскладывал их на каждом кадре.
+                    LazyVStack(spacing: 0) {
+                        // По значению, а не `ForEach($rules)`: привязки по ИНДЕКСУ
+                        // роняли приложение при удалении — поле, которое ещё
+                        // редактировалось, по окончании правки читало текст по уже
+                        // несуществующему индексу (выход за границы массива).
+                        ForEach(Array(visibleRules.enumerated()), id: \.element.id) { index, rule in
+                            if index > 0 { CardDivider() }
+                            RuleRow(
+                                id: rule.id,
+                                fromText: rule.from,
+                                toText: rule.to,
+                                isEnabled: rule.enabled,
+                                matchesInsideWords: rule.matchInsideWords,
+                                formsApplicable: Self.formsApplicable(rule),
+                                canReorder: canReorder,
+                                isScrolling: isScrolling,
+                                from: binding(rule.id, \.from, default: ""),
+                                to: binding(rule.id, \.to, default: ""),
+                                enabled: binding(rule.id, \.enabled, default: false),
+                                insideWords: binding(rule.id, \.matchInsideWords, default: false),
+                                wordForms: binding(rule.id, \.matchWordForms, default: true),
+                                focused: focused,
+                                onDragStart: {
+                                    dragging = rule.id
+                                    return NSItemProvider(object: rule.id.uuidString as NSString)
+                                },
+                                onDelete: { onDelete(rule.id) }
+                            )
+                            .id(rule.id)
+                            .onDrop(of: [.text], delegate: RuleDropDelegate(target: rule.id, rules: $rules,
+                                                                           dragging: $dragging))
+                        }
                     }
+                    .padding(.vertical, 6)
                 }
-                .padding(.vertical, 6)
-                // Материал, а не Liquid Glass: высокая стеклянная карточка
-                // отражает у кромок сайдбар и соседние контролы (см. «Общие»).
-                .glassSurface(forceMaterial: true)
-                .padding(.top, Self.topFade)
-                .padding(.bottom, 20)
-            }
-            .scrollContentBackground(.hidden)
-            // Как у «Истории»: overlay-скроллер ездил бы поверх строк.
-            .scrollIndicators(.never)
-            .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: Self.topFade)
-                    Color.black
+                .scrollContentBackground(.hidden)
+                // Как у «Истории»: overlay-скроллер ездил бы поверх строк.
+                .scrollIndicators(.never)
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, height in
+                    contentHeight = height
+                }
+                .onScrollPhaseChange { _, phase in
+                    isScrolling = phase.isScrolling
+                }
+                .mask { edgeMask }
+                .onChange(of: focused.wrappedValue) { _, field in
+                    guard let id = field?.ruleID else { return }
+                    withAnimation(DS.Anim.section) { proxy.scrollTo(id, anchor: .bottom) }
                 }
             }
-            // Верх ленты заходит в зазор под шапкой своей маской: в покое
-            // карточка стоит на прежнем месте.
-            .padding(.top, -Self.topFade)
-            .onChange(of: focused.wrappedValue) { _, field in
-                guard let id = field?.ruleID else { return }
-                withAnimation(DS.Anim.section) { proxy.scrollTo(id, anchor: .bottom) }
-            }
+            // Карточка — размером с ВИДИМУЮ область, строки ездят внутри неё.
+            // Материал на весь `LazyVStack` (352 строки ≈ 15 000 pt) давал рывок
+            // ~80 мс на прокрутке и +65 мс к открытию страницы (замер 9.10.2026).
+            // Материал, а не Liquid Glass: высокая стеклянная карточка отражает
+            // у кромок сайдбар и соседние контролы (см. «Общие»).
+            .frame(maxHeight: contentHeight > 0 ? contentHeight : nil)
+            .glassSurface(forceMaterial: true)
+            Spacer(minLength: 0)
         }
+        .padding(.bottom, 20)
+    }
+
+    /// Строки растворяются у той кромки карточки, за которой есть ещё строки;
+    /// в покое (лента в самом верху) первая строка не тронута.
+    private var edgeMask: some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                .frame(height: overflow.top ? Self.edgeFade : 0)
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: overflow.bottom ? Self.edgeFade : 0)
+        }
+        .animation(DS.Anim.hover, value: overflow)
     }
 
     /// Ловит ли правило формы, если флаг включён: для тумблера «Все формы
@@ -165,10 +197,15 @@ private struct RuleDropDelegate: DropDelegate {
 /// рамках, чип и корзина разных размеров) пользователь счёл перегруженным.
 private struct RuleRow: View {
     let id: UUID
+    /// Тексты правила для показа в покое — без поиска по массиву правил,
+    /// которым читают привязки.
+    let fromText: String
+    let toText: String
     let isEnabled: Bool
     let matchesInsideWords: Bool
     let formsApplicable: Bool
     let canReorder: Bool
+    let isScrolling: Bool
     let from: Binding<String>
     let to: Binding<String>
     let enabled: Binding<Bool>
@@ -179,14 +216,33 @@ private struct RuleRow: View {
     let onDelete: () -> Void
 
     @State private var hovering = false
-    /// Меню уже создано (строка хоть раз была активной).
-    @State private var menuMounted = false
+    /// Поля ввода и меню «⋯» уже созданы. До того строка рисует их чистым
+    /// SwiftUI-текстом: каждое поле — настоящий `NSTextField`, у меню — свой
+    /// NSView, и при прокрутке под неподвижным курсором строки создавали бы
+    /// их одна за другой (на ленте системного словаря −⅓ процессора без них).
+    /// Созданные живут со строкой: меню исчезло бы прямо под открытым списком.
+    @State private var controlsMounted = false
+    /// Поле, по которому кликнули до появления полей: фокус — в него.
+    @State private var pendingFocus: RuleField?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Строка «активна»: под курсором или в ней идёт правка — тогда
-    /// проявляются ручка, подложки полей и «⋯».
+    /// Задержка курсора на строке, после которой создаются поля и меню:
+    /// строки, проезжающие под курсором при прокрутке, её не набирают.
+    private static let hoverIntent: Duration = .milliseconds(150)
+
+    /// Строка «активна»: под курсором (и лента стоит) или в ней идёт
+    /// правка — тогда проявляются ручка, подложки полей и «⋯».
     private var isActive: Bool {
-        hovering || focused.wrappedValue?.ruleID == id
+        (hovering && !isScrolling) || focused.wrappedValue?.ruleID == id
+    }
+
+    /// Курсор задержался на строке, а не проезжает по ней с лентой.
+    private var isHovered: Bool { hovering && !isScrolling }
+
+    /// Поля и меню нужны: курсор задержался, в строке фокус или правило
+    /// только что добавлено (пустой шаблон — курсор ставится сразу).
+    private var showsControls: Bool {
+        controlsMounted || focused.wrappedValue?.ruleID == id || fromText.isEmpty
     }
 
     var body: some View {
@@ -196,16 +252,12 @@ private struct RuleRow: View {
                 enabledToggle
             }
             Group {
-                RuleTextField(placeholder: L("dictionary.from"), text: from,
-                              isFocused: focused.wrappedValue == .from(id), showsBox: isActive)
-                    .focused(focused, equals: .from(id))
+                field(L("dictionary.from"), text: from, shown: fromText, key: .from(id))
                 Image(systemName: "arrow.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                 HStack(spacing: 8) {
-                    RuleTextField(placeholder: L("dictionary.to"), text: to,
-                                  isFocused: focused.wrappedValue == .to(id), showsBox: isActive)
-                        .focused(focused, equals: .to(id))
+                    field(L("dictionary.to"), text: to, shown: toText, key: .to(id))
                     // Режим «внутри слов» виден и в покое, но тихо — без чипа.
                     if matchesInsideWords {
                         Text(L("dictionary.insideWords.badge"))
@@ -218,11 +270,8 @@ private struct RuleRow: View {
             }
             // Выключенное правило приглушено, но остаётся редактируемым.
             .opacity(isEnabled ? 1 : 0.45)
-            // Меню создаётся при первой активности строки и дальше живёт с ней:
-            // у каждой строки своё NSMenu, а нужны они единицам. Не убирать по
-            // уходу курсора — меню исчезло бы прямо под открытым списком.
-            // До того — пустое место той же ширины, чтобы поля не прыгали.
-            if menuMounted {
+            // До появления меню — пустое место той же ширины, чтобы поля не прыгали.
+            if showsControls {
                 actionsMenu
                     .opacity(isActive ? 1 : 0)
             } else {
@@ -236,11 +285,39 @@ private struct RuleRow: View {
         .padding(.vertical, 3)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onChange(of: isActive, initial: true) { _, active in
-            if active { menuMounted = true }
+        .task(id: isHovered) {
+            guard isHovered, !controlsMounted else { return }
+            try? await Task.sleep(for: Self.hoverIntent)
+            if isHovered, !Task.isCancelled { controlsMounted = true }
         }
         .animation(reduceMotion ? nil : DS.Anim.hover, value: isActive)
         .animation(reduceMotion ? nil : DS.Anim.control, value: isEnabled)
+    }
+
+    /// Поле правила: настоящее поле ввода, когда строка готова к правке,
+    /// иначе — текст той же метрики (глиф ложится в тот же пиксель).
+    @ViewBuilder
+    private func field(_ placeholder: String, text: Binding<String>, shown: String,
+                       key: RuleField) -> some View {
+        if showsControls {
+            RuleTextField(placeholder: placeholder, text: text,
+                          isFocused: focused.wrappedValue == key, showsBox: isActive)
+                .focused(focused, equals: key)
+                .onAppear {
+                    guard pendingFocus == key else { return }
+                    // Следующим циклом: поле должно успеть попасть в окно.
+                    DispatchQueue.main.async {
+                        focused.wrappedValue = key
+                        pendingFocus = nil
+                    }
+                }
+        } else {
+            RuleTextLabel(placeholder: placeholder, text: shown, showsBox: isActive)
+                .onTapGesture {
+                    pendingFocus = key
+                    controlsMounted = true
+                }
+        }
     }
 
     /// Ручка перетаскивания: видна при наведении; в выборке поиска её нет.
@@ -314,7 +391,33 @@ private struct RuleTextField: View {
         TextField(placeholder, text: text)
             .textFieldStyle(.plain)
             .lineLimit(1)
-            .padding(.horizontal, 8)
+            .ruleFieldBox(isFocused: isFocused, showsBox: showsBox)
+    }
+}
+
+/// Поле правила до первой правки: тот же текст и та же подложка, что у
+/// `RuleTextField`, но без `NSTextField` под ним.
+private struct RuleTextLabel: View {
+    let placeholder: String
+    let text: String
+    let showsBox: Bool
+
+    var body: some View {
+        Text(text.isEmpty ? placeholder : text)
+            .foregroundStyle(text.isEmpty ? AnyShapeStyle(Color(nsColor: .placeholderTextColor))
+                                          : AnyShapeStyle(.primary))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .ruleFieldBox(isFocused: false, showsBox: showsBox)
+            .contentShape(Rectangle())
+            .accessibilityAddTraits(.isButton)
+    }
+}
+
+private extension View {
+    /// Метрика и подложка поля правила — общие у поля ввода и его текста.
+    func ruleFieldBox(isFocused: Bool, showsBox: Bool) -> some View {
+        padding(.horizontal, 8)
             .frame(height: 28)
             .frame(maxWidth: .infinity)
             .background(

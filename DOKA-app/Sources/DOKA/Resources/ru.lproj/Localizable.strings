@@ -271,7 +271,6 @@
 "systemDictionary.toggle.help" = "Общие названия сервисов и брендов: «в телеграме» → «в Telegram», «чат гпт» → «ChatGPT». Падежи ловятся сами. Ваши правила ниже главнее системных.";
 "systemDictionary.summary" = "Правил: %ld";
 "systemDictionary.summaryWithOff" = "Правил: %ld · выключено: %ld";
-"systemDictionary.open" = "Открыть";
 "systemDictionary.back" = "Словарь";
 "systemDictionary.subtitle" = "Встроенный список общих замен. Правила можно править, выключать, удалять и добавлять — это ваша копия. Новые версии DOKA только добавляют записи, ваши правки остаются.";
 "systemDictionary.search" = "Поиск по словарю";
