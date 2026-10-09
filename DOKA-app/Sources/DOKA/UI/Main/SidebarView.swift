@@ -101,8 +101,7 @@ private struct SidebarItemView: View {
         .animation(reduceMotion ? nil : DS.Anim.hover, value: hovering)
     }
 
-    /// «Таблетка» выделения: акцентный градиент. Без свечения: стекло карточек
-    /// рядом («Панель записи» в «Общих») преломляло его у кромки оранжевым пятном.
+    /// «Таблетка» выделения: акцентный градиент с мягким свечением.
     /// glassEffect здесь намеренно не используется: внутри контейнера стекло
     /// позиционируется самим контейнером и конфликтует с matchedGeometryEffect
     /// (пилюля отрисовывалась отдельным блоком).
@@ -115,6 +114,7 @@ private struct SidebarItemView: View {
                     endPoint: .bottom
                 )
             )
+            .shadow(color: DS.accent.opacity(0.40), radius: 7, y: 2)
             .matchedGeometryEffect(id: "selection", in: namespace)
     }
 }

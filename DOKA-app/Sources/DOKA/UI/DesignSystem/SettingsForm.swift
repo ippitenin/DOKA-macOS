@@ -27,7 +27,8 @@ struct SettingsCard<Content: View>: View {
     var header: String? = nil
     var footer: String? = nil
     /// Материал вместо Liquid Glass — для высоких карточек: их линза у кромок
-    /// дотягивается до соседей и отражает сайдбар и контролы выше.
+    /// дотягивается до соседей и отражает сайдбар и контролы выше. Материал
+    /// светлый (`lightMaterial`), в тон стеклянных карточек рядом.
     var forceMaterial: Bool = false
     @ViewBuilder var content: Content
 
@@ -44,7 +45,7 @@ struct SettingsCard<Content: View>: View {
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassSurface(forceMaterial: forceMaterial)
+            .glassSurface(forceMaterial: forceMaterial, lightMaterial: forceMaterial)
             if let footer {
                 Text(footer)
                     .font(.caption)
