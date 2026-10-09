@@ -45,7 +45,12 @@ struct ReplacementRulesList: View {
         let canReorder = filter.trimmingCharacters(in: .whitespaces).isEmpty
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 0) {
+                // ЛЕНИВО, как лента «Истории»: фон главного окна (`MeshBackground`,
+                // 20 кадров/с) раскладывает окно на каждом кадре, и обычный VStack
+                // держал все строки системного словаря — 352 × (два поля, меню,
+                // кнопка) ≈ 2800 NSView, построение 755 мс, кадр 7 мс, DOKA ела
+                // 40 % процессора на открытой странице.
+                LazyVStack(spacing: 0) {
                     // По значению, а не `ForEach($rules)`: привязки по ИНДЕКСУ
                     // роняли приложение при удалении — поле, которое ещё
                     // редактировалось, по окончании правки читало текст по уже
@@ -174,6 +179,8 @@ private struct RuleRow: View {
     let onDelete: () -> Void
 
     @State private var hovering = false
+    /// Меню уже создано (строка хоть раз была активной).
+    @State private var menuMounted = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Строка «активна»: под курсором или в ней идёт правка — тогда
@@ -211,8 +218,16 @@ private struct RuleRow: View {
             }
             // Выключенное правило приглушено, но остаётся редактируемым.
             .opacity(isEnabled ? 1 : 0.45)
-            actionsMenu
-                .opacity(isActive ? 1 : 0)
+            // Меню создаётся при первой активности строки и дальше живёт с ней:
+            // у каждой строки своё NSMenu, а нужны они единицам. Не убирать по
+            // уходу курсора — меню исчезло бы прямо под открытым списком.
+            // До того — пустое место той же ширины, чтобы поля не прыгали.
+            if menuMounted {
+                actionsMenu
+                    .opacity(isActive ? 1 : 0)
+            } else {
+                Color.clear.frame(width: 28, height: 28)
+            }
         }
         .frame(height: 36)
         // Ручка живёт в левом поле строки: кружок сдвинут на её ширину.
@@ -221,6 +236,9 @@ private struct RuleRow: View {
         .padding(.vertical, 3)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .onChange(of: isActive, initial: true) { _, active in
+            if active { menuMounted = true }
+        }
         .animation(reduceMotion ? nil : DS.Anim.hover, value: isActive)
         .animation(reduceMotion ? nil : DS.Anim.control, value: isEnabled)
     }
