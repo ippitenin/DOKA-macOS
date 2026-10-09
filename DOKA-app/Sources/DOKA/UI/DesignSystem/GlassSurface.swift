@@ -34,17 +34,20 @@ extension View {
     /// macOS 26 — Liquid Glass; 15 — материал со светящейся кромкой;
     /// Reduce Transparency — непрозрачный фон. forceMaterial — страховка
     /// для контекстов, где glassEffect ведёт себя плохо (borderless NSPanel).
+    /// lightMaterial — материал светлее обычного, в тон Liquid Glass: для
+    /// карточки среди стеклянных, которой стекло нельзя (см. `SettingsCard`).
     func glassSurface(
         radius: CGFloat = DS.Radius.card,
         tint: Color? = nil,
         interactive: Bool = false,
         shadow: Bool = false,
-        forceMaterial: Bool = false
+        forceMaterial: Bool = false,
+        lightMaterial: Bool = false
     ) -> some View {
         modifier(GlassSurfaceModifier(
             shape: GlassSurfaceShape(kind: .rounded(radius)),
             tint: tint, interactive: interactive, shadow: shadow,
-            forceMaterial: forceMaterial
+            forceMaterial: forceMaterial, lightMaterial: lightMaterial
         ))
     }
 
@@ -58,8 +61,24 @@ extension View {
         modifier(GlassSurfaceModifier(
             shape: GlassSurfaceShape(kind: .capsule),
             tint: tint, interactive: interactive, shadow: shadow,
-            forceMaterial: forceMaterial
+            forceMaterial: forceMaterial, lightMaterial: false
         ))
+    }
+}
+
+extension View {
+    /// Лента стеклянных карточек в прокрутке («История», «Библиотека»): на
+    /// macOS 26 — общий `GlassEffectContainer`, способ Apple рисовать группу
+    /// стекла одним проходом. Без него пачка `glassEffect` в ScrollView рисовала
+    /// под собой общую серую плиту на весь viewport. `spacing: 0` — соседние
+    /// карточки не сливаются. На macOS 15 — как есть.
+    @ViewBuilder
+    func glassGroup() -> some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 0) { self }
+        } else {
+            self
+        }
     }
 }
 
@@ -69,8 +88,10 @@ private struct GlassSurfaceModifier: ViewModifier {
     let interactive: Bool
     let shadow: Bool
     let forceMaterial: Bool
+    let lightMaterial: Bool
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         surfaced(content)
@@ -97,7 +118,10 @@ private struct GlassSurfaceModifier: ViewModifier {
         } else {
             content
                 .background((tint ?? .clear).opacity(tint == nil ? 0 : 0.10), in: shape)
-                .background(.regularMaterial, in: shape)
+                // Белая вуаль поверх тонкого материала — в тон Liquid Glass:
+                // обычный `.regularMaterial` в светлой теме заметно серее стекла.
+                .background(Color.white.opacity(lightMaterial ? (scheme == .dark ? 0.04 : 0.35) : 0), in: shape)
+                .background(lightMaterial ? Material.thinMaterial : Material.regularMaterial, in: shape)
                 .overlay(
                     shape.strokeBorder(
                         LinearGradient(

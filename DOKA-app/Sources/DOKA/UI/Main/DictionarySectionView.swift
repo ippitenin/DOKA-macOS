@@ -109,7 +109,7 @@ private struct SystemDictionaryCard: View {
     let onOpen: () -> Void
 
     var body: some View {
-        SettingsCard(forceMaterial: true) {
+        SettingsCard {
             SettingsRow(title: L("systemDictionary.title"), help: L("systemDictionary.toggle.help")) {
                 SettingsSwitch(isOn: $settings.systemDictionaryEnabled)
             }

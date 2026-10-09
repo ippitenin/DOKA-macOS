@@ -11,7 +11,7 @@ struct DictationCleanupCard: View {
     @FocusState private var draftFocused: Bool
 
     var body: some View {
-        SettingsCard(forceMaterial: true) {
+        SettingsCard {
             SettingsRow(title: L("cleanup.toggle"), help: L("cleanup.toggle.help")) {
                 SettingsSwitch(isOn: $settings.dictationCleanup)
             }

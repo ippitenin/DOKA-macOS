@@ -117,10 +117,10 @@ struct ReplacementRulesList: View {
             // Карточка — размером с ВИДИМУЮ область, строки ездят внутри неё.
             // Материал на весь `LazyVStack` (352 строки ≈ 15 000 pt) давал рывок
             // ~80 мс на прокрутке и +65 мс к открытию страницы (замер 9.10.2026).
-            // Материал, а не Liquid Glass: высокая стеклянная карточка отражает
-            // у кромок сайдбар и соседние контролы (см. «Общие»).
+            // Одна неподвижная карточка позади прокрутки — то же стекло, что
+            // у карточек настроек.
             .frame(maxHeight: contentHeight > 0 ? contentHeight : nil)
-            .glassSurface(forceMaterial: true)
+            .glassSurface()
             Spacer(minLength: 0)
         }
         .padding(.bottom, 20)

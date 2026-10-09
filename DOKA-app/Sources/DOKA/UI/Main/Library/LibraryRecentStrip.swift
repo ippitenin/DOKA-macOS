@@ -39,6 +39,7 @@ struct LibraryRecentStrip: View {
                     RecentStripRow(record: record)
                 }
             }
+            .glassGroup()
         }
     }
 }
@@ -78,8 +79,8 @@ private struct RecentStripRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // forceMaterial — та же ловушка серой плиты, что у карточек истории.
-        .glassSurface(radius: DS.Radius.card, forceMaterial: true)
+        // Стекло — в общем `glassGroup` полосы (ловушка серой плиты истории).
+        .glassSurface(radius: DS.Radius.card)
         .onHover { isHovering = $0 }
         .help(L("library.open"))
     }
