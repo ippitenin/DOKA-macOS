@@ -154,13 +154,34 @@ if [[ "$SIGN_ID" == "Developer ID Application: "* ]]; then
 else
     IS_DEVELOPER_ID=0
 fi
+
+# codesign с меткой времени, с повтором. Сервер меток Apple временами молчит
+# («A timestamp was expected but was not found»), особенно после серии
+# запросов, и разовый сбой ронял сборку на ровном месте. Повторяем подпись
+# этого объекта с нарастающей паузой; любая другая ошибка — сразу наружу.
+codesign_timestamped() {
+    local delay out
+    for delay in 5 20 60 0; do
+        if out="$(codesign --timestamp "$@" 2>&1)"; then
+            if [ -n "$out" ]; then echo "$out"; fi
+            return 0
+        fi
+        if [ "$delay" = 0 ] || [[ "$out" != *"A timestamp was expected but was not found"* ]]; then
+            echo "$out" >&2
+            return 1
+        fi
+        echo "    Нет метки времени от Apple — повтор через ${delay} с…"
+        sleep "$delay"
+    done
+}
+
 if [ "$IS_DEVELOPER_ID" = 1 ]; then
     # Нотаризация требует hardened runtime и метку времени Apple. Под hardened
     # runtime микрофону и камере нужны права из Resources/DOKA.entitlements.
     # Без --deep: исполняемого кода в бандле ровно два куска, оба подписаны
     # явно, а --deep раздал бы права приложения и фреймворку.
-    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$FW"
-    codesign --force --options runtime --timestamp \
+    codesign_timestamped --force --options runtime --sign "$SIGN_ID" "$FW"
+    codesign_timestamped --force --options runtime \
         --entitlements Resources/DOKA.entitlements --sign "$SIGN_ID" "$STAGE_APP"
     echo "    Подписано «${SIGN_ID}» (hardened runtime)."
 elif security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_ID"; then
@@ -211,7 +232,7 @@ if [ "$MAKE_DMG" = 1 ]; then
     if [ "$IS_DEVELOPER_ID" = 1 ]; then
         echo "==> Нотаризация (обычно несколько минут)…"
         # Подписанный образ Gatekeeper проверяет целиком, ещё до монтирования.
-        codesign --force --timestamp --sign "$SIGN_ID" "$DMG_PATH"
+        codesign_timestamped --force --sign "$SIGN_ID" "$DMG_PATH"
         # Решаем по статусу из JSON, а не по коду возврата: так различаются
         # «до Apple не дошло» (статуса нет) и «Apple отклонила» (статус есть).
         NOTARY_JSON="$(xcrun notarytool submit "$DMG_PATH" \
