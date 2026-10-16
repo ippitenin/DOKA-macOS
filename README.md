@@ -31,12 +31,6 @@
   <img src="media/screenshot-home.png" alt="DOKA main window: ready for dictation, with the shortcut and the last transcription" width="820">
 </p>
 
-<p align="center">
-  <img src="media/recording.gif" alt="The Aurora recording panel: the wave follows the voice, then turns into a ring while the text is recognised" width="640">
-  <br>
-  <sub>The Aurora panel while you speak: the wave follows your voice, then turns into a ring while the text is recognised.</sub>
-</p>
-
 DOKA lives in the menu bar. Recognition runs **entirely on your Mac** — Whisper or Parakeet on
 the Neural Engine, no internet and no API key — or through any OpenAI-compatible service. On top
 of dictation it transcribes audio and video files, tells speakers apart and writes meeting
