@@ -21,7 +21,8 @@ scripts/build-shaders.sh   # Metal shaders of the recording panel (build.sh runs
 ```
 
 `./build.sh` signs with a self-signed **“DOKA Dev”** certificate — see
-[`scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md). Note that re-signing
+[`scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md) (or with a Developer ID
+certificate, if your keychain has one). Note that re-signing
 resets macOS TCC permissions, so you will be re-granting microphone and accessibility
 access fairly often while developing.
 

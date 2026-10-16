@@ -1,11 +1,12 @@
 name: Release
 
-# Собирает релиз для Apple Silicon (arm64) и DMG. Запускается по тегу v* или вручную.
+# Проверяет, что релизная сборка (arm64 + DMG) проходит с чистого раннера.
+# Запускается по тегу v* или вручную.
 #
-# Подпись: сертификата «DOKA Dev» на раннере нет, поэтому build.sh уходит в свою
-# ad-hoc-ветку. Для чужого Mac разницы нет — ни ad-hoc, ни самоподписанный
-# сертификат Gatekeeper не устраивают, нотаризация требует Apple Developer Program.
-# Поэтому релиз создаётся ЧЕРНОВИКОМ: публикует его человек, осознанно.
+# Сам релиз здесь НЕ создаётся: его публикует DOKA-app/scripts/release.sh с Mac
+# сопровождающего — только там есть сертификат Developer ID и профиль нотаризации.
+# На раннере build.sh уходит в свою ad-hoc-ветку, и такой DMG чужой Mac без
+# «Открыть всё равно» не откроет, поэтому он остаётся лишь артефактом проверки.
 
 on:
   push:
@@ -13,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dmg:
@@ -81,31 +82,3 @@ jobs:
           name: DOKA-dmg
           path: DOKA.dmg
           if-no-files-found: error
-
-      - name: Черновик релиза
-        if: startsWith(github.ref, 'refs/tags/v')
-        working-directory: ${{ github.workspace }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cat > notes.md <<'EOF'
-          ## Установка
-
-          Скачайте `DOKA.dmg`, откройте и перетащите DOKA в «Программы».
-
-          **Первый запуск.** Образ не нотаризован Apple, поэтому macOS покажет, что
-          разработчик не подтверждён. Откройте «Системные настройки» →
-          «Конфиденциальность и безопасность» → «Открыть всё равно».
-
-          После запуска приложение попросит доступ к **микрофону** и
-          **универсальному доступу** — первый нужен для записи, второй для вставки текста.
-
-          ## Требования
-
-          Mac с чипом Apple (M1 и новее), macOS 15 (Sequoia) или новее.
-          Mac с процессором Intel не поддерживаются.
-          EOF
-          gh release create "${GITHUB_REF_NAME}" DOKA.dmg \
-            --draft \
-            --title "DOKA for macOS ${GITHUB_REF_NAME}" \
-            --notes-file notes.md
