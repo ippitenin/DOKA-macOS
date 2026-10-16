@@ -22,7 +22,8 @@ scripts/build-shaders.sh   # Metal-шейдеры панели записи (bui
 ```
 
 `./build.sh` подписывает самоподписанным сертификатом **«DOKA Dev»** — инструкция в
-[`scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md). Учтите: пересборка с
+[`scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md) (или сертификатом Developer ID,
+если он есть в вашей связке ключей). Учтите: пересборка с
 подписью сбрасывает TCC-разрешения macOS, поэтому во время разработки доступ к микрофону и
 универсальному доступу придётся выдавать заново довольно часто.
 

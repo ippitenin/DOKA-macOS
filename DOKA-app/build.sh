@@ -5,6 +5,11 @@
 #           приложением и симлинком на /Applications — привычная установка
 #           перетаскиванием, как у приложений из интернета.
 #
+# Подпись выбирается сама: сертификат «Developer ID Application» из связки
+# ключей, если он есть, иначе самоподписанный «DOKA Dev», иначе ad-hoc. Только
+# с Developer ID образ из --dmg уходит на нотаризацию Apple и открывается на
+# чужом Mac без «Открыть всё равно» (профиль notarytool — DOKA_NOTARY_PROFILE).
+#
 # Сборка только под Apple Silicon (arm64). Intel не поддерживается: Parakeet
 # и ИИ-анализ там не работали вовсе, а universal-сборка зажимала зависимости
 # пинами (их мультиарх-сборка ломалась) и вдвое раздувала бинарник.
@@ -17,7 +22,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="DOKA"
-SIGN_ID="${DOKA_SIGN_ID:-DOKA Dev}"
+# awk, а не `grep | head -1`: head закрыл бы пайп раньше времени, и под
+# pipefail присваивание уронило бы сборку (та же ловушка, что с `grep -q` ниже).
+DEVELOPER_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk -F'"' '/"Developer ID Application: / && !found { print $2; found = 1 }')"
+SIGN_ID="${DOKA_SIGN_ID:-${DEVELOPER_ID:-DOKA Dev}}"
+NOTARY_PROFILE="${DOKA_NOTARY_PROFILE:-apps-notary}"
 INSTALL_DIR="${DOKA_INSTALL_DIR:-$HOME/Applications}"
 APP="$INSTALL_DIR/${APP_NAME}.app"
 
@@ -139,7 +149,21 @@ echo "==> Подпись…"
 # Вложенный фреймворк подписывается ПЕРВЫМ: у ggml-org он linker-signed,
 # `lipo -thin` выше его подпись всё равно снял, и подпись приложения поверх
 # чужой не проходит `--strict`. install_name_tool выше тоже инвалидирует подпись.
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_ID"; then
+if [[ "$SIGN_ID" == "Developer ID Application: "* ]]; then
+    IS_DEVELOPER_ID=1
+else
+    IS_DEVELOPER_ID=0
+fi
+if [ "$IS_DEVELOPER_ID" = 1 ]; then
+    # Нотаризация требует hardened runtime и метку времени Apple. Под hardened
+    # runtime микрофону и камере нужны права из Resources/DOKA.entitlements.
+    # Без --deep: исполняемого кода в бандле ровно два куска, оба подписаны
+    # явно, а --deep раздал бы права приложения и фреймворку.
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$FW"
+    codesign --force --options runtime --timestamp \
+        --entitlements Resources/DOKA.entitlements --sign "$SIGN_ID" "$STAGE_APP"
+    echo "    Подписано «${SIGN_ID}» (hardened runtime)."
+elif security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_ID"; then
     codesign --force --sign "$SIGN_ID" "$FW"
     codesign --force --deep --sign "$SIGN_ID" "$STAGE_APP"
     echo "    Подписано сертификатом «${SIGN_ID}» — TCC-разрешения стабильны между сборками."
@@ -156,9 +180,12 @@ codesign --verify --deep --strict --verbose=2 "$STAGE_APP"
 
 echo "==> Установка в ${APP}…"
 mkdir -p "$INSTALL_DIR"
-if pgrep -xq "$APP_NAME"; then
+# Завершаем только экземпляр из заменяемого бандла: сборка в другой каталог
+# (DOKA_INSTALL_DIR) не должна убивать рабочую DOKA из ~/Applications.
+RUNNING_BIN="$APP/Contents/MacOS/${APP_NAME}"
+if pgrep -qf "^${RUNNING_BIN}( |\$)"; then
     echo "    DOKA запущен — завершаю перед заменой."
-    pkill -x "$APP_NAME" || true
+    pkill -f "^${RUNNING_BIN}( |\$)" || true
     sleep 0.5
 fi
 rm -rf "$APP"
@@ -180,7 +207,40 @@ if [ "$MAKE_DMG" = 1 ]; then
     hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_SRC" \
         -format UDZO -ov -quiet "$DMG_PATH"
     echo "    Готово: $(du -h "$DMG_PATH" | cut -f1 | tr -d ' ')."
-    echo "    На чужом Mac сертификат «${SIGN_ID}» неизвестен — Gatekeeper заблокирует"
-    echo "    первый запуск: Системные настройки → Конфиденциальность и безопасность →"
-    echo "    «Открыть всё равно», затем выдать разрешения микрофона и Accessibility."
+
+    if [ "$IS_DEVELOPER_ID" = 1 ]; then
+        echo "==> Нотаризация (обычно несколько минут)…"
+        # Подписанный образ Gatekeeper проверяет целиком, ещё до монтирования.
+        codesign --force --timestamp --sign "$SIGN_ID" "$DMG_PATH"
+        # Решаем по статусу из JSON, а не по коду возврата: так различаются
+        # «до Apple не дошло» (статуса нет) и «Apple отклонила» (статус есть).
+        NOTARY_JSON="$(xcrun notarytool submit "$DMG_PATH" \
+            --keychain-profile "$NOTARY_PROFILE" --wait --output-format json)" || true
+        NOTARY_STATUS="$(plutil -extract status raw - <<< "$NOTARY_JSON" 2>/dev/null)" || true
+        if [ -z "$NOTARY_STATUS" ]; then
+            echo "    Не удалось отправить на нотаризацию: нет сети или профиля «${NOTARY_PROFILE}»."
+            if [ -n "$NOTARY_JSON" ]; then
+                echo "    Ответ notarytool: $NOTARY_JSON"
+            fi
+            echo "    Профиль создаётся один раз (спросит пароль приложения от Apple ID):"
+            echo "    xcrun notarytool store-credentials ${NOTARY_PROFILE} --apple-id <Apple ID> --team-id <Team ID>"
+            exit 1
+        fi
+        if [ "$NOTARY_STATUS" != "Accepted" ]; then
+            echo "    Apple отклонила сборку (статус ${NOTARY_STATUS}). Подробности:"
+            xcrun notarytool log "$(plutil -extract id raw - <<< "$NOTARY_JSON")" \
+                --keychain-profile "$NOTARY_PROFILE"
+            exit 1
+        fi
+        # Квитанция внутри образа: Gatekeeper проверит его и без интернета.
+        # Проверяем именно квитанцию, а не `spctl --assess`: на Mac с
+        # выключенным Gatekeeper spctl принимает и ненотаризованный образ.
+        xcrun stapler staple -q "$DMG_PATH"
+        xcrun stapler validate -q "$DMG_PATH"
+        echo "    Нотаризован: на чужом Mac откроется без предупреждений Gatekeeper."
+    else
+        echo "    На чужом Mac сертификат «${SIGN_ID}» неизвестен — Gatekeeper заблокирует"
+        echo "    первый запуск: Системные настройки → Конфиденциальность и безопасность →"
+        echo "    «Открыть всё равно», затем выдать разрешения микрофона и Accessibility."
+    fi
 fi

@@ -149,7 +149,11 @@ deleted automatically. You can erase all of it with one button in the Lips secti
 
 ## Installation
 
-No signed release is published yet, so build from source:
+Download **DOKA.dmg** from the [latest release](https://github.com/ippitenin/DOKA-macOS/releases/latest),
+open it and drag DOKA to Applications. The app is signed with Developer ID and notarized by
+Apple, so it opens like any other app.
+
+Or build from source:
 
 ```bash
 git clone https://github.com/ippitenin/DOKA-macOS.git
@@ -157,7 +161,7 @@ cd DOKA-macOS/DOKA-app
 ./build.sh
 ```
 
-The app is installed to `~/Applications/DOKA.app`. First launch walks you through three
+A source build is installed to `~/Applications/DOKA.app`. First launch walks you through three
 steps: **Microphone** and **Accessibility** permissions — the first records your voice, the
 second pastes the text — and then the recognition service. Pick a cloud service and paste
 its key, or pick a local model and download it right there: it runs on your Mac, with no
@@ -179,14 +183,19 @@ SwiftPM does not compile `.metal`, so the recording panel's shaders are built by
 script. `build.sh` runs it for you; before a bare `swift build` run it by hand — otherwise the
 app builds without the panel effects.
 
-Release builds are signed with a self-signed **“DOKA Dev”** certificate — see
-[`DOKA-app/scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md). Both the
-certificate name and the install directory can be overridden with `DOKA_SIGN_ID` and
-`DOKA_INSTALL_DIR`.
+`build.sh` picks the best signing identity it finds. With a **Developer ID Application**
+certificate (Apple Developer Program) it signs with the hardened runtime, and `--dmg` also
+sends the image to Apple for notarization — set up a `notarytool` keychain profile once
+(`apps-notary` by default, `DOKA_NOTARY_PROFILE` to change it). Without one it falls back to a
+self-signed **“DOKA Dev”** certificate — see
+[`DOKA-app/scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md). The certificate name
+and the install directory can be overridden with `DOKA_SIGN_ID` and `DOKA_INSTALL_DIR`.
 
-Installing from a DMG on another Mac means Gatekeeper does not know the certificate and
-blocks the first launch: System Settings → Privacy & Security → **Open Anyway**, then grant
-the microphone and accessibility permissions.
+Only a notarized DMG opens on another Mac without warnings. A DMG signed with “DOKA Dev” is
+blocked by Gatekeeper on first launch: System Settings → Privacy & Security → **Open Anyway**.
+
+Releases are published with `scripts/release.sh` from the maintainer's Mac: it builds the
+notarized DMG, tags the version from `Resources/Info.plist` and creates the GitHub release.
 
 ## Recognition services
 
