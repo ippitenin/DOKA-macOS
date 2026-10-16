@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="media/doka-icon.png" alt="DOKA" width="160">
+  <img src="media/doka-icon.png" alt="DOKA" width="150">
 </p>
 
-<h1 align="center">DOKA for macOS</h1>
+<h1 align="center">DOKA</h1>
 
 <p align="center">
-  <b>D</b>ock <b>O</b>perations <b>K</b>it for <b>A</b>pple — menu-bar voice dictation
-  and audio/video transcription for macOS.
+  <b>Voice dictation and transcription for macOS — on your Mac, in any app.</b><br>
+  Press a hotkey, speak, and the text lands where your cursor is. Private by default.
 </p>
 
 <p align="center">
@@ -14,25 +14,81 @@
 </p>
 
 <p align="center">
-  <sub>This repository is the macOS app. The iOS version is developed separately in <code>DOKA-iOS</code>.</sub>
+  <a href="https://github.com/ippitenin/DOKA-macOS/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ippitenin/DOKA-macOS?label=release&color=fa956d"></a>
+  <a href="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml"><img alt="Build" src="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml/badge.svg"></a>
+  <img alt="macOS 15+ on Apple silicon" src="https://img.shields.io/badge/macOS-15%2B%20%C2%B7%20Apple%20silicon-1f2328?logo=apple">
+  <img alt="Swift and SwiftUI" src="https://img.shields.io/badge/Swift-SwiftUI%20%C2%B7%20Metal-f05138?logo=swift&logoColor=white">
+  <a href="LICENSE"><img alt="License GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml"><img alt="Build" src="https://github.com/ippitenin/DOKA-macOS/actions/workflows/build.yml/badge.svg"></a>
-  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey">
-  <img alt="Swift" src="https://img.shields.io/badge/Swift-5.9%2B-orange">
-  <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue">
+  <a href="https://github.com/ippitenin/DOKA-macOS/releases/latest/download/DOKA.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download_for_macOS-fa956d?style=for-the-badge&logo=apple&logoColor=white" height="40"></a>
+  <br>
+  <sub>Apple silicon · macOS 15 or later · signed and notarized by Apple</sub>
 </p>
 
-Press a global hotkey, speak, and the recognised text lands in whatever app you were
-using. Recognition runs either **entirely on your Mac** — Whisper or Parakeet through
-the Neural Engine, no internet and no API key — or through any OpenAI-compatible
-service. DOKA lives in the menu bar and keeps no icon in the Dock.
+<p align="center">
+  <img src="media/screenshot-home.png" alt="DOKA main window: ready for dictation, with the shortcut and the last transcription" width="820">
+</p>
 
-The interface is localised in English and Russian; the code and its comments are
-written in Russian.
+<p align="center">
+  <img src="media/recording.gif" alt="The Aurora recording panel: the wave follows the voice, then turns into a ring while the text is recognised" width="640">
+  <br>
+  <sub>The Aurora panel while you speak: the wave follows your voice, then turns into a ring while the text is recognised.</sub>
+</p>
+
+DOKA lives in the menu bar. Recognition runs **entirely on your Mac** — Whisper or Parakeet on
+the Neural Engine, no internet and no API key — or through any OpenAI-compatible service. On top
+of dictation it transcribes audio and video files, tells speakers apart and writes meeting
+minutes with a language model that also runs locally.
 
 ## Features
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🎙️ Dictate into any app</h3>
+      Hotkey, speak, hotkey again — the text is pasted where your cursor is. Push-to-talk and a mouse button work too.
+    </td>
+    <td width="50%" valign="top">
+      <h3>🔒 Private by default</h3>
+      Whisper and Parakeet run on your Mac's Neural Engine: no internet, no key, audio never leaves the device.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🎬 Transcribe audio and video</h3>
+      Drop a file, get timestamped text, SRT and VTT. Jobs survive sleep, a lost network and even a restart.
+    </td>
+    <td width="50%" valign="top">
+      <h3>👥 Speakers, on-device</h3>
+      Who said what, worked out on your Mac: an hour and a half of conversation in about 12 seconds.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🧠 AI analysis on your Mac</h3>
+      Meeting minutes, summaries, action items or your own prompt, written by a local model. Export to Markdown or PDF.
+    </td>
+    <td width="50%" valign="top">
+      <h3>📚 A library with a player</h3>
+      Every transcript keeps its audio: search, click a timestamp to jump there, rename speakers, fix a line, export.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🌊 A panel worth looking at</h3>
+      Six recording styles, led by Aurora — a Liquid Glass droplet on Metal shaders whose wave answers your voice.
+    </td>
+    <td width="50%" valign="top">
+      <h3>🤫 Quiet mode</h3>
+      Dictate in a whisper when someone is asleep nearby. DOKA stops mistaking it for silence.
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary><b>All features in detail</b></summary>
 
 - **Voice dictation** — global hotkey (or push-to-talk, or a mouse button) → recording →
   transcription → dictionary replacements → text pasted into the active app through the
@@ -115,6 +171,24 @@ written in Russian.
   yet.
 - **Dictionary** — case-insensitive replacement rules applied to every transcript. Rules match whole words: “doka” → “DOKA” no longer touches “document”; the per-rule “Inside words” switch brings back substring matching (e.g. “ё” → “е”). Optionally applied to file transcripts as well.
 
+
+</details>
+
+## A closer look
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="media/screenshot-transcribe.png" alt="Transcribe Audio: drop a file, choose speakers, dictionary, language and AI analysis"></td>
+    <td width="33%" valign="top"><img src="media/screenshot-dashboard.png" alt="Dashboard: words dictated, sessions, speech speed and time saved"></td>
+    <td width="33%" valign="top"><img src="media/screenshot-general.png" alt="General settings with the six recording panel styles"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Transcribe audio and video</sub></td>
+    <td align="center"><sub>How much faster than typing</sub></td>
+    <td align="center"><sub>Six recording panel styles</sub></td>
+  </tr>
+</table>
+
 ## Privacy
 
 The three recognition modes differ in what leaves your Mac:
@@ -135,67 +209,6 @@ The Lips experiment films your face only if you turn it on yourself. Face video 
 data: it is stored in `~/Library/Application Support/DOKA/LipData`, never uploaded and never
 deleted automatically. You can erase all of it with one button in the Lips section.
 
-## Requirements
-
-- A Mac with Apple silicon (M1 or newer). Intel Macs are not supported.
-- macOS 15 (Sequoia) or newer.
-- For local AI analysis — about 2.7 GB of disk space for the model and up to 5 GB of memory
-  while it runs.
-- **Xcode 26 or newer** to build from source. The package itself declares
-  `swift-tools-version: 5.9` and targets macOS 15, but one of its dependencies
-  requires Swift 6.2, and the Liquid Glass APIs need the macOS 26 SDK to compile.
-  The built app still runs on macOS 15 — this requirement applies to the build machine only.
-- An API key only if you pick a cloud service — local models need none.
-
-## Installation
-
-Download **DOKA.dmg** from the [latest release](https://github.com/ippitenin/DOKA-macOS/releases/latest),
-open it and drag DOKA to Applications. The app is signed with Developer ID and notarized by
-Apple, so it opens like any other app.
-
-Or build from source:
-
-```bash
-git clone https://github.com/ippitenin/DOKA-macOS.git
-cd DOKA-macOS/DOKA-app
-./build.sh
-```
-
-A source build is installed to `~/Applications/DOKA.app`. First launch walks you through three
-steps: **Microphone** and **Accessibility** permissions — the first records your voice, the
-second pastes the text — and then the recognition service. Pick a cloud service and paste
-its key, or pick a local model and download it right there: it runs on your Mac, with no
-internet and no key.
-
-## Building and signing
-
-All commands run from `DOKA-app/`:
-
-```bash
-swift build        # quick debug compile check
-scripts/build-shaders.sh   # Metal shaders of the recording panel → default.metallib
-./build.sh         # release (arm64), signed, installed to ~/Applications
-./build.sh --dmg   # the same, plus DOKA.dmg in the repository root
-./run.sh           # build.sh + launch
-```
-
-SwiftPM does not compile `.metal`, so the recording panel's shaders are built by a separate
-script. `build.sh` runs it for you; before a bare `swift build` run it by hand — otherwise the
-app builds without the panel effects.
-
-`build.sh` picks the best signing identity it finds. With a **Developer ID Application**
-certificate (Apple Developer Program) it signs with the hardened runtime, and `--dmg` also
-sends the image to Apple for notarization — set up a `notarytool` keychain profile once
-(`apps-notary` by default, `DOKA_NOTARY_PROFILE` to change it). Without one it falls back to a
-self-signed **“DOKA Dev”** certificate — see
-[`DOKA-app/scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md). The certificate name
-and the install directory can be overridden with `DOKA_SIGN_ID` and `DOKA_INSTALL_DIR`.
-
-Only a notarized DMG opens on another Mac without warnings. A DMG signed with “DOKA Dev” is
-blocked by Gatekeeper on first launch: System Settings → Privacy & Security → **Open Anyway**.
-
-Releases are published with `scripts/release.sh` from the maintainer's Mac: it builds the
-notarized DMG, tags the version from `Resources/Info.plist` and creates the GitHub release.
 
 ## Recognition services
 
@@ -208,56 +221,30 @@ Pick one on first launch, or later in the **Service** section:
 | Built-in (Nexara) | required | adds recording-type presets, speaker roles, analysis ordered with transcription, and async jobs |
 | Custom service | required | any OpenAI-compatible `/audio/transcriptions` endpoint |
 
-Local models are downloaded once — from the third step of the first launch or from the
-Service section — prepared for your chip on first use, and unloaded from memory after five
-minutes of inactivity.
+Speaker diarization and AI analysis work with every service: whatever the service does not do
+itself runs on your Mac.
 
-Speaker diarization works with every service: the built-in one does it server-side, everyone
-else gets the on-device diarizer. What stays exclusive to the built-in service — and is shown
-greyed out elsewhere — is the recording-type preset, automatic speaker roles, and cloud analysis in the same
-request, because its `prompt` means something entirely different in a plain OpenAI-compatible
-API; analysis ordered while transcribing always runs on this Mac there.
+## Install
 
-AI analysis of a finished transcript does not depend on the service: it is written by a
-language model on this Mac and is equally available to recordings of any origin. The model
-(2.7 GB) is downloaded from the “AI analysis on this Mac” card in the Service section, or
-straight from the “AI analysis” card of a record, and is unloaded from memory after three
-minutes of inactivity.
+1. Download **[DOKA.dmg](https://github.com/ippitenin/DOKA-macOS/releases/latest/download/DOKA.dmg)** from the latest release.
+2. Open it and drag DOKA to Applications.
+3. Launch it — DOKA appears in the menu bar. The first launch walks you through three steps:
+   **Microphone** access to record, **Accessibility** to paste the text, and a recognition
+   service: a cloud one with its key, or a local model downloaded right there.
 
-## Repository layout
+**Requirements:** a Mac with Apple silicon (M1 or newer) and macOS 15 or later. Local AI analysis
+needs about 2.7 GB of disk space and up to 5 GB of memory while it runs.
 
-| Path | Purpose |
-|---|---|
-| `DOKA-app/` | The application itself (SPM executable, AppKit + SwiftUI) |
-| `DOKA_LOGO/` | Brand logo sources |
-| `media/` | Images used by this README |
-| `CLAUDE.md` | Architecture overview, commands, verification gates and project-wide invariants; area details live in `CLAUDE.md` files inside `DOKA-app/` (the root file has a map) |
-| `SMOKE.md` | Manual smoke checklist, per area |
+## Build from source
 
-## Development
+```bash
+git clone https://github.com/ippitenin/DOKA-macOS.git
+cd DOKA-macOS/DOKA-app
+./build.sh        # builds DOKA and installs it to ~/Applications
+```
 
-Architecture, invariants, commands and verification gates are documented in
-[`CLAUDE.md`](CLAUDE.md) and the per-area `CLAUDE.md` files it maps. The short version: `DictationController` is the central state
-machine; file transcription is deliberately isolated from the dictation pipeline
-(`FileTranscriptionController` plus `Network/FileTranscriptionClient.swift`); the design
-system lives in `UI/DesignSystem/`.
-
-Pure logic is covered by tests — `swift test` runs 973 checks in a few seconds, and
-CI runs them on every pull request along with the build and a localisation check. The
-local models have an opt-in live smoke on speech synthesised with `say` (`DOKA_SMOKE=1`,
-see [`CONTRIBUTING.md`](CONTRIBUTING.md)). Audio capture, pasting, Keychain and the recorder
-panels need a real Mac with real permissions, so those are verified by a manual smoke pass;
-[`SMOKE.md`](SMOKE.md) lists what to check per area.
-
-Two things worth knowing before you change dependencies or strings:
-
-- **Dependency versions are pinned on purpose** — do not bump them with a blind
-  `swift package update`; see [`CONTRIBUTING.md`](CONTRIBUTING.md) for why.
-- **Every interface string goes through `L("key")`**, and every key must exist in both
-  `ru.lproj` and `en.lproj`. `swift build` does not validate `.strings` syntax — run
-  `plutil -lint` after editing them.
-
-Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Building needs Xcode 26 or newer. Tests, conventions and how to contribute are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits and third-party licenses
 
