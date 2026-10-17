@@ -8,7 +8,7 @@ of them exist because something broke once. Please read this before opening a pu
 ## Getting set up
 
 You need **macOS 15 or newer and Xcode 26 or newer**. The package declares
-`swift-tools-version: 5.9`, but one of its dependencies requires Swift 6.2 and the Liquid
+`swift-tools-version: 6.2` (one of its dependencies requires it too), and the Liquid
 Glass APIs need the macOS 26 SDK — on an older toolchain the build fails while resolving
 dependencies, before a single file is compiled.
 
