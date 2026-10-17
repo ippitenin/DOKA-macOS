@@ -218,6 +218,11 @@ Pick one on first launch, or later in the **Service** section:
 Speaker diarization and AI analysis work with every service: whatever the service does not do
 itself runs on your Mac.
 
+A cloud service occasionally slips: a long dictation comes back as one or two sentences, or, with
+the language set to "Auto", a Russian phrase arrives as an English translation. DOKA double-checks
+such an answer on your Mac with the Parakeet model (if it is downloaded) and, when needed, repeats
+the request once.
+
 ## Install
 
 1. Download **[DOKA.dmg](https://github.com/ippitenin/DOKA-macOS/releases/latest/download/DOKA.dmg)** from the latest release.
