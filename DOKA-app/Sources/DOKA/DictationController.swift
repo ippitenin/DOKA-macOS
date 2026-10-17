@@ -418,8 +418,10 @@ final class DictationController: ObservableObject {
 
         do {
             let started = Date()
-            let recognized = try await recognize(uploadURL, route: route, language: requestLanguage,
-                                                 generation: gen)
+            let recognized = try await recognizeChecked(uploadURL, original: url, route: route,
+                                                        language: requestLanguage,
+                                                        speechSeconds: audio.gateSpeechDuration,
+                                                        generation: gen)
             let transcriptionTime = Date().timeIntervalSince(started)
             guard generation == gen else { return }   // отменено пользователем
             // Весь результат — дежурная фраза Whisper на тишине («Thank you.»,
@@ -525,6 +527,62 @@ final class DictationController: ObservableObject {
             return text
         case .remote(let apiKey, let config):
             return try await client.transcribe(fileURL: url, language: language, apiKey: apiKey, config: config)
+        }
+    }
+
+    /// Распознавание с подстраховкой сетевого ответа (`RecognitionCheck`):
+    /// подозрительный результат — потеряна часть речи или «Авто» ответило не
+    /// той письменностью — перепроверяет Parakeet по исходному WAV, и при
+    /// подтверждении уходит ОДИН повторный запрос. Сбой повтора не роняет
+    /// диктовку: остаётся первый ответ. Локальные движки не проверяются.
+    private func recognizeChecked(_ uploadURL: URL, original url: URL, route: ServiceRoute,
+                                  language: String?, speechSeconds: TimeInterval,
+                                  generation gen: Int) async throws -> String {
+        let first = try await recognize(uploadURL, route: route, language: language, generation: gen)
+        guard case .remote = route else { return first }
+        let usual = language == nil
+            ? RecognitionCheck.usual(fromRecentTexts: history.records.prefix(RecognitionCheck.usualSampleSize).map(\.text))
+            : nil
+        guard let suspicion = RecognitionCheck.suspicion(text: first, speechSeconds: speechSeconds,
+                                                         autoLanguage: language == nil, usual: usual) else {
+            return first
+        }
+        let opinion = await secondOpinion(url)
+        guard generation == gen else { throw CancellationError() }
+        var retried: String?
+        if case .retry(let retryLanguage) = RecognitionCheck.verdict(suspicion, text: first, secondOpinion: opinion) {
+            retried = try? await recognize(uploadURL, route: route, language: retryLanguage ?? language,
+                                           generation: gen)
+            guard generation == gen else { throw CancellationError() }
+        }
+        let result = RecognitionCheck.resolve(suspicion, first: first, retry: retried, secondOpinion: opinion)
+        NSLog("DOKA: перепроверка распознавания (%@): Parakeet %@, повтор %@, %@",
+              String(describing: suspicion), opinion == nil ? "пропущен" : "есть",
+              retried == nil ? "не было" : "был",
+              result == first ? "оставлен первый ответ" : (result == retried ? "взят повтор" : "взят текст Parakeet"))
+        return result
+    }
+
+    /// Второе мнение Parakeet по исходному WAV. nil — модели нет, или слот
+    /// локального движка занят чужой работой: транскрибация файла (даже
+    /// сетевая — её локальная диаризация живёт в том же менеджере), анализ
+    /// или «Угадать имена» — гейт «анализ ↔ локальное распознавание» не
+    /// нарушается. Ошибка Parakeet — тоже nil: проверка лишь пропускается.
+    private func secondOpinion(_ url: URL) async -> String? {
+        let engines = LocalEngineManager.shared
+        guard LocalModelStore.shared.isDownloaded(.parakeet),
+              engines.canLoadWithoutEviction(.parakeet),
+              !FileTranscriptionController.shared.isTranscribing,
+              !AnalysisController.shared.isRunning,
+              !SpeakerSuggestionController.shared.isRunning else { return nil }
+        do {
+            let engine = try await engines.engine(for: .parakeet)
+            let text = try await engine.transcribeDictation(wavURL: url, language: nil)
+            engines.touch()
+            return text
+        } catch {
+            NSLog("DOKA: второе мнение Parakeet не получено: %@", error.localizedDescription)
+            return nil
         }
     }
 
