@@ -92,7 +92,7 @@ enum LipTakeEncoder {
         try? FileManager.default.removeItem(at: input.output)
         let writer = try AVAssetWriter(outputURL: input.output, fileType: .mp4)
         writer.shouldOptimizeForNetworkUse = true
-        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: LipVideoEncoding.outputSettings([
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: side,
             AVVideoHeightKey: side,
@@ -108,7 +108,7 @@ enum LipTakeEncoder {
                 AVVideoAllowFrameReorderingKey: false,
                 AVVideoExpectedSourceFrameRateKey: 30
             ]
-        ])
+        ]))
         videoInput.expectsMediaDataInRealTime = false
         videoInput.transform = .identity
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: [

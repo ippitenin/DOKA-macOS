@@ -33,7 +33,8 @@ scripts/build-shaders.sh                       # default.metallib: на свеж
 swift build --scratch-path /tmp/doka-build     # проверка компиляции (debug, нативная архитектура)
 swift test  --scratch-path /tmp/doka-build     # все тесты чистой логики (несколько секунд)
                                                # завис больше минуты — НЕ убивать и не перезапускать:
-                                               # повторный прогон уронил macOS (Tests/DOKATests/CLAUDE.md)
+                                               # повторный прогон уронил macOS; видео в тестах — только
+                                               # программно, через LipVideoEncoding (Tests/DOKATests/CLAUDE.md)
 swift test  --scratch-path /tmp/doka-build --filter DictationGateTests                               # один класс
 swift test  --scratch-path /tmp/doka-build --filter DictationGateTests/testShortRecordingIsDropped   # один тест
 scripts/check-localization.sh                  # plutil -lint всех 4 .strings + парность ключей ru/en,
