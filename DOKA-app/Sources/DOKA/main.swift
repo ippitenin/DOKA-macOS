@@ -1,3 +1,7 @@
+// DOKA — голосовая диктовка для macOS.
+// © 2026 Ilya Pitenin. GNU General Public License v3.0 (GPL-3.0), см. LICENSE.
+// Исходники: https://github.com/ippitenin/DOKA-macOS
+
 import AppKit
 
 // Аппаратный кодировщик видео «Губ» — только в приложении: тесты этот файл

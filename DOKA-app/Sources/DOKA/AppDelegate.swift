@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Литерал уведомления используется, поэтому остаётся в бинарнике (`LicenseNotice`).
+        NSLog("%@", LicenseNotice.text)
         // Сироты временных WAV прошлых запусков (слот повтора диктовки живёт
         // в памяти) — фоном, запуск не ждёт файловую систему.
         let launch = Date()

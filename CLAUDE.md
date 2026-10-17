@@ -137,6 +137,7 @@ scripts/make-appicon.sh [исходник.png]   # перегенерация Re
 
 ### Неочевидные инварианты
 
+- **Уведомление о лицензии в бинарнике** — `Util/LicenseNotice.swift`: литерал печатается `NSLog` при запуске (`AppDelegate`), поэтому оптимизатор его не выбрасывает. Не удалять и не прятать за `#if DEBUG`. Проверка на release-бандле: `strings …/Contents/MacOS/DOKA | grep "GNU General Public License"`. Вторая метка — `NSHumanReadableCopyright` в `Info.plist` (Finder → «Свойства»).
 - Глобальный Esc (`cancelRecording`) включается только на время записи/распознавания через `HotkeyManager.setEscapeEnabled` — иначе DOKA перехватит Esc во всей системе.
 - **Перенос «Папки данных» останавливает ВЕСЬ пайплайн, а не только библиотеку.** У
   `HistoryStore`, `StatsStore` и `AudioStore` своей заморозки нет: путь они фиксируют

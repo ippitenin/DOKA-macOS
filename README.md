@@ -267,3 +267,5 @@ Models are downloaded by the user at runtime and are not part of this repository
 ## License
 
 [GPL-3.0](LICENSE) © Ilya Pitenin
+
+GPL-3.0 lets you use, study, change and share DOKA. Any copy or derivative work — code, interface texts or design — must also be distributed under GPL-3.0, with its complete source code and the original copyright notice.
