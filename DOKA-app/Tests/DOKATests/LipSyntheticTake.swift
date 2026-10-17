@@ -22,9 +22,9 @@ enum LipSyntheticTake {
     static func writeRawVideo(to url: URL, times: [Double], topWhiteRows: Int? = nil,
                               gray: ((Int) -> Int)? = nil, timeScale: CMTimeScale? = nil) throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: LipVideoEncoding.outputSettings([
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 1280, AVVideoHeightKey: 720
-        ])
+        ]))
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: 1280, kCVPixelBufferHeightKey as String: 720

@@ -1,5 +1,9 @@
 import AppKit
 
+// Аппаратный кодировщик видео «Губ» — только в приложении: тесты этот файл
+// не исполняют и кодируют программно (`LipVideoEncoding`).
+LipVideoEncoding.hardwareAllowed = true
+
 // Top-level код не изолирован на MainActor, но приложение стартует на главном потоке.
 MainActor.assumeIsolated {
     LegacyMigration.run()

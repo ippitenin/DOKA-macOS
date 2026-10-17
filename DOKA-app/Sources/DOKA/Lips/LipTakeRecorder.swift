@@ -35,7 +35,9 @@ final class LipTakeRecorder {
 
     /// Сырое видео: аппаратный HEVC с запасом по битрейту — файл временный,
     /// его увидит только второй проход, и потери при перекодировании должны
-    /// быть минимальны.
+    /// быть минимальны. Без аппаратного кодировщика (тесты,
+    /// `LipVideoEncoding`) — сразу H.264: программный HEVC медленнее, и при
+    /// записи в реальном времени терялись бы кадры.
     private static let rawBitRate = 6_000_000
 
     init(take: LipTake, acceptFromHost: Double, queue: DispatchQueue) {
@@ -174,8 +176,8 @@ final class LipTakeRecorder {
         height = Int(dims.height)
         do {
             let writer = try AVAssetWriter(outputURL: take.rawVideoURL, fileType: .mp4)
-            var settings: [String: Any] = [
-                AVVideoCodecKey: AVVideoCodecType.hevc,
+            var settings = LipVideoEncoding.outputSettings([
+                AVVideoCodecKey: LipVideoEncoding.hardwareAllowed ? AVVideoCodecType.hevc : AVVideoCodecType.h264,
                 AVVideoWidthKey: width,
                 AVVideoHeightKey: height,
                 AVVideoCompressionPropertiesKey: [
@@ -184,7 +186,7 @@ final class LipTakeRecorder {
                     AVVideoAllowFrameReorderingKey: false,
                     AVVideoExpectedSourceFrameRateKey: 30
                 ]
-            ]
+            ])
             if !writer.canApply(outputSettings: settings, forMediaType: .video) {
                 settings[AVVideoCodecKey] = AVVideoCodecType.h264
             }
