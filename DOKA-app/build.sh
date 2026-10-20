@@ -213,52 +213,74 @@ rm -rf "$APP"
 mv "$STAGE_APP" "$APP"
 echo "==> Готово: $APP"
 
+# Нотаризация файла (zip с приложением или образ) с ожиданием ответа Apple.
+# Решаем по статусу из JSON, а не по коду возврата: так различаются «до Apple
+# не дошло» (статуса нет) и «Apple отклонила» (статус есть, код всё равно 0).
+notarize() {
+    local file="$1" json status
+    json="$(xcrun notarytool submit "$file" \
+        --keychain-profile "$NOTARY_PROFILE" --wait --output-format json)" || true
+    status="$(plutil -extract status raw - <<< "$json" 2>/dev/null)" || true
+    if [ -z "$status" ]; then
+        echo "    Не удалось отправить на нотаризацию: нет сети или профиля «${NOTARY_PROFILE}»."
+        if [ -n "$json" ]; then
+            echo "    Ответ notarytool: $json"
+        fi
+        echo "    Профиль создаётся один раз (спросит пароль приложения от Apple ID):"
+        echo "    xcrun notarytool store-credentials ${NOTARY_PROFILE} --apple-id <Apple ID> --team-id <Team ID>"
+        return 1
+    fi
+    if [ "$status" != "Accepted" ]; then
+        echo "    Apple отклонила $(basename "$file") (статус ${status}). Подробности:"
+        xcrun notarytool log "$(plutil -extract id raw - <<< "$json")" \
+            --keychain-profile "$NOTARY_PROFILE"
+        return 1
+    fi
+}
+
 if [ "$MAKE_DMG" = 1 ]; then
     DMG_PATH="$(cd .. && pwd)/${APP_NAME}.dmg"
+    rm -f "$DMG_PATH"
+
+    if [ "$IS_DEVELOPER_ID" = 1 ]; then
+        # Проход 1 — приложение. Квитанция образа приложению, перетащенному
+        # из него в «Программы», не достаётся: без своей квитанции Gatekeeper
+        # идёт за ней к Apple, а без сети (и для `syspolicy_check
+        # distribution`) это «Notary Ticket Missing» — так было у DOKA 1.0.1.
+        # Поэтому приложение нотаризуется и получает квитанцию ДО образа.
+        echo "==> Нотаризация приложения (обычно несколько минут)…"
+        APP_ZIP="$STAGE/${APP_NAME}-notary.zip"
+        ditto -c -k --keepParent "$APP" "$APP_ZIP"
+        notarize "$APP_ZIP" || exit 1
+        # Проверяем именно квитанцию, а не `spctl --assess`: на Mac с
+        # выключенным Gatekeeper spctl принимает и ненотаризованное.
+        xcrun stapler staple -q "$APP"
+        xcrun stapler validate -q "$APP"
+    fi
+
     echo "==> Сборка образа ${DMG_PATH}…"
     # Содержимое образа: приложение + симлинк на /Applications для установки
     # перетаскиванием. Папка-источник — внутри $STAGE (вне iCloud), её
-    # подчистит общий trap. Именно ditto: сохраняет подпись и структуру бандла.
+    # подчистит общий trap. Именно ditto: сохраняет подпись, квитанцию и
+    # структуру бандла.
     DMG_SRC="$STAGE/dmg"
     mkdir -p "$DMG_SRC"
     ditto "$APP" "$DMG_SRC/${APP_NAME}.app"
     ln -s /Applications "$DMG_SRC/Applications"
-    rm -f "$DMG_PATH"
     # UDZO — сжатый read-only образ, стандарт раздачи приложений.
     hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_SRC" \
         -format UDZO -ov -quiet "$DMG_PATH"
     echo "    Готово: $(du -h "$DMG_PATH" | cut -f1 | tr -d ' ')."
 
     if [ "$IS_DEVELOPER_ID" = 1 ]; then
-        echo "==> Нотаризация (обычно несколько минут)…"
-        # Подписанный образ Gatekeeper проверяет целиком, ещё до монтирования.
+        # Проход 2 — образ. Подписанный образ Gatekeeper проверяет целиком,
+        # ещё до монтирования; квитанция внутри — проверка и без интернета.
+        echo "==> Нотаризация образа…"
         codesign_timestamped --force --sign "$SIGN_ID" "$DMG_PATH"
-        # Решаем по статусу из JSON, а не по коду возврата: так различаются
-        # «до Apple не дошло» (статуса нет) и «Apple отклонила» (статус есть).
-        NOTARY_JSON="$(xcrun notarytool submit "$DMG_PATH" \
-            --keychain-profile "$NOTARY_PROFILE" --wait --output-format json)" || true
-        NOTARY_STATUS="$(plutil -extract status raw - <<< "$NOTARY_JSON" 2>/dev/null)" || true
-        if [ -z "$NOTARY_STATUS" ]; then
-            echo "    Не удалось отправить на нотаризацию: нет сети или профиля «${NOTARY_PROFILE}»."
-            if [ -n "$NOTARY_JSON" ]; then
-                echo "    Ответ notarytool: $NOTARY_JSON"
-            fi
-            echo "    Профиль создаётся один раз (спросит пароль приложения от Apple ID):"
-            echo "    xcrun notarytool store-credentials ${NOTARY_PROFILE} --apple-id <Apple ID> --team-id <Team ID>"
-            exit 1
-        fi
-        if [ "$NOTARY_STATUS" != "Accepted" ]; then
-            echo "    Apple отклонила сборку (статус ${NOTARY_STATUS}). Подробности:"
-            xcrun notarytool log "$(plutil -extract id raw - <<< "$NOTARY_JSON")" \
-                --keychain-profile "$NOTARY_PROFILE"
-            exit 1
-        fi
-        # Квитанция внутри образа: Gatekeeper проверит его и без интернета.
-        # Проверяем именно квитанцию, а не `spctl --assess`: на Mac с
-        # выключенным Gatekeeper spctl принимает и ненотаризованный образ.
+        notarize "$DMG_PATH" || { rm -f "$DMG_PATH"; exit 1; }
         xcrun stapler staple -q "$DMG_PATH"
         xcrun stapler validate -q "$DMG_PATH"
-        echo "    Нотаризован: на чужом Mac откроется без предупреждений Gatekeeper."
+        echo "    Нотаризованы образ и приложение: на чужом Mac откроются без предупреждений Gatekeeper."
     else
         echo "    На чужом Mac сертификат «${SIGN_ID}» неизвестен — Gatekeeper заблокирует"
         echo "    первый запуск: Системные настройки → Конфиденциальность и безопасность →"
