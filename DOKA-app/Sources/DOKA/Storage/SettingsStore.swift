@@ -225,10 +225,10 @@ final class SettingsStore: ObservableObject {
         didSet {
             defaults.set(providerID, forKey: Key.provider)
             // Смена сервиса: модель ушедшего локального сервиса выгружается
-            // из памяти сразу (~2 ГБ ОЗУ), не дожидаясь таймера простоя.
-            if let old = LocalModel.from(providerID: oldValue), old != selectedLocalModel {
-                LocalEngineManager.shared.unloadIfCurrent(old)
-            }
+            // из памяти сразу (~2 ГБ ОЗУ), не дожидаясь таймера простоя, —
+            // или после работы, которая держит слот (файл, диктовка).
+            LocalEngineManager.shared.serviceChanged(from: LocalModel.from(providerID: oldValue),
+                                                     to: selectedLocalModel)
         }
     }
     /// Сохранённые пользовательские сервисы (пресеты «Сервиса»).

@@ -100,6 +100,8 @@ final class DictationController: ObservableObject {
     /// Дубль камеры текущей записи: забирается в `finishRecording`, иначе
     /// (Esc, ошибка) выбрасывается при уходе из записи.
     private var activeLipTake: LipTake?
+    /// Диктовка держит аренду `.dictation` слота локальной модели.
+    private var holdsSpeechSlot = false
 
     /// Откуда запись: только что надиктована или взята из слота повтора.
     private enum DictationSource {
@@ -214,10 +216,13 @@ final class DictationController: ObservableObject {
             showError(L("error.retryUnavailable"))
             return
         }
+        // До того как запись покинет слот повтора: при отказе пункт меню остаётся.
+        guard localSlotIsFree() else { return }
         lastFailedDictation = nil   // слот «взят»; вернётся при неудаче или отмене
         // Меню статус-бара не активирует DOKA: впереди остаётся приложение,
         // где был курсор, — туда и вставим, если оно не сменится.
         let target = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        takeSpeechSlotIfLocal()
         transition(to: .transcribing)
         let gen = generation
         transcriptionTask = Task {
@@ -269,6 +274,7 @@ final class DictationController: ObservableObject {
             onNeedsOnboarding?()
             return
         }
+        guard localSlotIsFree() else { return }
 
         // Диктовка важнее анализа. На маке с небольшой ОЗУ языковая модель
         // анализа (до 5 ГБ) и речевая модель вместе уводят систему в своп,
@@ -305,7 +311,31 @@ final class DictationController: ObservableObject {
             micBooster.beginBoost()
         }
         SoundPlayer.play(.recordStart)
+        takeSpeechSlotIfLocal()
         transition(to: .recording(startedAt: Date()))
+    }
+
+    // MARK: - Слот локальной модели
+
+    /// Локальная модель занята транскрибацией файла — диктовке на ней не
+    /// начинаться: она встала бы в очередь за файлом (у Parakeet вызовы идут
+    /// строго по одному) и «зависла», а с другой моделью выгрузила бы модель
+    /// файла посреди работы. Отказ — ДО записи, чтобы не говорить впустую.
+    private func localSlotIsFree() -> Bool {
+        let decision = SpeechSlotPolicy.dictationStart(isLocal: settings.isLocalService,
+                                                       lease: LocalEngineManager.shared.speechSlotLease)
+        guard decision == .busyFile else { return true }
+        showError(L("dictation.busy.localFile"))
+        return false
+    }
+
+    /// Аренда слота на всю диктовку — от записи до конца распознавания:
+    /// пока она держится, локальный файл не стартует, а смена сервиса и
+    /// таймер простоя модель не выгружают. Снимается в `transition(to:)`.
+    private func takeSpeechSlotIfLocal() {
+        guard settings.isLocalService, !holdsSpeechSlot else { return }
+        holdsSpeechSlot = true
+        LocalEngineManager.shared.beginSpeechUse(.dictation)
     }
 
     private func finishRecording() {
@@ -692,6 +722,11 @@ final class DictationController: ObservableObject {
         }
         state = newState
         Self.isActive = newState.isBusy
+        // Любой выход из работы — успех, ошибка, отмена — отдаёт слот.
+        if !newState.isBusy, holdsSpeechSlot {
+            holdsSpeechSlot = false
+            LocalEngineManager.shared.endSpeechUse(.dictation)
+        }
         audioLevel = 0
         // Esc активен при записи и при распознавании (отмена запроса).
         hotkeys?.setEscapeEnabled(newState.isBusy)
