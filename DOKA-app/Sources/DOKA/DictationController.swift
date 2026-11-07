@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import os
 
 /// Записанная диктовка, готовая к распознаванию.
 struct RecordedDictation: Equatable {
@@ -27,6 +28,10 @@ struct RecordedDictation: Equatable {
 
     /// Речь для гейта тишины: шёпот почти целиком ниже обычного порога.
     var gateSpeechDuration: TimeInterval { quiet ? quietSpeechDuration : speechDuration }
+
+    /// Запасной путь гейта — речь по тихому порогу. В тихом режиме гейт уже
+    /// считает по нему, поэтому 0.
+    var gateFallbackSpeechDuration: TimeInterval { quiet ? 0 : quietSpeechDuration }
 
     /// Речь для статистики скорости и истории. У шёпота её нет: время выше
     /// тихого порога — лишь доля реального шёпота, и «Скорость речи» на
@@ -102,6 +107,8 @@ final class DictationController: ObservableObject {
     private var activeLipTake: LipTake?
     /// Диктовка держит аренду `.dictation` слота локальной модели.
     private var holdsSpeechSlot = false
+    /// Журнал гейта тишины — с открытыми числами (NSLog в выпускной сборке скрыт).
+    private static let gateLog = Logger(subsystem: "com.pitenin.doka", category: "gate")
 
     /// Откуда запись: только что надиктована или взята из слота повтора.
     private enum DictationSource {
@@ -358,9 +365,16 @@ final class DictationController: ObservableObject {
                                       timing: result.timing,
                                       lipTake: lipTake)
 
-        switch DictationGate.decide(duration: audio.duration,
-                                    speechDuration: audio.gateSpeechDuration,
-                                    speechGateEnabled: settings.skipSilentRecordings) {
+        let gateDecision = DictationGate.decide(duration: audio.duration,
+                                                speechDuration: audio.gateSpeechDuration,
+                                                fallbackSpeechDuration: audio.gateFallbackSpeechDuration,
+                                                speechGateEnabled: settings.skipSilentRecordings)
+        let inputVolume = MicrophoneVolumeBooster.currentInputVolume()
+        let inputPercent = inputVolume.map { Int(($0 * 100).rounded()) } ?? -1
+        // В системный журнал открыто: NSLog в выпускной сборке там <private>.
+        // Читать: /usr/bin/log show --last 10m --predicate 'subsystem == "com.pitenin.doka"'
+        Self.gateLog.notice("гейт: запись \(audio.duration, format: .fixed(precision: 2), privacy: .public) с, речь −40 \(audio.speechDuration, format: .fixed(precision: 2), privacy: .public) с, речь −48 \(audio.quietSpeechDuration, format: .fixed(precision: 2), privacy: .public) с, тихий режим \(audio.quiet, privacy: .public), вход \(inputPercent, privacy: .public) %, решение \(String(describing: gateDecision), privacy: .public)")
+        switch gateDecision {
         case .tooShort:
             LipCapture.shared.discard(lipTake)
             Self.removeFile(audio.url)
@@ -368,18 +382,23 @@ final class DictationController: ObservableObject {
             return
         case .noSpeech:
             // Ни API, ни история, ни статистика: не платим за тишину и не ловим
-            // галлюцинации Whisper. Лог — для калибровки порога.
-            NSLog("DOKA: гейт тишины — запись %.2f с, речи %.2f с%@, на распознавание не отправлена",
-                  audio.duration, audio.gateSpeechDuration, audio.quiet ? " (тихий режим)" : "")
+            // галлюцинации Whisper. Числа для калибровки — в `gateLog` выше.
+            let message: String
+            switch DictationGate.noSpeechMessage(inputVolume: inputVolume,
+                                                 boostEnabled: settings.micAutoBoost,
+                                                 quiet: audio.quiet) {
+            case .plain: message = L("error.noSpeech")
+            case .lowInput(let percent): message = L("error.noSpeech.lowInput", percent)
+            }
             // Пара «губы + текст» без текста не бывает.
             LipCapture.shared.discard(lipTake)
             if DictationGate.isRetryable(duration: audio.duration) {
                 // Возможно, просто тихий голос: запись можно распознать всё равно.
-                storeFailed(audio.withoutLipTake, message: L("error.noSpeech"), gated: true)
+                storeFailed(audio.withoutLipTake, message: message, gated: true)
             } else {
                 Self.removeFile(audio.url)
             }
-            showError(L("error.noSpeech"), sound: .cancel)
+            showError(message, sound: .cancel)
             return
         case .transcribe:
             break
