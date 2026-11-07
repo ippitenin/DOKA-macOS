@@ -29,11 +29,14 @@ protocol LocalTranscriptionEngine: AnyObject {
 enum LocalEngineError: LocalizedError {
     case modelMissing
     case loadFailed(String)
+    /// Слот держит транскрибация файла с другой моделью (`SpeechSlotPolicy.load`).
+    case slotBusy
 
     var errorDescription: String? {
         switch self {
         case .modelMissing: return L("error.localModelMissing")
         case .loadFailed(let reason): return L("error.localLoadFailed", reason)
+        case .slotBusy: return L("dictation.busy.localFile")
         }
     }
 }
@@ -52,6 +55,13 @@ final class LocalEngineManager {
     /// Идущая загрузка: модель и её задача меняются только вместе.
     private var loading: (model: LocalModel, task: Task<LocalTranscriptionEngine, Error>)?
     private var idleTask: Task<Void, Never>?
+
+    /// Кто сейчас пользуется речевым движком (и диаризатором). Под арендой
+    /// слот не выгружается ни таймером простоя, ни сменой сервиса, а чужая
+    /// модель не грузится поверх файла — см. `SpeechSlotPolicy`.
+    private var speechLease = SpeechSlotLease()
+    /// Модель ушедшего сервиса, выгрузку которой отложили до конца аренды.
+    private var pendingServiceUnload: LocalModel?
 
     /// Диаризатор живёт РЯДОМ с речевым движком, а не вместо него: разделение
     /// по спикерам идёт следом за распознаванием того же файла.
@@ -87,7 +97,17 @@ final class LocalEngineManager {
             touch()
             return shared
         }
-        unloadNow()
+        // Оставшиеся решения — `.load` или `.refuse` (`.reuse` и
+        // `.awaitLoading` разобраны выше). Отказ — слот держит файл с другой
+        // моделью: её выгрузка оборвала бы файл посреди работы.
+        let plan = SpeechSlotPolicy.load(requested: model, loaded: engine?.model,
+                                         loading: loading?.model, lease: speechLease)
+        guard case let .load(dropSpeech, dropDiarizer) = plan else {
+            throw LocalEngineError.slotBusy
+        }
+        if dropSpeech { unloadSpeechEngine() }
+        // Под арендой файла диаризатор нужен ему: модель грузится рядом.
+        if dropDiarizer { unloadDiarizer() }
         guard LocalModelStore.shared.isDownloaded(model) else {
             throw LocalEngineError.modelMissing
         }
@@ -292,6 +312,12 @@ final class LocalEngineManager {
     /// Продлевает окно простоя; вызывать после каждого использования движка.
     func touch() {
         idleTask?.cancel()
+        // Под арендой окно простоя не взводится: его перезапустит
+        // `endSpeechUse`. Иначе файл дольше 5 минут терял бы модель.
+        guard SpeechSlotPolicy.idleUnloadAllowed(lease: speechLease) else {
+            idleTask = nil
+            return
+        }
         idleTask = Task { [weak self] in
             try? await Task.sleep(for: Self.idleUnloadDelay)
             guard !Task.isCancelled else { return }
@@ -300,13 +326,56 @@ final class LocalEngineManager {
     }
 
     func unloadNow() {
+        unloadSpeechEngine()
+        unloadDiarizer()
+    }
+
+    private func unloadSpeechEngine() {
         idleTask?.cancel()
         idleTask = nil
         loading?.task.cancel()
         loading = nil
         engine?.unload()
         engine = nil
-        unloadDiarizer()
+    }
+
+    // MARK: - Аренда слота
+
+    /// Взять слот в работу. Парный `endSpeechUse(_:)` обязателен.
+    func beginSpeechUse(_ holder: SpeechSlotHolder) {
+        speechLease.begin(holder)
+        idleTask?.cancel()
+        idleTask = nil
+    }
+
+    /// Отдать слот. С последней арендой — отложенная выгрузка ушедшего
+    /// сервиса и обычное окно простоя.
+    func endSpeechUse(_ holder: SpeechSlotHolder) {
+        speechLease.end(holder)
+        guard !speechLease.isHeld else { return }
+        if let pending = pendingServiceUnload {
+            pendingServiceUnload = nil
+            unloadIfCurrent(pending)
+        }
+        touch()
+    }
+
+    func isSpeechSlotHeld(by holder: SpeechSlotHolder) -> Bool {
+        speechLease.isHeld(by: holder)
+    }
+
+    var speechSlotLease: SpeechSlotLease { speechLease }
+
+    /// Смена сервиса распознавания: модель ушедшего локального сервиса
+    /// выгружается сразу (~2 ГБ ОЗУ), а если слот в работе — после неё.
+    /// Удаление модели идёт мимо, через `unloadIfCurrent`: это явное действие.
+    func serviceChanged(from old: LocalModel?, to new: LocalModel?) {
+        if pendingServiceUnload == new { pendingServiceUnload = nil }
+        guard let old, old != new else { return }
+        switch SpeechSlotPolicy.serviceSwitchUnload(lease: speechLease) {
+        case .now: unloadIfCurrent(old)
+        case .deferred: pendingServiceUnload = old
+        }
     }
 
     /// Возьмёт ли `engine(for: model)` модель, ничего чужого не сбивая: слот

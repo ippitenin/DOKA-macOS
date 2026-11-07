@@ -49,6 +49,7 @@
 "error.recordingStartFailed" = "Could not start recording";
 "error.keychainSaveFailed" = "Could not save the key to the Keychain";
 "error.localModelMissing" = "The model isn’t downloaded — get it in the Service section";
+"dictation.busy.localFile" = "The local model is busy with a file — dictate after transcription or via the cloud";
 "error.noSpeech" = "No speech detected — check your microphone";
 "error.retryUnavailable" = "The recording to retry is no longer available";
 "dictation.retry.copied" = "Text transcribed and copied to the clipboard";
@@ -57,6 +58,7 @@
 "error.localLoadFailed" = "Failed to load the model: %@";
 "transcribe.local.modelMissing" = "The local model isn’t downloaded. Get it in the Service section or choose a network service.";
 "transcribe.busy.analysis" = "AI analysis is running — wait for it to finish or cancel it";
+"transcribe.busy.dictation" = "Dictation on the local model is in progress — start transcription after it";
 "transcribe.local.noAudioTrack" = "The file has no audio track";
 
 /* Transcription providers */

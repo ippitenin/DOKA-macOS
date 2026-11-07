@@ -380,6 +380,15 @@ final class FileTranscriptionController: ObservableObject {
            AnalysisController.shared.isRunning || SpeakerSuggestionController.shared.isRunning {
             return .rejected(L("transcribe.busy.analysis"))
         }
+        // Взаимоисключение с локальной диктовкой: она держит слот модели от
+        // записи до вставки, и локальный файл выгрузил бы её модель (или встал
+        // бы с ней в одну очередь). Обратная проверка — в DictationController.
+        let isLocalRoute: Bool
+        if case .local = route { isLocalRoute = true } else { isLocalRoute = false }
+        if SpeechSlotPolicy.fileStart(isLocalRoute: isLocalRoute,
+                                      lease: LocalEngineManager.shared.speechSlotLease) == .busyDictation {
+            return .rejected(L("transcribe.busy.dictation"))
+        }
         if let message = params.rolesValidationMessage { return .rejected(message) }
         if params.usesLocalDiarization && !LocalModelStore.shared.isDownloaded(.diarizer) {
             Self.requestDiarizerModel()
@@ -423,7 +432,14 @@ final class FileTranscriptionController: ObservableObject {
         runningRecordID = recordID
         let useAsync = params.isBuiltin
         let store = store
+        // Аренда слота — синхронно, до задачи: между `start` и первым тактом
+        // задачи диктовка уже не проскочит. Снимается, когда задача ДОРАБОТАЛА,
+        // а не по «Отмене»: Parakeet досчитывает файл до конца, и всё это время
+        // модель занята.
+        let leasesSpeech = isLocalRoute
+        if leasesSpeech { LocalEngineManager.shared.beginSpeechUse(.fileSpeech) }
         task = Task { [weak self] in
+            defer { if leasesSpeech { LocalEngineManager.shared.endSpeechUse(.fileSpeech) } }
             do {
                 let client = FileTranscriptionClient()
                 let result: TranscriptResult
@@ -616,6 +632,11 @@ final class FileTranscriptionController: ObservableObject {
     /// тишина или сбой моделей не должны обнулять готовую расшифровку —
     /// она просто останется без спикеров (причина уходит в лог).
     private func diarizeSpans(wavURL: URL, numSpeakers: Int?) async -> [SpeakerSpan]? {
+        // Аренда на шаг диаризации: смена сервиса, таймер простоя и загрузка
+        // речевой модели для диктовки не выгружают диаризатор посреди работы.
+        let engines = LocalEngineManager.shared
+        engines.beginSpeechUse(.fileDiarization)
+        defer { engines.endSpeechUse(.fileDiarization) }
         do {
             let diarizer = try await LocalEngineManager.shared.diarizer()
             guard !Task.isCancelled else { return nil }
