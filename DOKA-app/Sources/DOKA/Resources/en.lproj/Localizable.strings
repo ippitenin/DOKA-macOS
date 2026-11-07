@@ -51,6 +51,7 @@
 "error.localModelMissing" = "The model isn’t downloaded — get it in the Service section";
 "dictation.busy.localFile" = "The local model is busy with a file — dictate after transcription or via the cloud";
 "error.noSpeech" = "No speech detected — check your microphone";
+"error.noSpeech.lowInput" = "The microphone is quiet (input volume %d%%) — turn on “Automatically increase microphone volume” in Sound";
 "error.retryUnavailable" = "The recording to retry is no longer available";
 "dictation.retry.copied" = "Text transcribed and copied to the clipboard";
 "quietMode.on" = "Quiet mode on — you can dictate in a whisper";

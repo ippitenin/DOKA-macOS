@@ -30,6 +30,14 @@ final class MicrophoneVolumeBooster {
         _ = Self.writeVolume(saved.volume, device: saved.device, address: address)
     }
 
+    /// Текущая системная громкость входа устройства по умолчанию (0…1); nil —
+    /// у устройства нет управляемой громкости. Для подсказки «микрофон тихий».
+    static func currentInputVolume() -> Float? {
+        guard let device = defaultInputDevice(),
+              let address = volumeAddress(for: device) else { return nil }
+        return readVolume(device: device, address: address)
+    }
+
     // MARK: - CoreAudio HAL
 
     private static func defaultInputDevice() -> AudioDeviceID? {
