@@ -152,6 +152,8 @@ struct ReleaseNotesSheet: View {
         }
         .padding(22)
         .frame(width: 460)
+        // Фирменный фон, как у остальных шитов (системный — чёрная плита).
+        .background(AppBackground().ignoresSafeArea())
     }
 }
 
