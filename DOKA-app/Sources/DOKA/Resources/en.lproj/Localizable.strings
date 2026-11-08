@@ -945,6 +945,10 @@
 "agent.activity" = "Activity";
 "agent.activity.empty" = "No requests yet.";
 "agent.activity.clear" = "Clear";
+"agent.activity.showMore" = "Show %d more";
+"agent.activity.collapse" = "Show less";
+"agent.activity.footer.kept" = "The last %d requests are kept until DOKA restarts.";
+"agent.activity.footer.overflow" = "Showing the last %1$d of %2$d since DOKA started — older ones are dropped.";
 "agent.activity.done" = "done";
 "agent.activity.denied" = "no permission";
 "agent.activity.failed" = "error";

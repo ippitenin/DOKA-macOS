@@ -945,6 +945,10 @@
 "agent.activity" = "Журнал обращений";
 "agent.activity.empty" = "Обращений пока не было.";
 "agent.activity.clear" = "Очистить";
+"agent.activity.showMore" = "Показать ещё %d";
+"agent.activity.collapse" = "Свернуть";
+"agent.activity.footer.kept" = "Хранятся последние %d обращений, до перезапуска DOKA.";
+"agent.activity.footer.overflow" = "Показаны последние %1$d из %2$d с запуска DOKA — старые вытесняются.";
 "agent.activity.done" = "выполнено";
 "agent.activity.denied" = "нет разрешения";
 "agent.activity.failed" = "ошибка";
