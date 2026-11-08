@@ -867,3 +867,30 @@
 "analysis.templates.import.notTemplate" = "это не шаблон анализа";
 "analysis.templates.import.unreadable" = "файл не читается";
 "analysis.templates.export" = "Экспортировать…";
+
+/* Автообновление и «О DOKA» */
+"menu.checkUpdates" = "Проверить обновления…";
+"menu.installUpdate" = "Обновить DOKA до %@…";
+"update.banner.title" = "Доступна DOKA %@";
+"update.banner.waiting" = "Обновится, когда DOKA закончит работу";
+"update.banner.downloading" = "Скачиваю обновление…";
+"update.banner.installing" = "Перезапуск…";
+"update.banner.hide" = "Скрыть";
+"update.whatsNew" = "Что нового";
+"update.install" = "Обновить";
+"update.later" = "Позже";
+"about.title" = "О DOKA";
+"about.version" = "Версия %@ (%@)";
+"about.tagline" = "Голосовая диктовка для Mac";
+"about.status.upToDate" = "Установлена последняя версия";
+"about.status.checking" = "Проверяю обновления…";
+"about.status.failed" = "Не удалось проверить обновления";
+"about.status.checkedAt" = "Проверено: %@";
+"about.checkNow" = "Проверить обновления";
+"about.updates" = "Обновления";
+"about.autoCheck" = "Проверять автоматически";
+"about.autoDownload" = "Скачивать в фоне";
+"about.autoDownload.help" = "Новая версия скачивается заранее, и обновление занимает пару секунд. Если просто выйти из DOKA, скачанное обновление установится само.";
+"about.source" = "Исходный код · GPL-3.0";
+"about.releases" = "Новые версии на GitHub";
+"about.selfBuild.footer" = "Эта копия собрана из исходников и сама не обновляется. Официальная сборка с GitHub обновляется автоматически.";

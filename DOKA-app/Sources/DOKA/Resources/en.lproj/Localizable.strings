@@ -867,3 +867,30 @@
 "analysis.templates.import.notTemplate" = "not an analysis template";
 "analysis.templates.import.unreadable" = "the file can’t be read";
 "analysis.templates.export" = "Export…";
+
+/* Auto-update and About DOKA */
+"menu.checkUpdates" = "Check for Updates…";
+"menu.installUpdate" = "Update DOKA to %@…";
+"update.banner.title" = "DOKA %@ is available";
+"update.banner.waiting" = "Will update once DOKA is idle";
+"update.banner.downloading" = "Downloading the update…";
+"update.banner.installing" = "Restarting…";
+"update.banner.hide" = "Hide";
+"update.whatsNew" = "What’s new";
+"update.install" = "Update";
+"update.later" = "Later";
+"about.title" = "About DOKA";
+"about.version" = "Version %@ (%@)";
+"about.tagline" = "Voice dictation for Mac";
+"about.status.upToDate" = "You’re up to date";
+"about.status.checking" = "Checking for updates…";
+"about.status.failed" = "Couldn’t check for updates";
+"about.status.checkedAt" = "Checked: %@";
+"about.checkNow" = "Check for Updates";
+"about.updates" = "Updates";
+"about.autoCheck" = "Check automatically";
+"about.autoDownload" = "Download in the background";
+"about.autoDownload.help" = "New versions are downloaded in advance, so updating takes a couple of seconds. If you simply quit DOKA, a downloaded update installs on its own.";
+"about.source" = "Source code · GPL-3.0";
+"about.releases" = "New versions on GitHub";
+"about.selfBuild.footer" = "This copy was built from source and doesn’t update itself. The official build from GitHub updates automatically.";

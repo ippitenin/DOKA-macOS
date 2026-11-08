@@ -229,6 +229,8 @@ struct SettingsRow<Control: View>: View {
 /// («Расширенные» в «Общих», «Системный словарь» в «Словаре»).
 struct SettingsLinkRow: View {
     let title: String
+    /// Значение серым перед шевроном (версия у «О DOKA»); nil — без него.
+    var value: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -236,6 +238,10 @@ struct SettingsLinkRow: View {
             HStack(spacing: 12) {
                 Text(title)
                 Spacer(minLength: 16)
+                if let value {
+                    Text(value)
+                        .foregroundStyle(.secondary)
+                }
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)

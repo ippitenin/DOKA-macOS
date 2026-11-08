@@ -3,6 +3,8 @@
 .DS_Store
 *.xcodeproj
 *.dmg
+# Архив автообновления DOKA-<версия>.zip (build.sh --dmg; публикует release.sh)
+/DOKA-*.zip
 .claude/
 
 # Локальные материалы, не входящие в публичный репозиторий

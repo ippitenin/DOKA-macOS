@@ -24,7 +24,10 @@ scripts/build-shaders.sh   # Metal shaders of the recording panel (build.sh runs
 [`scripts/make-dev-cert.md`](DOKA-app/scripts/make-dev-cert.md) (or with a Developer ID
 certificate, if your keychain has one). Note that re-signing
 resets macOS TCC permissions, so you will be re-granting microphone and accessibility
-access fairly often while developing.
+access fairly often while developing. Builds that are not signed with Developer ID ship
+without the update feed (`build.sh` strips `SUFeedURL`), so your own build never replaces
+itself with the official one; the update flow itself is tested as described in
+[`Update/CLAUDE.md`](DOKA-app/Sources/DOKA/Update/CLAUDE.md).
 
 Architecture, invariants and the reasoning behind the odd-looking bits are documented in
 [`CLAUDE.md`](CLAUDE.md) and in the per-area `CLAUDE.md` files next to the code (the root file

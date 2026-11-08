@@ -11,23 +11,29 @@ struct GeneralSectionView: View {
     @State private var isReverting = false
     /// Подтверждение удаления всего кэша аудио истории.
     @State private var confirmClearAudio = false
-    /// Открыта ли под-страница «Расширенные» (drill-in, как в SuperWhisper).
-    @State private var showAdvanced = false
+    /// Открытая под-страница (drill-in, как в SuperWhisper); nil — сами «Общие».
+    @State private var subpage: GeneralSubpage?
 
     var body: some View {
-        DrillIn(isPresented: showAdvanced) {
+        DrillIn(isPresented: subpage != nil) {
             generalForm
         } detail: {
-            AdvancedSettingsView { showAdvanced = false }
+            switch subpage {
+            case .about:
+                AboutView { subpage = nil }
+            case .advanced, .none:
+                AdvancedSettingsView { subpage = nil }
+            }
         }
-        // Переход «сразу в Расширенные» извне (плашка библиотеки о сроке
-        // хранения): секция пересоздаётся при каждом показе, запрос забираем
-        // тут — без сдвига, секция и так появляется своей анимацией.
+        // Переход «сразу на под-страницу» извне (плашка библиотеки о сроке
+        // хранения — «Расширенные», меню-бар — «О DOKA»): секция пересоздаётся
+        // при каждом показе, запрос забираем тут — без сдвига, секция и так
+        // появляется своей анимацией.
         .onAppear {
-            guard WindowManager.shared.consumeAdvancedRequest() else { return }
+            guard let requested = WindowManager.shared.consumeGeneralSubpageRequest() else { return }
             var instant = Transaction()
             instant.disablesAnimations = true
-            withTransaction(instant) { showAdvanced = true }
+            withTransaction(instant) { subpage = requested }
         }
     }
 
@@ -110,9 +116,13 @@ struct GeneralSectionView: View {
                 Text(L("general.clearAudio.confirm.message"))
             }
 
-            // Плашка-переход в «Расширенные» (Dock, окно при запуске, папка данных).
+            // Переходы на под-страницы: «О DOKA» (версия и обновления) и
+            // «Расширенные» (Dock, окно при запуске, папка данных).
             SettingsCard {
-                SettingsLinkRow(title: L("general.advanced")) { showAdvanced = true }
+                SettingsLinkRow(title: L("about.title"),
+                                value: AppVersion.short) { subpage = .about }
+                CardDivider()
+                SettingsLinkRow(title: L("general.advanced")) { subpage = .advanced }
             }
         }
         .onChange(of: settings.appLanguage) { oldValue, _ in
@@ -148,6 +158,12 @@ struct GeneralSectionView: View {
         isReverting = true
         settings.appLanguage = previous
     }
+}
+
+/// Под-страницы «Общих» (drill-in).
+enum GeneralSubpage {
+    case advanced
+    case about
 }
 
 /// Выбор стиля панели записи карточками-превью.

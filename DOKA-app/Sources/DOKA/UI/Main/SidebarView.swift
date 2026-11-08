@@ -1,12 +1,26 @@
 import SwiftUI
 
-/// Сайдбар главного окна: шапка с логотипом и список секций.
-/// Фон даёт стеклянная плашка в MainWindowView, ширина фиксированная.
+/// Сайдбар главного окна: прокручиваемый список секций и плашка обновления,
+/// приклеенная к нижней кромке. Фон даёт стеклянная плашка в MainWindowView,
+/// ширина фиксированная.
+///
+/// Край прокрутки — только мягким фейдом, резкой обрезки нет: маска
+/// включается у того края, за которым действительно есть контент
+/// (`onScrollGeometryChange`), иначе в покое крайний пункт был бы притушен.
+/// Системный `scrollEdgeEffectStyle` здесь не годится: без safe-area-бара он
+/// не рисуется (та же ловушка, что у ленты «Истории», `UI/Main/CLAUDE.md`),
+/// а на macOS 15 его нет вовсе.
 struct SidebarView: View {
     @ObservedObject var state: MainWindowState
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var updates = UpdateController.shared
     @Namespace private var selectionNS
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Есть ли контент за верхним / нижним краем прокрутки.
+    @State private var overflow = EdgeOverflow()
+
+    /// Высота фейда у края прокрутки.
+    private static let fade: CGFloat = 22
 
     private var groups: [(titleKey: String?, sections: [MainSection])] {
         MainSection.sidebarGroups(lipsEnabled: settings.lipsExperiment)
@@ -15,37 +29,89 @@ struct SidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Зона трафик-лайтов: с unified-тулбаром кнопки окна сидят
-            // по центру 52-пунктового тайтлбара, внутри плашки.
+            // по центру 52-пунктового тайтлбара, внутри плашки. Неподвижна:
+            // список уезжает под неё через фейд.
             Spacer().frame(height: 54)
 
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let titleKey = group.titleKey {
-                            Text(L(titleKey))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 12)
-                                .padding(.bottom, 3)
-                        }
-                        ForEach(group.sections) { section in
-                            SidebarItemView(
-                                section: section,
-                                isSelected: state.section == section,
-                                namespace: selectionNS
-                            ) {
-                                withAnimation(reduceMotion ? nil : DS.Anim.section) {
-                                    state.section = section
-                                }
+            ScrollView(.vertical) {
+                sectionList
+                    .padding(.bottom, 10)
+            }
+            // `.never`, а не `.hidden`: иначе при прокрутке колесом система
+            // всё равно показывает overlay-скроллер поверх пунктов.
+            .scrollIndicators(.never)
+            .onScrollGeometryChange(for: EdgeOverflow.self) { geo in
+                EdgeOverflow(geometry: geo)
+            } action: { _, new in
+                overflow = new
+            }
+            .mask { fadeMask }
+
+            if let banner = updates.banner {
+                UpdateBanner(model: banner, updates: updates)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
+                    .transition(reduceMotion ? .opacity
+                                : .opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(reduceMotion ? nil : DS.Anim.section, value: updates.banner)
+    }
+
+    /// Маска прокрутки: прозрачный спад у края, за которым есть контент.
+    private var fadeMask: some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                .frame(height: overflow.top ? Self.fade : 0)
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: overflow.bottom ? Self.fade : 0)
+        }
+        .animation(DS.Anim.control, value: overflow)
+    }
+
+    private var sectionList: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                VStack(alignment: .leading, spacing: 2) {
+                    if let titleKey = group.titleKey {
+                        Text(L(titleKey))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 12)
+                            .padding(.bottom, 3)
+                    }
+                    ForEach(group.sections) { section in
+                        SidebarItemView(
+                            section: section,
+                            isSelected: state.section == section,
+                            namespace: selectionNS
+                        ) {
+                            withAnimation(reduceMotion ? nil : DS.Anim.section) {
+                                state.section = section
                             }
                         }
                     }
                 }
             }
-            .padding(.horizontal, 10)
-
-            Spacer()
         }
+        .padding(.horizontal, 10)
+    }
+}
+
+/// Есть ли контент за краями прокрутки (порог — полпункта, чтобы дрожание
+/// при упругой прокрутке не мигало фейдом).
+struct EdgeOverflow: Equatable {
+    var top = false
+    var bottom = false
+
+    init() {}
+
+    init(geometry geo: ScrollGeometry) {
+        let offset = geo.contentOffset.y + geo.contentInsets.top
+        top = offset > 0.5
+        bottom = geo.contentSize.height - offset - geo.containerSize.height > 0.5
     }
 }
 

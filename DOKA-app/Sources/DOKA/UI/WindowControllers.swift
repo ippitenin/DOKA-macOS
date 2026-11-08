@@ -98,19 +98,25 @@ final class WindowManager {
         showMain(section: .library)
     }
 
-    /// Запрос открыть «Общие → Расширенные»: под-страница — drill-in на
-    /// `@State` секции «Общие», поэтому запрос забирает сама секция при
-    /// появлении (`consumeAdvancedRequest`).
-    private var advancedRequested = false
+    /// Запрос открыть под-страницу «Общих» («Расширенные», «О DOKA»):
+    /// под-страница — drill-in на `@State` секции «Общие», поэтому запрос
+    /// забирает сама секция при появлении (`consumeGeneralSubpageRequest`).
+    private var subpageRequested: GeneralSubpage?
 
     func showAdvancedSettings() {
-        advancedRequested = true
+        subpageRequested = .advanced
         showMain(section: .general)
     }
 
-    func consumeAdvancedRequest() -> Bool {
-        defer { advancedRequested = false }
-        return advancedRequested
+    /// «О DOKA» из меню-бара («Проверить обновления…»).
+    func showAbout() {
+        subpageRequested = .about
+        showMain(section: .general)
+    }
+
+    func consumeGeneralSubpageRequest() -> GeneralSubpage? {
+        defer { subpageRequested = nil }
+        return subpageRequested
     }
 
     /// Окно «Тренировка». Каждый показ закрытого окна — новый сеанс: свежая

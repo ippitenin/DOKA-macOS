@@ -39,5 +39,18 @@
 	<false/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Ilya Pitenin. GPL-3.0 — https://github.com/ippitenin/DOKA-macOS</string>
+	<!-- Автообновление (Sparkle, см. Sources/DOKA/Update/CLAUDE.md). Лента — вложение
+	     последнего релиза. У сборок без Developer ID build.sh вырезает SUFeedURL. -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/ippitenin/DOKA-macOS/releases/latest/download/appcast.xml</string>
+	<!-- Публичная половина ключа EdDSA; секретная — в связке ключей сопровождающего. -->
+	<key>SUPublicEDKey</key>
+	<string>R/cT2Taopp5LUR8Rjz2m1LbQB2um8FWmw3x2KvtDaDQ=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
