@@ -7,6 +7,7 @@ import SwiftUI
 struct AboutView: View {
     @ObservedObject var updates = UpdateController.shared
     let onBack: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -59,23 +60,31 @@ struct AboutView: View {
 
     // MARK: - Обновления
 
+    /// Карточка статуса. Раскладка НЕ меняется ни в одном состоянии: две
+    /// строки текста всегда, иконка в рамке фиксированного размера, кнопки в
+    /// общем слоте постоянной ширины — нажатие «Проверить обновления» только
+    /// перекрёстно проявляет тексты, без скачков высоты и ширины (HIG; прежняя
+    /// версия теряла подзаголовок на время проверки и прыгала дважды).
     private var statusCard: some View {
         SettingsCard {
             HStack(spacing: 12) {
                 statusIcon
+                    .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusTitle)
-                    if let subtitle = statusSubtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                        .contentTransition(.opacity)
+                    Text(statusSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
                 }
                 Spacer(minLength: 16)
                 statusAction
             }
             .padding(.horizontal, DS.Spacing.cardPadding)
             .padding(.vertical, 11)
+            .animation(reduceMotion ? nil : DS.Anim.section, value: updates.state)
         }
     }
 
@@ -83,22 +92,27 @@ struct AboutView: View {
     private var statusIcon: some View {
         switch updates.state {
         case .checking, .waitingForIdle, .downloading, .installing:
-            ProgressView().controlSize(.small).frame(width: 22)
+            ProgressView().controlSize(.small)
+                .transition(.opacity)
         case .ready:
             Image(systemName: "arrow.down.circle.fill")
-                .font(.title3).foregroundStyle(DS.accent).frame(width: 22)
+                .font(.title3).foregroundStyle(DS.accent)
+                .transition(.opacity)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.title3).foregroundStyle(.orange).frame(width: 22)
-        case .idle, .upToDate:
+                .font(.title3).foregroundStyle(.orange)
+                .transition(.opacity)
+        case .idle, .upToDate, .updated:
             Image(systemName: "checkmark.circle.fill")
-                .font(.title3).foregroundStyle(.green).frame(width: 22)
+                .font(.title3).foregroundStyle(.green)
+                .transition(.opacity)
         }
     }
 
     private var statusTitle: String {
         switch updates.state {
         case .idle, .upToDate: return L("about.status.upToDate")
+        case .updated: return L("update.banner.updated")
         case .checking: return L("about.status.checking")
         case .ready(let info): return L("update.banner.title", info.version)
         case .waitingForIdle: return L("update.banner.waiting")
@@ -108,33 +122,44 @@ struct AboutView: View {
         }
     }
 
-    private var statusSubtitle: String? {
+    /// Вторая строка есть у каждого состояния — иначе карточка меняет высоту.
+    private var statusSubtitle: String {
         switch updates.state {
         case .failed(let message):
             return message
+        case .checking, .waitingForIdle, .downloading, .installing:
+            return L("about.status.checkingHint")
+        case .ready, .updated:
+            return L("update.installedVersion", AppVersion.short)
         case .idle, .upToDate:
-            guard let date = updates.lastCheck else { return nil }
+            guard let date = updates.lastCheck else { return L("update.installedVersion", AppVersion.short) }
             return L("about.status.checkedAt", Self.relative(date))
-        default:
-            return nil
         }
     }
 
-    @ViewBuilder
+    /// Обе кнопки лежат в одном слоте, видна одна: ширина слота постоянна.
     private var statusAction: some View {
-        switch updates.state {
-        case .ready:
-            Button(L("update.install")) { updates.installNow() }
-                .dsProminentButton()
-                .controlSize(.small)
-        case .waitingForIdle, .downloading, .installing:
-            EmptyView()
-        default:
+        let isReady: Bool = { if case .ready = updates.state { return true }; return false }()
+        let isBusy: Bool = {
+            switch updates.state {
+            case .checking, .waitingForIdle, .downloading, .installing: return true
+            default: return false
+            }
+        }()
+        return ZStack(alignment: .trailing) {
             Button(L("about.checkNow")) { updates.checkNow() }
                 .dsGlassButton()
-                .controlSize(.small)
                 .disabled(!updates.canCheck)
+                .opacity(isReady ? 0 : 1)
+                .allowsHitTesting(!isReady)
+            Button(L("update.install")) { updates.installNow() }
+                .dsProminentButton()
+                .opacity(isReady ? 1 : 0)
+                .allowsHitTesting(isReady)
         }
+        .controlSize(.small)
+        // Во время проверки и установки кнопка видна, но неактивна — не исчезает.
+        .disabled(isBusy)
     }
 
     private var settingsCard: some View {
@@ -171,6 +196,10 @@ struct AboutView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         formatter.doesRelativeDateFormatting = true
-        return formatter.string(from: date)
+        // «Сегодня, 18:30» после двоеточия — со строчной: «Проверено: сегодня, 18:30».
+        let text = formatter.string(from: date)
+        guard let first = text.first, first.isUppercase,
+              formatter.locale.language.languageCode?.identifier == "ru" else { return text }
+        return first.lowercased() + text.dropFirst()
     }
 }

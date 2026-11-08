@@ -86,6 +86,22 @@ final class WindowManager {
 
     func showOnboarding() { showMain(section: .home) }
 
+    /// Установка обновления: главное окно плавно гаснет и уходит, как у
+    /// Telegram перед окном установки. Прозрачность возвращается сразу после
+    /// `orderOut` — следующий показ (если установка сорвётся) будет обычным.
+    func hideMainForUpdate() {
+        guard let window = mainWindow, window.isVisible else { return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25 * PanelFade.durationScale
+            window.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated {
+                window.orderOut(nil)
+                window.alphaValue = 1
+            }
+        })
+    }
+
     /// Библиотека: с открытой записью либо на списке. Единая точка «открыть
     /// запись» — для полосы «Недавние», кнопки «Открыть в библиотеке» и
     /// (в следующих фазах) уведомлений; см. `LibraryNavigator`.

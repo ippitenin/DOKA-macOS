@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Sparkle
+import SwiftUI
 
 /// Автообновление: владелец `SPUUpdater`, единственный источник состояния
 /// обновления для интерфейса (плашка сайдбара, «О DOKA», меню-бар).
@@ -23,6 +24,9 @@ final class UpdateController: NSObject, ObservableObject {
     /// Версия, скрытая крестиком плашки в этом запуске.
     @Published private(set) var dismissedVersion: String?
     @Published private(set) var lastCheck: Date?
+    /// Полоса окна установки (0…1). Двигается плавно (`withAnimation`), чтобы
+    /// установка не была мгновенным «щелчком» — как в Telegram.
+    @Published private(set) var installProgress: Double = 0
 
     /// Обновлятор работает: в бандле есть лента (`SUFeedURL`). Её нет у
     /// сборок без Developer ID — `build.sh` вырезает ключ, чтобы самосборка
@@ -46,6 +50,12 @@ final class UpdateController: NSObject, ObservableObject {
     private var expectedLength: UInt64 = 0
     private var receivedLength: UInt64 = 0
     private var idleTimer: Timer?
+    /// Начало ручной проверки — для минимальной длительности «Проверяю…».
+    private var checkStartedAt: Date?
+
+    /// Сколько ползёт полоса установки, и пауза на «100 %» перед перезапуском.
+    private static let installDuration: TimeInterval = 2.8
+    private static let installSettle: TimeInterval = 0.35
 
     /// Переопределение ленты для стенда обновления:
     /// `defaults write com.pitenin.doka DOKAUpdateFeedOverride <URL>`.
@@ -65,6 +75,14 @@ final class UpdateController: NSObject, ObservableObject {
         guard isAvailable else {
             NSLog("[Update] лента не задана (сборка не от Developer ID) — автообновление выключено")
             return
+        }
+        // Первый запуск после установки через «Обновить» — «DOKA обновлена».
+        let defaults = UserDefaults.standard
+        let saved = defaults.data(forKey: UpdateHandoff.key)
+            .flatMap { try? JSONDecoder().decode(UpdateHandoff.Saved.self, from: $0) }
+        defaults.removeObject(forKey: UpdateHandoff.key)
+        if let info = UpdateHandoff.resolve(saved: saved, currentVersion: AppVersion.short) {
+            state = .updated(info)
         }
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main,
                                  userDriver: userDriver, delegate: self)
@@ -111,6 +129,7 @@ final class UpdateController: NSObject, ObservableObject {
 
     func checkNow() {
         guard let updater, canCheck else { return }
+        checkStartedAt = Date()
         // Найденная фоном версия уже стоит в очереди: повторная проверка
         // покажет её же (Sparkle вернёт стадию «скачано/ставится»).
         updater.checkForUpdates()
@@ -123,7 +142,7 @@ final class UpdateController: NSObject, ObservableObject {
 
     /// «Обновить»: ставить, как только DOKA свободна.
     func installNow() {
-        guard let info = state.info else { return }
+        guard case .ready(let info) = state else { return }
         if let url = info.infoURL {
             // Информационное обновление: ставить нечего, ведём на страницу релиза.
             NSWorkspace.shared.open(url)
@@ -138,20 +157,71 @@ final class UpdateController: NSObject, ObservableObject {
         }
     }
 
+    /// Установка «как в Telegram»: главное окно гаснет, появляется окно
+    /// «Обновление DOKA» с плавно ползущей полосой, и только потом DOKA
+    /// перезапускается новой. Без фонового скачивания полоса сначала идёт
+    /// по настоящей доле скачивания (`downloading`), затем доползает до конца.
     private func performInstall() {
         guard let info = state.info else { return }
-        if let immediateInstall {
-            state = .installing(info)
-            self.immediateInstall = nil
-            immediateInstall()
-        } else if let readyToRelaunch {
-            state = .installing(info)
-            self.readyToRelaunch = nil
-            readyToRelaunch(.install)
+        if immediateInstall != nil || readyToRelaunch != nil {
+            presentInstallWindow(info)
+            runInstall(info, from: 0)
         } else if let pendingChoice {
+            presentInstallWindow(info)
             state = .downloading(info, fraction: nil)
             self.pendingChoice = nil
             pendingChoice(.install)
+        }
+    }
+
+    private func presentInstallWindow(_ info: UpdateInfo) {
+        // Что ставили — новая DOKA покажет «DOKA обновлена · Что нового».
+        let saved = UpdateHandoff.Saved(version: info.version, notes: info.notes)
+        if let data = try? JSONEncoder().encode(saved) {
+            UserDefaults.standard.set(data, forKey: UpdateHandoff.key)
+        }
+        installProgress = 0
+        WindowManager.shared.hideMainForUpdate()
+        UpdateInstallPanelController.shared.show(updates: self)
+    }
+
+    /// Полоса доползает от `from` до конца, затем — блок Sparkle «поставить
+    /// сейчас»: DOKA завершается, Sparkle меняет бандл и запускает новую.
+    private func runInstall(_ info: UpdateInfo, from start: Double) {
+        state = .installing(info)
+        installProgress = start
+        let duration = Self.installDuration * (1 - start)
+        withAnimation(.easeInOut(duration: duration)) { installProgress = 1 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + Self.installSettle) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, case .installing = self.state else { return }
+                if let immediateInstall = self.immediateInstall {
+                    self.immediateInstall = nil
+                    immediateInstall()
+                } else if let readyToRelaunch = self.readyToRelaunch {
+                    self.readyToRelaunch = nil
+                    readyToRelaunch(.install)
+                }
+            }
+        }
+    }
+
+    /// Установка сорвалась: окно установки прочь, главное окно назад.
+    private func abortInstallWindow() {
+        UserDefaults.standard.removeObject(forKey: UpdateHandoff.key)
+        UpdateInstallPanelController.shared.hide()
+        WindowManager.shared.showMain()
+    }
+
+    /// Итог ручной проверки — не раньше `UpdateTiming.minimumCheck` после
+    /// нажатия: мгновенный ответ дёргал бы карточку «О DOKA» дважды.
+    private func settleCheck(_ apply: @escaping @MainActor () -> Void) {
+        guard let started = checkStartedAt else { return apply() }
+        checkStartedAt = nil
+        let delay = UpdateTiming.remainingDelay(started: started)
+        guard delay > 0 else { return apply() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            MainActor.assumeIsolated { apply() }
         }
     }
 
@@ -192,15 +262,17 @@ final class UpdateController: NSObject, ObservableObject {
         } else {
             pendingChoice = reply
         }
-        state = .ready(info)
+        settleCheck { [weak self] in self?.state = .ready(info) }
     }
 
     func driverNoUpdate(acknowledgement: @escaping () -> Void) {
         userInitiatedCheck = false
-        let now = Date()
-        lastCheck = now
-        state = .upToDate(now)
         acknowledgement()
+        settleCheck { [weak self] in
+            let now = Date()
+            self?.lastCheck = now
+            self?.state = .upToDate(now)
+        }
     }
 
     func driverError(_ error: Error, acknowledgement: @escaping () -> Void) {
@@ -208,8 +280,10 @@ final class UpdateController: NSObject, ObservableObject {
         userInitiatedCheck = false
         installRequested = false
         NSLog("[Update] ошибка: %@", error.localizedDescription)
-        state = shouldShow ? .failed(error.localizedDescription) : .idle
         acknowledgement()
+        if UpdateInstallPanelController.shared.isVisible { abortInstallWindow() }
+        let message = error.localizedDescription
+        settleCheck { [weak self] in self?.state = shouldShow ? .failed(message) : .idle }
     }
 
     func driverDownloadStarted() {
@@ -225,7 +299,9 @@ final class UpdateController: NSObject, ObservableObject {
     func driverReceivedData(_ length: UInt64) {
         receivedLength += length
         guard let info = state.info, expectedLength > 0 else { return }
-        state = .downloading(info, fraction: min(1, Double(receivedLength) / Double(expectedLength)))
+        let fraction = min(1, Double(receivedLength) / Double(expectedLength))
+        state = .downloading(info, fraction: fraction)
+        installProgress = fraction * Self.downloadShare
     }
 
     func driverReadyToRelaunch(reply: @escaping (SPUUserUpdateChoice) -> Void) {
@@ -233,7 +309,12 @@ final class UpdateController: NSObject, ObservableObject {
         // но снова уважаем занятость: за время скачивания могла начаться диктовка.
         readyToRelaunch = reply
         guard let info = state.info else { return }
-        if AppActivity.isBusy {
+        // Окно установки уже на экране (шло скачивание) — полоса доползает
+        // от доли скачивания. Иначе (повторная проверка нашла уже скачанное) —
+        // обычный ход через «Обновить».
+        if UpdateInstallPanelController.shared.isVisible {
+            runInstall(info, from: max(installProgress, Self.downloadShare))
+        } else if AppActivity.isBusy {
             state = .waitingForIdle(info)
             waitForIdle { [weak self] in self?.performInstall() }
         } else {
@@ -241,8 +322,15 @@ final class UpdateController: NSObject, ObservableObject {
         }
     }
 
+    /// Доля полосы окна установки, отданная скачиванию (остальное — установка).
+    private static let downloadShare = 0.6
+
     func driverInstalling() {
-        if let info = state.info { state = .installing(info) }
+        // Наша полоса уже ведёт `installing` — не перебиваем её.
+        guard case .installing = state else {
+            if let info = state.info { state = .installing(info) }
+            return
+        }
     }
 
     /// Sparkle закончил сессию. Итог проверки («последняя версия», ошибка,
@@ -251,6 +339,7 @@ final class UpdateController: NSObject, ObservableObject {
         readyToRelaunch = nil
         switch state {
         case .checking, .downloading, .installing:
+            if UpdateInstallPanelController.shared.isVisible { abortInstallWindow() }
             state = .idle
             installRequested = false
         default:

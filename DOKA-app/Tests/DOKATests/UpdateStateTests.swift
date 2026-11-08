@@ -44,6 +44,34 @@ final class UpdateStateTests: XCTestCase {
         }
     }
 
+    /// Первый запуск после обновления: сообщение без кнопки, скрывается крестиком.
+    func testUpdatedShowsMessageWithoutButton() {
+        let banner = UpdateBannerModel.make(state: .updated(info), dismissedVersion: nil)
+        XCTAssertEqual(banner?.action, UpdateBannerModel.Action.none)
+        XCTAssertEqual(banner?.dismissible, true)
+        XCTAssertNil(UpdateBannerModel.make(state: .updated(info), dismissedVersion: "1.0.4"))
+        XCTAssertEqual(UpdateState.updated(info).info, info)
+    }
+
+    /// «Проверяю…» держится не меньше минимума, долгая проверка не ждёт лишнего.
+    func testCheckMinimumDuration() {
+        let start = Date(timeIntervalSince1970: 1000)
+        XCTAssertEqual(UpdateTiming.remainingDelay(started: start, now: start.addingTimeInterval(0.2),
+                                                   minimum: 1.2), 1.0, accuracy: 0.0001)
+        XCTAssertEqual(UpdateTiming.remainingDelay(started: start, now: start.addingTimeInterval(3),
+                                                   minimum: 1.2), 0)
+    }
+
+    /// «DOKA обновлена» — только если установилась именно записанная версия.
+    func testHandoffShowsOnlyMatchingVersion() {
+        let saved = UpdateHandoff.Saved(version: "1.0.4", notes: "- новое")
+        XCTAssertEqual(UpdateHandoff.resolve(saved: saved, currentVersion: "1.0.4"),
+                       UpdateInfo(version: "1.0.4", notes: "- новое", infoURL: nil))
+        // Установка не дошла — на месте старая версия, сообщать нечего.
+        XCTAssertNil(UpdateHandoff.resolve(saved: saved, currentVersion: "1.0.3"))
+        XCTAssertNil(UpdateHandoff.resolve(saved: nil, currentVersion: "1.0.4"))
+    }
+
     func testBusySnapshot() {
         XCTAssertFalse(AppActivity.Snapshot().isBusy)
         XCTAssertTrue(AppActivity.Snapshot(fileTranscription: true).isBusy)

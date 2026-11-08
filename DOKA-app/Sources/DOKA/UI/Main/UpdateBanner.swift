@@ -9,6 +9,12 @@ struct UpdateBanner: View {
     @ObservedObject var updates: UpdateController
     @State private var showNotes = false
 
+    /// Первый запуск после обновления: «DOKA обновлена» без кнопки.
+    private var isUpdated: Bool {
+        if case .updated = updates.state { return true }
+        return false
+    }
+
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: DS.Radius.badge, style: .continuous)
     }
@@ -19,7 +25,7 @@ struct UpdateBanner: View {
             // версия — в «Что нового» и в «О DOKA».
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("update.banner.available"))
+                    Text(isUpdated ? L("update.banner.updated") : L("update.banner.available"))
                         .font(.callout.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let key = model.statusKey {
@@ -62,6 +68,8 @@ struct UpdateBanner: View {
                 .dsProminentButton()
             case .progress:
                 progressBar
+            case .none:
+                EmptyView()
             }
         }
         .padding(11)
@@ -92,14 +100,22 @@ struct ReleaseNotesSheet: View {
     @ObservedObject var updates: UpdateController
     let onClose: () -> Void
 
+    /// Лист открыт после обновления: что нового в уже установленной версии.
+    private var isUpdated: Bool {
+        if case .updated = updates.state { return true }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 14) {
                 DokaBrandLogo(size: 52)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("update.banner.title", updates.state.info?.version ?? ""))
+                    Text(isUpdated ? L("update.banner.updated")
+                         : L("update.banner.title", updates.state.info?.version ?? ""))
                         .font(.title3.weight(.semibold))
-                    Text(L("update.installedVersion", AppVersion.short))
+                    Text(isUpdated ? L("about.version", AppVersion.short, AppVersion.build)
+                         : L("update.installedVersion", AppVersion.short))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -111,16 +127,22 @@ struct ReleaseNotesSheet: View {
             .frame(maxHeight: 320)
             HStack {
                 Spacer()
-                Button(L("update.later"), action: onClose)
-                    .dsGlassButton()
-                    .keyboardShortcut(.cancelAction)
-                Button(L("update.install")) {
-                    onClose()
-                    updates.installNow()
+                if isUpdated {
+                    Button(L("common.ok"), action: onClose)
+                        .dsProminentButton()
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button(L("update.later"), action: onClose)
+                        .dsGlassButton()
+                        .keyboardShortcut(.cancelAction)
+                    Button(L("update.install")) {
+                        onClose()
+                        updates.installNow()
+                    }
+                    .dsProminentButton()
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(updates.state.info == nil)
                 }
-                .dsProminentButton()
-                .keyboardShortcut(.defaultAction)
-                .disabled(updates.state.info == nil)
             }
             // Системное синее кольцо фокуса на первой кнопке выбивается из дизайна.
             .focusEffectDisabled()

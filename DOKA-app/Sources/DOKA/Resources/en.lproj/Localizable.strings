@@ -875,6 +875,12 @@
 "update.banner.available" = "Update available";
 "update.installedVersion" = "Installed: %@";
 "about.selfBuild" = "This copy was built from source and doesn’t update itself.";
+"about.status.checkingHint" = "Usually takes a couple of seconds";
+"update.panel.title" = "Updating DOKA";
+"update.panel.installing" = "Installing version %@…";
+"update.panel.downloading" = "Downloading the update…";
+"update.panel.relaunch" = "DOKA will reopen on its own";
+"update.banner.updated" = "DOKA has been updated";
 "update.banner.waiting" = "Will update once DOKA is idle";
 "update.banner.downloading" = "Downloading the update…";
 "update.banner.installing" = "Restarting…";

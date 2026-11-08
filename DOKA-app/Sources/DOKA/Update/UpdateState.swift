@@ -31,11 +31,14 @@ enum UpdateState: Equatable {
     case installing(UpdateInfo)
     /// Ошибка, о которой стоит сказать: только после действия пользователя.
     case failed(String)
+    /// Первый запуск после установки через «Обновить»: плашка «DOKA обновлена»
+    /// с «Что нового» (см. `UpdateHandoff`).
+    case updated(UpdateInfo)
 
     /// Версия, о которой идёт речь (для плашки и меню-бара).
     var info: UpdateInfo? {
         switch self {
-        case .ready(let info), .waitingForIdle(let info), .installing(let info):
+        case .ready(let info), .waitingForIdle(let info), .installing(let info), .updated(let info):
             return info
         case .downloading(let info, _):
             return info
@@ -45,14 +48,47 @@ enum UpdateState: Equatable {
     }
 }
 
+/// Сколько ещё держать «Проверяю…» на экране. Локальная или быстрая сеть
+/// отвечает за миллисекунды, и карточка «О DOKA» мигала бы — по HIG
+/// пользователь, нажавший «Проверить», ждёт короткую, но заметную проверку.
+enum UpdateTiming {
+    static let minimumCheck: TimeInterval = 1.2
+
+    static func remainingDelay(started: Date, now: Date = Date(),
+                               minimum: TimeInterval = minimumCheck) -> TimeInterval {
+        max(0, minimum - now.timeIntervalSince(started))
+    }
+}
+
+/// Передача «что ставили» через перезапуск: перед установкой версия и
+/// заметки пишутся в UserDefaults, а новая DOKA на старте показывает
+/// «DOKA обновлена · Что нового». Запись одноразовая.
+enum UpdateHandoff {
+    static let key = "DOKAUpdateHandoff"
+
+    struct Saved: Codable, Equatable {
+        let version: String
+        let notes: String?
+    }
+
+    /// Что показать на этом запуске: nil — ничего (записи нет или установка
+    /// не дошла — версия бандла не та). Запись после вызова удаляют в любом случае.
+    static func resolve(saved: Saved?, currentVersion: String) -> UpdateInfo? {
+        guard let saved, saved.version == currentVersion else { return nil }
+        return UpdateInfo(version: saved.version, notes: saved.notes, infoURL: nil)
+    }
+}
+
 /// Что показывает плашка внизу сайдбара. Чистая функция состояния —
 /// покрыта `UpdateStateTests`.
 struct UpdateBannerModel: Equatable {
     enum Action: Equatable {
         /// Кнопка «Обновить».
         case install
-        /// Идёт работа: спиннер вместо кнопки, нажимать нечего.
+        /// Идёт работа: полоса вместо кнопки, нажимать нечего.
         case progress
+        /// Без кнопки: только сообщение («DOKA обновлена»).
+        case none
     }
 
     let version: String
@@ -80,6 +116,10 @@ struct UpdateBannerModel: Equatable {
         case .installing(let info):
             return UpdateBannerModel(version: info.version, statusKey: "update.banner.installing",
                                      action: .progress, dismissible: false)
+        case .updated(let info):
+            guard info.version != dismissedVersion else { return nil }
+            return UpdateBannerModel(version: info.version, statusKey: nil,
+                                     action: .none, dismissible: true)
         case .idle, .checking, .upToDate, .failed:
             return nil
         }

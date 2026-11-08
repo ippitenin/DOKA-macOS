@@ -875,6 +875,12 @@
 "update.banner.available" = "Доступно обновление";
 "update.installedVersion" = "Установлена %@";
 "about.selfBuild" = "Эта копия собрана из исходников и сама не обновляется.";
+"about.status.checkingHint" = "Обычно занимает пару секунд";
+"update.panel.title" = "Обновление DOKA";
+"update.panel.installing" = "Устанавливаю версию %@…";
+"update.panel.downloading" = "Скачиваю обновление…";
+"update.panel.relaunch" = "DOKA откроется сама";
+"update.banner.updated" = "DOKA обновлена";
 "update.banner.waiting" = "Обновится, когда DOKA закончит работу";
 "update.banner.downloading" = "Скачиваю обновление…";
 "update.banner.installing" = "Перезапуск…";
