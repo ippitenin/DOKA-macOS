@@ -20,9 +20,14 @@ final class AgentActivityLog: ObservableObject {
         let outcome: Outcome
     }
 
-    static let limit = 50
+    nonisolated static let limit = 50
+    /// Сколько строк видно в свёрнутой карточке; остальное — «Показать ещё N».
+    nonisolated static let collapsedCount = 20
 
     @Published private(set) var entries: [Entry] = []
+    /// Обращений с запуска DOKA (или с «Очистить»), включая вытесненные из
+    /// `entries`, — чтобы подпись честно говорила «последние 50 из N».
+    @Published private(set) var totalCount = 0
 
     func add(tool: String, result: AgentToolResult) {
         add(tool: tool, outcome: result.isDenial ? .denied : (result.isError ? .failed : .done))
@@ -30,10 +35,27 @@ final class AgentActivityLog: ObservableObject {
 
     func add(tool: String, outcome: Outcome) {
         entries.insert(Entry(date: Date(), tool: tool, outcome: outcome), at: 0)
+        totalCount += 1
         if entries.count > Self.limit { entries.removeLast(entries.count - Self.limit) }
     }
 
-    func clear() { entries.removeAll() }
+    func clear() {
+        entries.removeAll()
+        totalCount = 0
+    }
+
+    /// Сколько хранимых строк спрятано в свёрнутой карточке.
+    static func hiddenCount(stored: Int, collapsed: Int = collapsedCount) -> Int {
+        max(0, stored - collapsed)
+    }
+
+    /// Подпись карточки: пока ничего не вытеснено — сколько хранится и до
+    /// какого момента; иначе — «последние 50 из N».
+    static func footer(stored: Int, total: Int, limit: Int = limit) -> String {
+        total > stored
+            ? L("agent.activity.footer.overflow", stored, total)
+            : L("agent.activity.footer.kept", limit)
+    }
 }
 
 /// Локальный сервер для ИИ-агентов: живёт, пока включён главный тумблер.

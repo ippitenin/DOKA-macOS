@@ -11,6 +11,9 @@ struct AgentAccessView: View {
     let onBack: () -> Void
 
     @State private var confirmNewToken = false
+    @FocusState private var portFocused: Bool
+    /// Журнал раскрыт целиком (все хранимые 50), иначе — первые 20.
+    @State private var showsAllActivity = false
 
     var body: some View {
         ScrollView {
@@ -29,6 +32,11 @@ struct AgentAccessView: View {
             .padding(.horizontal, DS.Spacing.section)
             .padding(.top, 46)
             .padding(.bottom, 20)
+            // Клик в пустое место снимает фокус с поля порта (macOS сам этого
+            // не делает) — и порт применяется, как по Enter. Приём словаря:
+            // тумблеры и кнопки свои клики получают сами.
+            .contentShape(Rectangle())
+            .onTapGesture { endEditing() }
         }
         .alert(L("agent.token.confirm.title"), isPresented: $confirmNewToken) {
             Button(L("agent.token.confirm.ok"), role: .destructive) { server.regenerateToken() }
@@ -73,13 +81,24 @@ struct AgentAccessView: View {
                 .padding(.vertical, 9)
                 CardDivider()
                 SettingsRow(title: L("agent.port"), help: L("agent.port.help")) {
+                    // Системное поле, как у ключа и адреса в «Сервисе»: в строках
+                    // настроек однострочные поля нативные. Ширина — под пять цифр.
                     TextField("", value: $access.port, format: .number.grouping(.never))
                         .textFieldStyle(.roundedBorder)
+                        .font(.body.monospacedDigit())
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                        .focused($portFocused)
+                        .onSubmit { endEditing() }
+                        .frame(width: 64)
                 }
             }
         }
+    }
+
+    private func endEditing() {
+        guard portFocused else { return }
+        portFocused = false
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     private var statusText: String {
@@ -120,7 +139,9 @@ struct AgentAccessView: View {
                 copyRow(title: L("agent.connect.token"), value: token, shown: masked, secret: true)
                 CardDivider()
                 SettingsRow(title: L("agent.connect.setupFor")) {
-                    SettingsPopup(selection: client, title: \.title)
+                    // Постоянная ширина под самый длинный пункт («Другие
+                    // (Claude Desktop и пр.)»): 180 по умолчанию его обрезали.
+                    SettingsPopup(selection: client, title: \.title, width: 250)
                 }
                 let selected = client.wrappedValue
                 copyRow(title: selected.placeHint,
@@ -171,7 +192,9 @@ struct AgentAccessView: View {
     }
 
     /// `value` уходит в буфер обмена, `shown` — на экран (с замаскированным
-    /// токеном). Выделять текст нельзя: копируется только кнопкой.
+    /// токеном). Выделять текст нельзя: копируется только кнопкой. Значение —
+    /// в плоской плашке во всю ширину строки, как поля ввода DOKA: у всех
+    /// строк одна ширина, а не случайная длина текста.
     private func copyRow(title: String, value: String, shown: String, secret: Bool = false,
                          lines: Int = 3) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -186,6 +209,8 @@ struct AgentAccessView: View {
                 .lineLimit(lines)
                 .truncationMode(.middle)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dsFieldBox(isFocused: false, showsBox: true, multiline: true)
         }
         .padding(.horizontal, DS.Spacing.cardPadding)
         .padding(.vertical, 9)
@@ -208,24 +233,43 @@ struct AgentAccessView: View {
 
     // MARK: - Журнал
 
+    /// Свёрнуто — первые 20, «Показать ещё N» раскрывает остальные хранимые
+    /// (до 50). Обычный `VStack`: строк мало, ленивый стек в карточке не нужен.
+    /// Подпись честно говорит, что хранится и сколько вытеснено.
     private var activityCard: some View {
-        SettingsCard(header: L("agent.activity")) {
-            if log.entries.isEmpty {
+        let entries = log.entries
+        let hidden = AgentActivityLog.hiddenCount(stored: entries.count)
+        let shown = showsAllActivity ? entries : Array(entries.prefix(AgentActivityLog.collapsedCount))
+        return SettingsCard(header: L("agent.activity"),
+                            footer: entries.isEmpty ? nil
+                                : AgentActivityLog.footer(stored: entries.count, total: log.totalCount)) {
+            if entries.isEmpty {
                 Text(L("agent.activity.empty"))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, DS.Spacing.cardPadding)
                     .padding(.vertical, 10)
             } else {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(log.entries) { entry in
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(shown) { entry in
                         activityRow(entry)
                     }
                 }
                 CardDivider()
-                HStack {
-                    Button(L("agent.activity.clear")) { log.clear() }
-                        .dsGlassButton()
+                HStack(spacing: 12) {
+                    Button(L("agent.activity.clear")) {
+                        log.clear()
+                        showsAllActivity = false
+                    }
+                    .dsGlassButton()
                     Spacer(minLength: 0)
+                    if hidden > 0 {
+                        Button(showsAllActivity ? L("agent.activity.collapse")
+                               : L("agent.activity.showMore", hidden)) {
+                            withAnimation(DS.Anim.section) { showsAllActivity.toggle() }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(DS.accent)
+                    }
                 }
                 .padding(.horizontal, DS.Spacing.cardPadding)
                 .padding(.vertical, 10)
