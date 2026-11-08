@@ -99,6 +99,9 @@ struct ReleaseNotesSheet: View {
     /// Снимок на момент открытия: смена состояния под открытым листом
     /// (фоновая проверка) не должна подменять текст на глазах.
     @State private var content: ReleaseNotesContent?
+    /// Есть ли текст за краями прокрутки — там кромка растворяется.
+    @State private var overflow = EdgeOverflow()
+    private static let fade: CGFloat = 28
 
     init(updates: UpdateController, onClose: @escaping () -> Void) {
         self.updates = updates
@@ -126,7 +129,29 @@ struct ReleaseNotesSheet: View {
             ScrollView {
                 MarkdownView(content?.info.notes ?? "")
                     .padding(.trailing, 6)
+                    // Запас под фейды: в покое и в конце прокрутки крайние
+                    // строки выходят из-под маски целиком.
+                    .padding(.vertical, Self.fade / 2)
             }
+            .scrollIndicators(.never)
+            .onScrollGeometryChange(for: EdgeOverflow.self) { geo in
+                EdgeOverflow(geometry: geo)
+            } action: { _, new in
+                overflow = new
+            }
+            // Текст у кромок растворяется, а не срезается посреди строки —
+            // и только с той стороны, где за краем ещё есть текст.
+            .mask {
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: overflow.top ? Self.fade : 0)
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: overflow.bottom ? Self.fade : 0)
+                }
+                .animation(DS.Anim.control, value: overflow)
+            }
+            .padding(.vertical, -Self.fade / 2)
             .frame(maxHeight: 320)
             HStack {
                 Spacer()
