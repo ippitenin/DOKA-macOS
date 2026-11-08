@@ -92,6 +92,12 @@ minutes with a language model that also runs locally.
   into marks and follows your own wishes ("start with a lowercase letter"). When a phrase ends
   as an exclamation — the pitch drops sharply at the end — the final full stop becomes "!":
   judged by the sound, with any recognition service.
+- **Lock and pause dictation** — ⌃⇧Space while holding push-to-talk keeps recording
+  after you release the keys. When recording hands-free, the same shortcut pauses
+  and resumes; audio during the pause is not recorded. Start/stop or another
+  push-to-talk press finishes, Esc cancels. Customize the command in Shortcuts;
+  it is captured only during dictation, leaving regular Space available for typing.
+  Recordings with a pause are not saved for lip training.
 - **Recording panel** — six styles. `aurora` and `mini` are a glowing droplet built on Metal
   shaders in the spirit of Liquid Glass: the wave inside answers your voice in both amplitude
   and speed, the glass refracts light at the rim, and while transcribing the droplet springs

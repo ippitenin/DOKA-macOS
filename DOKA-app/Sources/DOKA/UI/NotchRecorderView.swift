@@ -96,10 +96,19 @@ struct NotchRecorderView: View {
         switch controller.state {
         case .recording:
             HStack(spacing: 7) {
-                RecordingDot(diameter: 7)
+                if controller.isHandsFree {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.white)
+                        .accessibilityLabel(L("recorder.handsFree"))
+                } else {
+                    RecordingDot(diameter: 7)
+                }
                 WaveformBars(level: smoothedLevel, tint: DS.RecorderTone.recording,
                              barCount: 9, maxHeight: barMaxHeight)
             }
+        case .paused:
+            Label(L("recorder.paused"), systemImage: "pause.fill")
+                .font(.caption).foregroundStyle(.white)
         case .transcribing:
             WaveformBars(level: 0.35, tint: DS.RecorderTone.transcribing,
                          barCount: 9, maxHeight: barMaxHeight)
@@ -117,6 +126,10 @@ struct NotchRecorderView: View {
         switch controller.state {
         case .recording(let startedAt):
             TimerText(startedAt: startedAt, color: .white.opacity(0.85))
+        case .paused(let elapsed):
+            Text(clockMMSS(elapsed))
+                .font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.85))
         case .transcribing:
             Text(L("common.transcribing"))
                 .font(.caption)

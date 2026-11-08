@@ -62,7 +62,7 @@ final class AudioRecorder {
     }
 
     /// Состояние одной сессии записи. Доступ только на `queue`.
-    private final class Session {
+    final class Session {
         let converter: AVAudioConverter
         let writer: WavWriter
         let targetFormat: AVAudioFormat
@@ -76,6 +76,8 @@ final class AudioRecorder {
         /// гейта шёпотных диктовок. Копится всегда, гейт выбирает по режиму.
         var quietSpeechTime: TimeInterval = 0
         var finished = false
+        var paused = false
+        var hadPause = false
         /// Метки времени для сшивки с камерой (эксперимент «Губы»).
         /// Задержка входа; читается после старта движка (до него она бывает 0).
         var inputLatency: TimeInterval = 0
@@ -92,7 +94,7 @@ final class AudioRecorder {
         }
 
         var timing: RecordingTiming? {
-            guard let hostStart = drift.hostStart else { return nil }
+            guard !hadPause, let hostStart = drift.hostStart else { return nil }
             return RecordingTiming(hostStart: hostStart, inputLatency: inputLatency,
                                    speechOnset: onset.onset, maxClockDrift: drift.maxDrift)
         }
@@ -185,6 +187,35 @@ final class AudioRecorder {
         return url
     }
 
+    /// Пауза движка не закрывает WAV. Барьер очереди дожимает уже принятые
+    /// буферы, затем хвост конвертера; новые буферы на паузе отбрасываются.
+    /// В отличие от «писать тишину», звук перерыва вообще не попадает в файл.
+    func pause() -> TimeInterval? {
+        guard let engine else { return nil }
+        engine.pause()
+        return queue.sync {
+            guard let s = session, !s.finished else { return nil }
+            return pause(s)
+        }
+    }
+
+    /// Продолжение той же сессии и того же файла, без второй WAV-шапки.
+    func resume() throws -> TimeInterval {
+        guard let engine else { throw RecorderError.noInputDevice }
+        let elapsed: TimeInterval = queue.sync {
+            guard let s = session else { return 0 }
+            s.paused = false
+            return s.writer.duration
+        }
+        do {
+            try engine.start()
+        } catch {
+            queue.sync { session?.paused = true }
+            throw RecorderError.engineStartFailed(error)
+        }
+        return elapsed
+    }
+
     /// Останавливает запись, дожимает хвост конвертера и финализирует WAV.
     func stop() -> Recording? {
         teardownEngine()
@@ -195,7 +226,7 @@ final class AudioRecorder {
                 return
             }
             s.finished = true
-            drain(s)
+            if !s.paused { drain(s) }
             let duration = s.writer.duration
             do {
                 try s.writer.finalize()
@@ -237,9 +268,21 @@ final class AudioRecorder {
         }
     }
 
+    /// Внутреннее ядро доступно тестам с синтетическим PCM без микрофона.
+    /// В приложении вызывается исключительно на queue.
+    func pause(_ session: Session) -> TimeInterval {
+        guard !session.paused else { return session.writer.duration }
+        session.paused = true
+        session.hadPause = true
+        drain(session)
+        session.converter.reset()
+        session.smoothedLevel = 0
+        return session.writer.duration
+    }
+
     // Выполняется на queue.
-    private func process(buffer: AVAudioPCMBuffer, when: AVAudioTime, in session: Session) {
-        guard !session.finished else { return }
+    func process(buffer: AVAudioPCMBuffer, when: AVAudioTime, in session: Session) {
+        guard !session.finished, !session.paused else { return }
 
         // Хост-время буфера — шкала, по которой видео губ сшивается с WAV.
         let bufferStart = session.elapsed

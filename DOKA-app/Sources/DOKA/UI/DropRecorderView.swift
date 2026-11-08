@@ -352,10 +352,19 @@ struct DropRecorderView: View {
             let capsule = CGSize(width: motion.width, height: geometry.recording.height)
 
             ZStack {
-                if isRecording || isTranscribing {
+                if isRecording || isTranscribing || controller.state.isPaused {
                     if geometry.halo { halo(capsule: capsule, level: level) }
                     DropSurface(size: capsule, content: content(capsule: capsule, level: level),
                                 level: Float(level), phase: motion.phase, look: geometry.look)
+                    if controller.state.isPaused {
+                        Image(systemName: "pause.fill")
+                            .font(.title2).foregroundStyle(.white)
+                            .accessibilityLabel(L("recorder.paused"))
+                    } else if isRecording && controller.isHandsFree {
+                        Image(systemName: "lock.fill")
+                            .font(.caption).foregroundStyle(.white)
+                            .accessibilityLabel(L("recorder.handsFree"))
+                    }
                 }
             }
             .frame(width: size.width, height: size.height)
@@ -387,6 +396,8 @@ struct DropRecorderView: View {
                                     look: geometry.look)
         case .transcribing:
             return DropShaders.dots(size: field, time: motion.phase, appear: dotsAppear)
+        case .paused:
+            return nil
         case .idle, .error:
             // Ошибка в капельку не помещается — её показывает классическая
             // панель (см. RecorderPanelController.show).

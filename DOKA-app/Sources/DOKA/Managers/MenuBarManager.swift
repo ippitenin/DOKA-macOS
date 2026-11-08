@@ -139,6 +139,10 @@ final class MenuBarManager {
             image = Self.symbolImage("mic.fill")
             description = L("menu.status.recording")
             toggleItem.title = L("menu.stopDictation")
+        case .paused:
+            image = Self.symbolImage("pause.fill")
+            description = L("recorder.paused")
+            toggleItem.title = L("menu.stopDictation")
         case .transcribing:
             image = Self.symbolImage("waveform")
             description = L("menu.status.transcribing")
@@ -183,7 +187,7 @@ final class MenuBarManager {
 
     /// Пункт повтора: скрыт без записи в слоте и во время записи/распознавания.
     private func updateRetry(state: DictationController.State, failed: FailedDictation?) {
-        let busy = state.isRecording || state == .transcribing
+        let busy = state.isBusy
         retryItem.isHidden = failed == nil || busy
         if let failed {
             retryItem.title = L("menu.retryFailed", clockMMSS(failed.audio.duration))

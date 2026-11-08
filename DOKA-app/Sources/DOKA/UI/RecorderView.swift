@@ -49,6 +49,7 @@ struct RecorderView: View {
         switch controller.state {
         case .idle: return "idle"
         case .recording: return "recording"
+        case .paused: return "paused"
         case .transcribing: return "transcribing"
         case .error: return "error"
         }
@@ -62,13 +63,25 @@ struct RecorderView: View {
         HStack(spacing: 12) {
             switch controller.state {
             case .recording(let startedAt):
-                // Слева время, по центру волна, справа подсказка Esc.
+                // Фиксация различима без изменения цвета записи.
+                if controller.isHandsFree {
+                    Image(systemName: "lock.fill")
+                        .accessibilityLabel(L("recorder.handsFree"))
+                }
                 TimerText(startedAt: startedAt)
                 WaveformBars(level: smoothedLevel, tint: DS.RecorderTone.recording,
                              barCount: 15, maxHeight: 26)
                 Text(L("recorder.escHint"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            case .paused(let elapsed):
+                Image(systemName: "pause.fill")
+                    .foregroundStyle(DS.accent)
+                Text(clockMMSS(elapsed)).monospacedDigit()
+                Text(L("recorder.paused"))
+                    .font(.callout)
+                Text(L("recorder.escHint"))
+                    .font(.caption2).foregroundStyle(.secondary)
             case .transcribing:
                 // «Дыхание» волны с фиксированным уровнем вместо спиннера.
                 WaveformBars(level: 0.35, tint: DS.RecorderTone.transcribing,
