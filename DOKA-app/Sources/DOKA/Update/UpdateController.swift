@@ -82,7 +82,11 @@ final class UpdateController: NSObject, ObservableObject {
             .flatMap { try? JSONDecoder().decode(UpdateHandoff.Saved.self, from: $0) }
         defaults.removeObject(forKey: UpdateHandoff.key)
         if let info = UpdateHandoff.resolve(saved: saved, currentVersion: AppVersion.short) {
+            NSLog("[Update] DOKA обновлена до %@ — плашка «DOKA обновлена»", info.version)
             state = .updated(info)
+        } else if let saved {
+            NSLog("[Update] запись об установке %@ есть, а версия %@ — установка не дошла",
+                  saved.version, AppVersion.short)
         }
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main,
                                  userDriver: userDriver, delegate: self)
