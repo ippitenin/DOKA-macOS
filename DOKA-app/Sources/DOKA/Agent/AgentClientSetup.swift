@@ -6,9 +6,8 @@ import Foundation
 /// агент, отличается только КУДА вписать настройку.
 ///
 /// Форматы сверены с официальной документацией 8.11.2026 (Claude Code, Cursor,
-/// VS Code, Gemini CLI, Codex, README mcp-remote). У Codex механизм
-/// `http_headers` описан, но пример именно с `Authorization` не показан —
-/// проверяется живьём (`SMOKE.md`).
+/// VS Code, Gemini CLI, Codex, README mcp-remote). Codex с `http_headers`
+/// и `Authorization` проверен живьём 8.11.2026 (codex-cli 0.166.0).
 ///
 /// Порядок кейсов — порядок в списке; `rawValue` хранится (`@AppStorage`) —
 /// не переименовывать.
