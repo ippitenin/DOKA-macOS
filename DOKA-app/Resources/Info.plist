@@ -2,54 +2,51 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleExecutable</key>
-	<string>DOKA</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.pitenin.doka</string>
-	<key>CFBundleName</key>
-	<string>DOKA</string>
-	<key>CFBundleDisplayName</key>
-	<string>DOKA</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0.4</string>
-	<key>CFBundleVersion</key>
-	<string>5</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>15.0</string>
-	<key>LSUIElement</key>
-	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>DOKA</string>
+	<key>CFBundleExecutable</key>
+	<string>DOKA</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.pitenin.doka</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>ru</string>
 		<string>en</string>
 	</array>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>DOKA records your voice from the microphone for speech recognition and text pasting.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>DOKA films your lips during dictation only if you turn on “Learn lips”; the video stays on this Mac to train lip reading.</string>
+	<key>CFBundleName</key>
+	<string>DOKA</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.5</string>
+	<key>CFBundleVersion</key>
+	<string>6</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>DOKA films your lips during dictation only if you turn on “Learn lips”; the video stays on this Mac to train lip reading.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Ilya Pitenin. GPL-3.0 — https://github.com/ippitenin/DOKA-macOS</string>
-	<!-- Автообновление (Sparkle, см. Sources/DOKA/Update/CLAUDE.md). Лента — вложение
-	     последнего релиза. У сборок без Developer ID build.sh вырезает SUFeedURL. -->
-	<key>SUFeedURL</key>
-	<string>https://github.com/ippitenin/DOKA-macOS/releases/latest/download/appcast.xml</string>
-	<!-- Публичная половина ключа EdDSA; секретная — в связке ключей сопровождающего. -->
-	<key>SUPublicEDKey</key>
-	<string>R/cT2Taopp5LUR8Rjz2m1LbQB2um8FWmw3x2KvtDaDQ=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DOKA records your voice from the microphone for speech recognition and text pasting.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 	<key>SUAutomaticallyUpdate</key>
 	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/ippitenin/DOKA-macOS/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>R/cT2Taopp5LUR8Rjz2m1LbQB2um8FWmw3x2KvtDaDQ=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>
