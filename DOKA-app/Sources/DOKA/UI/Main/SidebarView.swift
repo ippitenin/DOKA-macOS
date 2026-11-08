@@ -4,12 +4,16 @@ import SwiftUI
 /// приклеенная к нижней кромке. Фон даёт стеклянная плашка в MainWindowView,
 /// ширина фиксированная.
 ///
-/// Край прокрутки — только мягким фейдом, резкой обрезки нет: маска
-/// включается у того края, за которым действительно есть контент
-/// (`onScrollGeometryChange`), иначе в покое крайний пункт был бы притушен.
-/// Системный `scrollEdgeEffectStyle` здесь не годится: без safe-area-бара он
-/// не рисуется (та же ловушка, что у ленты «Истории», `UI/Main/CLAUDE.md`),
-/// а на macOS 15 его нет вовсе.
+/// Список уезжает вверх ПОД зону кнопок окна (54 pt) и уходит в непрозрачность
+/// системным прогрессивным блюром с тинтом — как боковая колонка «Системных
+/// настроек» (решение владельца 8.11.2026; простой фейд ниже зоны кнопок
+/// смотрелся обрезком). На macOS 26+ это настоящий `scrollEdgeEffectStyle`:
+/// он рисуется только под НАСТОЯЩИМ safe-area-баром, поэтому зона кнопок —
+/// прозрачный `safeAreaBar` (ловушка «Истории», где бара нет, здесь снята).
+/// На macOS 15 системного эффекта нет — свой `ProgressiveEdgeBlur`.
+/// Нижний край — мягкий фейд над плашкой. Оба своих края включаются, только
+/// если за ними есть контент (`onScrollGeometryChange`), иначе в покое
+/// крайний пункт был бы притушен.
 struct SidebarView: View {
     @ObservedObject var state: MainWindowState
     @ObservedObject private var settings = SettingsStore.shared
@@ -26,26 +30,13 @@ struct SidebarView: View {
         MainSection.sidebarGroups(lipsEnabled: settings.lipsExperiment)
     }
 
+    /// Зона кнопок окна: с unified-тулбаром они сидят по центру
+    /// 52-пунктового тайтлбара, внутри плашки.
+    private static let titlebar: CGFloat = 54
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Зона трафик-лайтов: с unified-тулбаром кнопки окна сидят
-            // по центру 52-пунктового тайтлбара, внутри плашки. Неподвижна:
-            // список уезжает под неё через фейд.
-            Spacer().frame(height: 54)
-
-            ScrollView(.vertical) {
-                sectionList
-                    .padding(.bottom, 10)
-            }
-            // `.never`, а не `.hidden`: иначе при прокрутке колесом система
-            // всё равно показывает overlay-скроллер поверх пунктов.
-            .scrollIndicators(.never)
-            .onScrollGeometryChange(for: EdgeOverflow.self) { geo in
-                EdgeOverflow(geometry: geo)
-            } action: { _, new in
-                overflow = new
-            }
-            .mask { fadeMask }
+            sectionScroll
 
             if let banner = updates.banner {
                 UpdateBanner(model: banner, updates: updates)
@@ -59,11 +50,45 @@ struct SidebarView: View {
         .animation(reduceMotion ? nil : DS.Anim.section, value: updates.banner)
     }
 
-    /// Маска прокрутки: прозрачный спад у края, за которым есть контент.
-    private var fadeMask: some View {
+    @ViewBuilder
+    private var sectionScroll: some View {
+        if #available(macOS 26.0, *) {
+            baseScroll
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    Color.clear.frame(height: Self.titlebar)
+                }
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .mask { bottomFadeMask }
+        } else {
+            baseScroll
+                .contentMargins(.top, Self.titlebar, for: .scrollContent)
+                .overlay(alignment: .top) {
+                    ProgressiveEdgeBlur(height: Self.titlebar + 14)
+                        .opacity(overflow.top ? 1 : 0)
+                        .animation(DS.Anim.control, value: overflow.top)
+                }
+                .mask { bottomFadeMask }
+        }
+    }
+
+    private var baseScroll: some View {
+        ScrollView(.vertical) {
+            sectionList
+                .padding(.bottom, 10)
+        }
+        // `.never`, а не `.hidden`: иначе при прокрутке колесом система
+        // всё равно показывает overlay-скроллер поверх пунктов.
+        .scrollIndicators(.never)
+        .onScrollGeometryChange(for: EdgeOverflow.self) { geo in
+            EdgeOverflow(geometry: geo)
+        } action: { _, new in
+            overflow = new
+        }
+    }
+
+    /// Маска низа: прозрачный спад над плашкой, только если ниже есть пункты.
+    private var bottomFadeMask: some View {
         VStack(spacing: 0) {
-            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: overflow.top ? Self.fade : 0)
             Color.black
             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
                 .frame(height: overflow.bottom ? Self.fade : 0)
@@ -238,5 +263,29 @@ struct IconTile: View {
         } else {
             base
         }
+    }
+}
+
+/// Свой прогрессивный край для macOS 15, где нет `scrollEdgeEffectStyle`:
+/// материал размывает пункты под собой, маска делает размытие плотным у
+/// кромки и сходящим на нет книзу, а лёгкий тинт уводит край в непрозрачность.
+private struct ProgressiveEdgeBlur: View {
+    let height: CGFloat
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            LinearGradient(colors: [Color.black.opacity(0.18), .clear],
+                           startPoint: .top, endPoint: .bottom)
+        }
+        .mask {
+            LinearGradient(stops: [
+                .init(color: .black, location: 0),
+                .init(color: .black, location: 0.45),
+                .init(color: .clear, location: 1)
+            ], startPoint: .top, endPoint: .bottom)
+        }
+        .frame(height: height)
+        .allowsHitTesting(false)
     }
 }

@@ -104,7 +104,9 @@ struct DokaBrandLogo: View {
             }
         }
         .frame(width: size, height: size)
-        .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
+        // Тень пропорциональна размеру: на 132 pt главной — прежние ≈ 18/8,
+        // на маленьком логотипе «О DOKA» фиксированная тень грязнила бы.
+        .shadow(color: .black.opacity(0.22), radius: size * 0.14, y: size * 0.06)
         .accessibilityHidden(true)
     }
 

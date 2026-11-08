@@ -872,6 +872,9 @@
 "menu.checkUpdates" = "Проверить обновления…";
 "menu.installUpdate" = "Обновить DOKA до %@…";
 "update.banner.title" = "Доступна DOKA %@";
+"update.banner.available" = "Доступно обновление";
+"update.installedVersion" = "Установлена %@";
+"about.selfBuild" = "Эта копия собрана из исходников и сама не обновляется.";
 "update.banner.waiting" = "Обновится, когда DOKA закончит работу";
 "update.banner.downloading" = "Скачиваю обновление…";
 "update.banner.installing" = "Перезапуск…";
@@ -891,6 +894,3 @@
 "about.autoCheck" = "Проверять автоматически";
 "about.autoDownload" = "Скачивать в фоне";
 "about.autoDownload.help" = "Новая версия скачивается заранее, и обновление занимает пару секунд. Если просто выйти из DOKA, скачанное обновление установится само.";
-"about.source" = "Исходный код · GPL-3.0";
-"about.releases" = "Новые версии на GitHub";
-"about.selfBuild.footer" = "Эта копия собрана из исходников и сама не обновляется. Официальная сборка с GitHub обновляется автоматически.";

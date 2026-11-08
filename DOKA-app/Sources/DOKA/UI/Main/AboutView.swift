@@ -1,15 +1,12 @@
-import AppKit
 import SwiftUI
 
 /// Под-страница «О DOKA» секции «Общие»: логотип, версия, проверка
-/// обновлений и их настройки, ссылка на исходники (GPL-3.0). Списка
-/// компонентов нет намеренно — решение владельца.
+/// обновлений и их настройки. Списка компонентов и ссылок на GitHub нет
+/// намеренно — решение владельца 8.11.2026: в приложении нет путей на GitHub
+/// (уведомление GPL-3.0 — в бинарнике и в «Свойствах» Finder).
 struct AboutView: View {
     @ObservedObject var updates = UpdateController.shared
     let onBack: () -> Void
-
-    private static let repoURL = URL(string: "https://github.com/ippitenin/DOKA-macOS")!
-    private static let releasesURL = URL(string: "https://github.com/ippitenin/DOKA-macOS/releases")!
 
     var body: some View {
         ScrollView {
@@ -23,9 +20,6 @@ struct AboutView: View {
                     settingsCard
                 } else {
                     selfBuildCard
-                }
-                SettingsCard {
-                    linkRow(L("about.source"), url: Self.repoURL)
                 }
             }
             .padding(.horizontal, DS.Spacing.section)
@@ -49,7 +43,7 @@ struct AboutView: View {
 
     private var header: some View {
         HStack(spacing: 16) {
-            LogoIconTile(size: 64)
+            DokaBrandLogo(size: 72)
             VStack(alignment: .leading, spacing: 3) {
                 Text("DOKA")
                     .font(.largeTitle.weight(.bold))
@@ -158,30 +152,16 @@ struct AboutView: View {
         }
     }
 
-    /// Сборка без ленты (самосборка из исходников): обновлять нечем, ведём
-    /// на страницу релизов.
+    /// Сборка без ленты (самосборка из исходников): обновлять нечем —
+    /// только пояснение, без ссылок.
     private var selfBuildCard: some View {
-        SettingsCard(footer: L("about.selfBuild.footer")) {
-            linkRow(L("about.releases"), url: Self.releasesURL)
+        SettingsCard {
+            Text(L("about.selfBuild"))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, DS.Spacing.cardPadding)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private func linkRow(_ title: String, url: URL) -> some View {
-        Button {
-            NSWorkspace.shared.open(url)
-        } label: {
-            HStack(spacing: 12) {
-                Text(title)
-                Spacer(minLength: 16)
-                Image(systemName: "arrow.up.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, DS.Spacing.cardPadding)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     /// «сегодня в 14:02» / «вчера в 09:10» / «3 нояб. в 18:00».

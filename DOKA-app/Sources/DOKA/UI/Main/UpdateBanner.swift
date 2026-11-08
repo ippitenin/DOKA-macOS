@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Плашка «Доступна DOKA X» внизу сайдбара. Что показывать — решает чистый
+/// Плашка «Доступно обновление» внизу сайдбара. Что показывать — решает чистый
 /// `UpdateBannerModel` (`Update/UpdateState.swift`); здесь только вёрстка.
 /// Стекла нет намеренно: плашка лежит на стеклянном сайдбаре, а стекло на
 /// стекле даёт двойную линзу — вместо него тёплая подложка акцента.
@@ -15,12 +15,12 @@ struct UpdateBanner: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 9) {
-                IconTile(symbol: "arrow.down", color: DS.accent, size: 24)
+            // Без иконки и без номера версии (решение владельца 8.11.2026):
+            // версия — в «Что нового» и в «О DOKA».
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("update.banner.title", model.version))
+                    Text(L("update.banner.available"))
                         .font(.callout.weight(.semibold))
-                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     if let key = model.statusKey {
                         Text(L(key))
@@ -57,9 +57,9 @@ struct UpdateBanner: View {
                 } label: {
                     Text(L("update.install"))
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
                 }
                 .dsProminentButton()
-                .controlSize(.small)
             case .progress:
                 progressBar
             }
@@ -94,12 +94,12 @@ struct ReleaseNotesSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                LogoIconTile(size: 44)
+            HStack(spacing: 14) {
+                DokaBrandLogo(size: 52)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("update.banner.title", updates.state.info?.version ?? ""))
                         .font(.title3.weight(.semibold))
-                    Text(L("about.version", AppVersion.short, AppVersion.build))
+                    Text(L("update.installedVersion", AppVersion.short))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -113,13 +113,17 @@ struct ReleaseNotesSheet: View {
                 Spacer()
                 Button(L("update.later"), action: onClose)
                     .dsGlassButton()
+                    .keyboardShortcut(.cancelAction)
                 Button(L("update.install")) {
                     onClose()
                     updates.installNow()
                 }
                 .dsProminentButton()
+                .keyboardShortcut(.defaultAction)
                 .disabled(updates.state.info == nil)
             }
+            // Системное синее кольцо фокуса на первой кнопке выбивается из дизайна.
+            .focusEffectDisabled()
         }
         .padding(22)
         .frame(width: 460)
