@@ -46,6 +46,78 @@ enum UpdateState: Equatable {
             return nil
         }
     }
+
+    /// Точка на иконке меню-бара: новая версия есть и ещё не ставится.
+    /// Окно DOKA почти всегда закрыто — без точки обновление не заметить.
+    /// Крестик плашки сайдбара её не гасит: он про окно, а не про обновление.
+    var showsMenuBarBadge: Bool {
+        switch self {
+        case .ready, .waitingForIdle: return true
+        default: return false
+        }
+    }
+
+    /// Новую версию уже ставят — фоновую проверку не запускать.
+    var isInstallInProgress: Bool {
+        switch self {
+        case .waitingForIdle, .downloading, .installing: return true
+        default: return false
+        }
+    }
+}
+
+/// Когда проверять ленту сверх расписания Sparkle (раз в `SUScheduledCheckInterval`).
+/// Таймер Sparkle стоит, пока Mac спит, а окно DOKA почти всегда закрыто —
+/// поэтому ещё проверка при запуске и после пробуждения.
+enum UpdateSchedule {
+    /// При запуске не проверять, если проверка была только что:
+    /// перезапуски подряд (сборка, обновление) не должны долбить GitHub.
+    static let launchGap: TimeInterval = 5 * 60
+
+    /// Проверка просрочена: её не было или с последней прошло не меньше `interval`.
+    static func isOverdue(last: Date?, now: Date = Date(), interval: TimeInterval) -> Bool {
+        guard let last else { return true }
+        return now.timeIntervalSince(last) >= interval
+    }
+
+    static func shouldCheckAtLaunch(last: Date?, now: Date = Date()) -> Bool {
+        isOverdue(last: last, now: now, interval: launchGap)
+    }
+}
+
+/// «Что нового» установленной версии: переживает перезапуски, пока версия
+/// бандла та же. Пишется при первом запуске после обновления (из `UpdateHandoff`),
+/// чтобы заметки не пропадали вместе с плашкой «DOKA обновлена».
+enum InstalledNotes {
+    static let key = "DOKAInstalledNotes"
+
+    /// nil — показывать нечего: записи нет, заметок нет или версия уже другая.
+    static func resolve(saved: UpdateHandoff.Saved?, currentVersion: String) -> UpdateInfo? {
+        guard let saved, saved.version == currentVersion,
+              let notes = saved.notes, !notes.isEmpty else { return nil }
+        return UpdateInfo(version: saved.version, notes: notes, infoURL: nil)
+    }
+}
+
+/// Какие заметки открывает «Что нового»: найденной версии, пока её можно
+/// поставить, иначе — уже установленной.
+struct ReleaseNotesContent: Equatable {
+    let info: UpdateInfo
+    /// Заметки установленной версии (лист без кнопки «Обновить»).
+    let installed: Bool
+
+    static func make(state: UpdateState, installedNotes: UpdateInfo?) -> ReleaseNotesContent? {
+        switch state {
+        case .ready(let info), .waitingForIdle(let info), .downloading(let info, _), .installing(let info):
+            // Речь о новой версии: заметки установленной здесь только путали бы.
+            return info.notes == nil ? nil : ReleaseNotesContent(info: info, installed: false)
+        case .updated(let info):
+            if info.notes != nil { return ReleaseNotesContent(info: info, installed: true) }
+        case .idle, .checking, .upToDate, .failed:
+            break
+        }
+        return installedNotes.map { ReleaseNotesContent(info: $0, installed: true) }
+    }
 }
 
 /// Сколько ещё держать «Проверяю…» на экране. Локальная или быстрая сеть

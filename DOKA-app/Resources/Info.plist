@@ -50,7 +50,10 @@
 	<true/>
 	<key>SUAutomaticallyUpdate</key>
 	<true/>
+	<!-- Раз в час (минимум Sparkle): окно DOKA почти всегда закрыто, и при сутках
+	     новая версия ждала проверки до следующего дня. Плюс проверка при запуске
+	     и после сна — UpdateController. Запрос — один маленький файл ленты. -->
 	<key>SUScheduledCheckInterval</key>
-	<integer>86400</integer>
+	<integer>3600</integer>
 </dict>
 </plist>
