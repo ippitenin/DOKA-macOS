@@ -4,10 +4,11 @@ import SwiftUI
 /// приклеенная к нижней кромке. Фон даёт стеклянная плашка в MainWindowView,
 /// ширина фиксированная.
 ///
-/// Список уезжает вверх ПОД зону кнопок окна и тает простым фейдом:
-/// прозрачно у самой кромки, полностью видно с `topFade` (44 pt) — выше
-/// первого пункта в покое (54 pt), поэтому без прокрутки ничего не притушено
-/// (решение владельца 8.11.2026). Отброшено, не повторять (`UI/CLAUDE.md`):
+/// Список уезжает вверх ПОД зону кнопок окна и тает простым фейдом: вся
+/// полоса кнопок окна (до 30 pt) полностью прозрачна, проявление идёт между
+/// кнопками и первым пунктом, полная видимость — с 54 pt, где первый пункт
+/// стоит в покое, поэтому без прокрутки он не притушен (решения владельца
+/// 8.11.2026: линейный фейд 0→44 оставлял пункт под кнопками видимым). Отброшено, не повторять (`UI/CLAUDE.md`):
 /// системный `scrollEdgeEffectStyle` (в нашем сайдбаре не рисуется), шейдер
 /// на контенте (подписи на стекле пропадают), `NSVisualEffectView` сверху
 /// (тонированная полоса с заметной границей), фейд ниже зоны кнопок (низко).
@@ -34,8 +35,9 @@ struct SidebarView: View {
     /// Запас над первым пунктом: свечение выбранной пилюли выходит за её
     /// рамку и не должно упираться в край прокрутки.
     private static let glowRoom: CGFloat = 8
-    /// Верхний фейд: от прозрачного у кромки до полной видимости на этой высоте.
-    private static let topFade: CGFloat = 44
+    /// Верхний фейд: полоса кнопок окна (0…30 pt) полностью прозрачна,
+    /// дальше пологое проявление до полной видимости на 54 pt.
+    private static let topFade: CGFloat = titlebar
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -71,8 +73,13 @@ struct SidebarView: View {
     /// спад над плашкой при переполнении.
     private var edgeMask: some View {
         VStack(spacing: 0) {
-            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.topFade)
+            LinearGradient(stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .clear, location: 0.56),
+                .init(color: .black.opacity(0.35), location: 0.76),
+                .init(color: .black, location: 1)
+            ], startPoint: .top, endPoint: .bottom)
+            .frame(height: Self.topFade)
             Color.black
             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
                 .frame(height: overflow.bottom ? Self.fade : 0)
