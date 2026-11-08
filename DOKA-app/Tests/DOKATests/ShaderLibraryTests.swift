@@ -25,7 +25,6 @@ final class ShaderLibraryTests: XCTestCase {
         XCTAssertTrue(names.contains("dokaDropWave"), "функции волны нет: \(names)")
         XCTAssertTrue(names.contains("dokaDropDots"), "функции точек нет: \(names)")
         XCTAssertTrue(names.contains("dokaDropGlass"), "функции стекла нет: \(names)")
-        XCTAssertTrue(names.contains("dokaEdgeBlur"), "функции блюра края сайдбара нет: \(names)")
     }
 
     /// Минимальная версия macOS, объявленная пакетом (`platforms: [.macOS(.v15)]`).
