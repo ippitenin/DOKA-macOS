@@ -871,6 +871,8 @@
 /* Автообновление и «О DOKA» */
 "menu.checkUpdates" = "Проверить обновления…";
 "menu.installUpdate" = "Обновить DOKA до %@…";
+"menu.whatsNew" = "Что нового в %@";
+"menu.status.updateAvailable" = "доступно обновление";
 "update.banner.title" = "Доступна DOKA %@";
 "update.banner.available" = "Доступно обновление";
 "update.installedVersion" = "Установлена %@";
@@ -886,6 +888,7 @@
 "update.banner.installing" = "Перезапуск…";
 "update.banner.hide" = "Скрыть";
 "update.whatsNew" = "Что нового";
+"update.notes.installedTitle" = "Что нового в DOKA %@";
 "update.install" = "Обновить";
 "update.later" = "Позже";
 "about.title" = "О DOKA";

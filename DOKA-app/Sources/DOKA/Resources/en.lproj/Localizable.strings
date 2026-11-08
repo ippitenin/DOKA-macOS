@@ -871,6 +871,8 @@
 /* Auto-update and About DOKA */
 "menu.checkUpdates" = "Check for Updates…";
 "menu.installUpdate" = "Update DOKA to %@…";
+"menu.whatsNew" = "What’s New in %@";
+"menu.status.updateAvailable" = "update available";
 "update.banner.title" = "DOKA %@ is available";
 "update.banner.available" = "Update available";
 "update.installedVersion" = "Installed: %@";
@@ -886,6 +888,7 @@
 "update.banner.installing" = "Restarting…";
 "update.banner.hide" = "Hide";
 "update.whatsNew" = "What’s new";
+"update.notes.installedTitle" = "What’s New in DOKA %@";
 "update.install" = "Update";
 "update.later" = "Later";
 "about.title" = "About DOKA";

@@ -7,7 +7,6 @@ import SwiftUI
 struct UpdateBanner: View {
     let model: UpdateBannerModel
     @ObservedObject var updates: UpdateController
-    @State private var showNotes = false
 
     /// Первый запуск после обновления: «DOKA обновлена» без кнопки.
     private var isUpdated: Bool {
@@ -33,8 +32,8 @@ struct UpdateBanner: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                    } else if updates.state.info?.notes != nil {
-                        Button(L("update.whatsNew")) { showNotes = true }
+                    } else if updates.notesContent != nil {
+                        Button(L("update.whatsNew")) { updates.requestNotes() }
                             .buttonStyle(.plain)
                             .font(.caption.weight(.medium))
                             .foregroundStyle(DS.accent)
@@ -75,9 +74,6 @@ struct UpdateBanner: View {
         .padding(11)
         .background(shape.fill(DS.accent.opacity(0.10)))
         .overlay(shape.strokeBorder(DS.accent.opacity(0.28), lineWidth: 0.5))
-        .sheet(isPresented: $showNotes) {
-            ReleaseNotesSheet(updates: updates) { showNotes = false }
-        }
     }
 
     /// Прогресс: доля — при скачивании с известным размером, иначе бегущая полоса.
@@ -95,24 +91,31 @@ struct UpdateBanner: View {
     }
 }
 
-/// «Что нового»: заметки релиза из ленты и та же кнопка «Обновить».
+/// «Что нового»: заметки найденной версии с кнопкой «Обновить» или — когда
+/// ставить нечего — заметки уже установленной версии (`ReleaseNotesContent`).
 struct ReleaseNotesSheet: View {
     @ObservedObject var updates: UpdateController
     let onClose: () -> Void
+    /// Снимок на момент открытия: смена состояния под открытым листом
+    /// (фоновая проверка) не должна подменять текст на глазах.
+    @State private var content: ReleaseNotesContent?
 
-    /// Лист открыт после обновления: что нового в уже установленной версии.
-    private var isUpdated: Bool {
-        if case .updated = updates.state { return true }
-        return false
+    init(updates: UpdateController, onClose: @escaping () -> Void) {
+        self.updates = updates
+        self.onClose = onClose
+        _content = State(initialValue: updates.notesContent)
     }
+
+    /// Лист про уже установленную версию — без кнопки «Обновить».
+    private var isUpdated: Bool { content?.installed ?? true }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 14) {
                 DokaBrandLogo(size: 52)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isUpdated ? L("update.banner.updated")
-                         : L("update.banner.title", updates.state.info?.version ?? ""))
+                    Text(isUpdated ? L("update.notes.installedTitle", content?.info.version ?? AppVersion.short)
+                         : L("update.banner.title", content?.info.version ?? ""))
                         .font(.title3.weight(.semibold))
                     Text(isUpdated ? L("about.version", AppVersion.short, AppVersion.build)
                          : L("update.installedVersion", AppVersion.short))
@@ -121,7 +124,7 @@ struct ReleaseNotesSheet: View {
                 }
             }
             ScrollView {
-                MarkdownView(updates.state.info?.notes ?? "")
+                MarkdownView(content?.info.notes ?? "")
                     .padding(.trailing, 6)
             }
             .frame(maxHeight: 320)
@@ -141,7 +144,7 @@ struct ReleaseNotesSheet: View {
                     }
                     .dsProminentButton()
                     .keyboardShortcut(.defaultAction)
-                    .disabled(updates.state.info == nil)
+                    .disabled({ if case .ready = updates.state { return false }; return true }())
                 }
             }
             // Системное синее кольцо фокуса на первой кнопке выбивается из дизайна.

@@ -5,6 +5,7 @@ import SwiftUI
 struct MainWindowView: View {
     @ObservedObject var state: MainWindowState
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var updates = UpdateController.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -31,6 +32,11 @@ struct MainWindowView: View {
         // (тумблер живёт там, в «Расширенных»).
         .onChange(of: settings.lipsExperiment) { _, enabled in
             if !enabled && state.section == .lips { state.section = .general }
+        }
+        // «Что нового» — один лист на окно: открывают его плашка сайдбара,
+        // «О DOKA» и пункт меню-бара (`UpdateController.requestNotes`).
+        .sheet(isPresented: $updates.notesRequested) {
+            ReleaseNotesSheet(updates: updates) { updates.notesRequested = false }
         }
     }
 
