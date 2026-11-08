@@ -160,6 +160,11 @@ struct FileTranscriptRecord: Codable, Identifiable, Equatable {
     var failure: FailureKind?
     var summary: RecordSummary?
     var updatedAt: Date?
+    /// Запись создал ИИ-агент (`transcribe_file`): её он читает и меняет с
+    /// одним разрешением «Распознавать файлы» (`AgentAccessPolicy`). У записей
+    /// человека — nil (в `meta.json` не пишется); опциональное, поэтому
+    /// прежняя версия DOKA новый `meta.json` читает.
+    var createdByAgent: Bool?
 
     /// Заголовок для показа: свой или имя файла без расширения.
     var displayTitle: String {

@@ -69,7 +69,7 @@ let package = Package(
             // их необработанными файлами и выдаёт предупреждение; новый
             // CLAUDE.md в папке таргета добавлять сюда же.
             exclude: [
-                "Audio/CLAUDE.md", "Lips/CLAUDE.md", "Local/CLAUDE.md",
+                "Agent/CLAUDE.md", "Audio/CLAUDE.md", "Lips/CLAUDE.md", "Local/CLAUDE.md",
                 "Managers/CLAUDE.md", "Network/CLAUDE.md", "Paste/CLAUDE.md",
                 "Storage/CLAUDE.md", "Text/CLAUDE.md", "UI/CLAUDE.md", "Update/CLAUDE.md",
                 "UI/Main/CLAUDE.md", "UI/Main/Library/CLAUDE.md", "Util/CLAUDE.md"

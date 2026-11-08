@@ -164,6 +164,21 @@ minutes with a language model that also runs locally.
   the phrase itself becomes the caption. For now this only collects data — DOKA can’t read lips
   yet.
 - **Dictionary** — case-insensitive replacement rules applied to every transcript. Rules match whole words: “doka” → “DOKA” no longer touches “document”; the per-rule “Inside words” switch brings back substring matching (e.g. “ё” → “е”). Optionally applied to file transcripts as well.
+- **AI agent access (MCP)** — Claude Code, Cursor and other AI agents on this Mac can work with
+  DOKA: transcribe a file and get its text, search the library, run an analysis template,
+  read dictation history and the dictionary. Turn it on in General → AI agent access; it is
+  off by default. DOKA runs a local MCP server that listens only on `127.0.0.1` and requires a
+  token; any agent that supports MCP over HTTP connects with the address and token, and the page gives
+  ready-made setup for Claude Code, Cursor, VS Code, Gemini CLI, Codex and, through `mcp-remote`,
+  Claude Desktop and other command-only apps. Everything personal is behind its own
+  permission toggle (only transcribing files the agent brings is on by default); without it the
+  agent is told where to turn it on. Agents never see service keys, cannot change settings and
+  cannot start dictation.
+- **API for apps (OpenAI-compatible)** — the same local server also speaks the OpenAI Audio API
+  (`POST /v1/audio/transcriptions`): Raycast, Shortcuts, another dictation app or your script sends
+  audio and gets text back, recognized by the service selected in DOKA — including the on-device
+  Whisper and Parakeet. Base URL `http://127.0.0.1:47800/v1`, the key is the token from the settings
+  page. It has its own permission, off by default, and saves nothing: neither the Library nor History.
 
 
 </details>
@@ -206,6 +221,13 @@ downloaded from the same release and installed only after its signature checks o
 The Lips experiment films your face only if you turn it on yourself. Face video is biometric
 data: it is stored in `~/Library/Application Support/DOKA/LipData`, never uploaded and never
 deleted automatically. You can erase all of it with one button in the Lips section.
+
+AI agent access is off by default. When you turn it on, DOKA listens on `127.0.0.1` only (the
+network cannot reach it) and answers only requests with the token from its settings page; web
+pages are refused. An agent gets exactly the data whose permission toggles you switch on. These toggles
+cover what DOKA hands over itself: an agent that can run Terminal commands or read files can reach
+your files without DOKA, and an agent that reads other people's pages or emails can pick up someone
+else's instructions — so keep personal permissions off unless a task needs them.
 
 
 ## Recognition services

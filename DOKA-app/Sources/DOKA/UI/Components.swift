@@ -130,13 +130,18 @@ struct StepRow<Actions: View>: View {
 struct CopyButton: View {
     let text: String
     var html: String? = nil
+    /// Секрет: копируется только в буфер этого Mac и с пометкой «не хранить
+    /// в истории буфера» (`ClipboardManager.setSecret`).
+    var secret = false
     @State private var copied = false
     /// Счётчик нажатий — повторный клик перезапускает авто-возврат.
     @State private var copyCount = 0
 
     var body: some View {
         Button {
-            if let html {
+            if secret {
+                ClipboardManager.setSecret(text)
+            } else if let html {
                 ClipboardManager.setRichText(plain: text, html: html)
             } else {
                 ClipboardManager.setString(text)

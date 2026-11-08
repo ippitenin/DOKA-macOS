@@ -76,12 +76,16 @@ final class FileTranscriptionController: ObservableObject {
         /// «Повторить» на месте: та же запись снова в работе. `sourcePath` —
         /// новый путь исходника, если файл выбрали заново; nil — прежний.
         case reuse(UUID, sourcePath: String?)
+        /// Новая запись по просьбе ИИ-агента (`Agent/AgentTools.swift`):
+        /// помечается `createdByAgent`, страницу не трогает.
+        case agent(sourcePath: String)
 
-        /// Запуск из библиотеки («Повторить», «Распознать заново»), а не
-        /// файлом, выбранным на странице.
-        var isFromLibrary: Bool {
+        /// Запуск не файлом, выбранным на странице, — из библиотеки
+        /// («Повторить», «Распознать заново») или агентом: по окончании
+        /// страница возвращается к своему состоянию.
+        var keepsPagePhase: Bool {
             switch self {
-            case .reuse: return true
+            case .reuse, .agent: return true
             case .new(let parentID, _, _): return parentID != nil
             }
         }
@@ -347,6 +351,35 @@ final class FileTranscriptionController: ObservableObject {
         }
     }
 
+    /// Почему локальное распознавание файла нельзя начать прямо сейчас; nil —
+    /// можно (и всегда nil у сетевого маршрута). Общая проверка страницы,
+    /// библиотеки и API для программ (`Agent/OpenAITranscriptionAPI.swift`).
+    static func localStartRefusal(route: ServiceRoute) -> String? {
+        guard case .local(let model) = route else { return nil }
+        // Локальный сервис: без ключа и конфига, но модель должна быть скачана.
+        guard LocalModelStore.shared.isDownloaded(model) else { return L("transcribe.local.modelMissing") }
+        // Взаимоисключение с ИИ-анализом — в обе стороны: анализ не стартует
+        // поверх локального распознавания (AnalysisController.availability), а
+        // локальное распознавание — поверх анализа. Иначе речевая модель на ANE
+        // и языковая на Metal дерутся за ускоритель, а на маке с 8 ГБ ещё и за
+        // память. Сетевому распознаванию анализ не мешает.
+        if AnalysisController.shared.isRunning || SpeakerSuggestionController.shared.isRunning {
+            return L("transcribe.busy.analysis")
+        }
+        // Взаимоисключение с локальной диктовкой: она держит слот модели от
+        // записи до вставки, и локальный файл выгрузил бы её модель (или встал
+        // бы с ней в одну очередь). Обратная проверка — в DictationController.
+        if SpeechSlotPolicy.fileStart(isLocalRoute: true,
+                                      lease: LocalEngineManager.shared.speechSlotLease) == .busyDictation {
+            return L("transcribe.busy.dictation")
+        }
+        // Модель уже распознаёт другой файл: страница или программа через API.
+        if shared.runningUsesLocalEngine || OpenAITranscriptionAPI.shared.isRunningLocal {
+            return L("transcribe.busy.localFile")
+        }
+        return nil
+    }
+
     /// Единая точка запуска: страница, «Повторить» и «Распознать заново».
     /// Параметры — снимок (не глобальный `providerID`), поэтому повтор идёт
     /// сохранённым сервисом, не переключая выбор пользователя. Один файл за
@@ -367,28 +400,8 @@ final class FileTranscriptionController: ObservableObject {
         } catch {
             return .rejected(error.localizedDescription)
         }
-        // Локальный сервис: без ключа и конфига, но модель должна быть скачана.
-        if case .local(let model) = route, !LocalModelStore.shared.isDownloaded(model) {
-            return .rejected(L("transcribe.local.modelMissing"))
-        }
-        // Взаимоисключение с ИИ-анализом — в обе стороны: анализ не стартует
-        // поверх локального распознавания (AnalysisController.availability), а
-        // локальное распознавание — поверх анализа. Иначе речевая модель на ANE
-        // и языковая на Metal дерутся за ускоритель, а на маке с 8 ГБ ещё и за
-        // память. Сетевому распознаванию анализ не мешает.
-        if case .local = route,
-           AnalysisController.shared.isRunning || SpeakerSuggestionController.shared.isRunning {
-            return .rejected(L("transcribe.busy.analysis"))
-        }
-        // Взаимоисключение с локальной диктовкой: она держит слот модели от
-        // записи до вставки, и локальный файл выгрузил бы её модель (или встал
-        // бы с ней в одну очередь). Обратная проверка — в DictationController.
-        let isLocalRoute: Bool
-        if case .local = route { isLocalRoute = true } else { isLocalRoute = false }
-        if SpeechSlotPolicy.fileStart(isLocalRoute: isLocalRoute,
-                                      lease: LocalEngineManager.shared.speechSlotLease) == .busyDictation {
-            return .rejected(L("transcribe.busy.dictation"))
-        }
+        if let refusal = Self.localStartRefusal(route: route) { return .rejected(refusal) }
+        let isLocalRoute = route.isLocal
         if let message = params.rolesValidationMessage { return .rejected(message) }
         if params.usesLocalDiarization && !LocalModelStore.shared.isDownloaded(.diarizer) {
             Self.requestDiarizerModel()
@@ -410,6 +423,11 @@ final class FileTranscriptionController: ObservableObject {
         case let .reuse(id, sourcePath):
             store.restartPending(id, provider: providerTag, params: params, sourcePath: sourcePath)
             recordID = id
+        case let .agent(sourcePath):
+            recordID = store.addPending(.init(fileName: displayName, provider: providerTag,
+                                              title: nil, params: params,
+                                              sourcePath: sourcePath, parentID: nil,
+                                              createdByAgent: true))
         }
         // Архив исходного звука — параллельно распознаванию, задачей стора:
         // отмена распознавания его не убивает (иначе «Повторить» не из чего).
@@ -424,7 +442,7 @@ final class FileTranscriptionController: ObservableObject {
         // Разрешение на уведомления — лениво, в момент осмысленного действия.
         Task { await FileTranscriptionNotifier.shared.requestAuthorizationIfNeeded() }
 
-        pagePhaseBeforeRun = target.isFromLibrary ? phase : nil
+        pagePhaseBeforeRun = target.keepsPagePhase ? phase : nil
         runningSource = (displayName, url)
         if case .local = route { runningUsesLocalEngine = true }
         phase = .transcribing

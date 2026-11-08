@@ -43,6 +43,23 @@ enum ClipboardManager {
         pasteboard.setString(text, forType: .string)
     }
 
+    /// Маркеры nspasteboard.org: менеджеры буфера (Maccy, Paste, Raycast…)
+    /// такие записи не сохраняют в историю.
+    static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+    static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+
+    /// Секрет (токен доступа агентов): только в буфер этого Mac — без
+    /// Universal Clipboard на iPhone и другие Mac — и с маркерами «не
+    /// сохранять в историю».
+    @MainActor
+    static func setSecret(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        _ = pasteboard.prepareForNewContents(with: .currentHostOnly)
+        pasteboard.setString(text, forType: .string)
+        pasteboard.setData(Data(), forType: concealedType)
+        pasteboard.setData(Data(), forType: transientType)
+    }
+
     /// Текст сразу в трёх представлениях: plain — для обычных текстовых полей,
     /// HTML — для приложений с rich-вставкой (Telegram, Notes, Word): таблицы
     /// вставляются таблицами, списки списками; RTF (best-effort из того же

@@ -43,6 +43,21 @@ final class AnalysisController: ObservableObject {
         case frozen                // библиотека заморожена переносом «Папки данных»
 
         var isRunnable: Bool { self == .ok }
+
+        /// Почему нельзя — одной строкой: подсказка у кнопки анализа и ответ
+        /// ИИ-агенту (`Agent/AgentTools.swift`). nil — можно.
+        var message: String? {
+            switch self {
+            case .ok: return nil
+            case .modelMissing: return L("analysis.model.needed")
+            case .busyTranscribing: return L("analysis.busy.transcribing")
+            case .busyOtherRecord: return L("analysis.busy.other")
+            case .busySpeakerNames: return L("analysis.busy.speakerNames")
+            case .emptyTranscript: return L("analysis.error.empty")
+            case .notReady: return L("transcribe.recordMissing")
+            case .frozen: return L("transcribe.error.restartRequired")
+            }
+        }
     }
 
     /// Что именно просим у модели.
@@ -90,7 +105,8 @@ final class AnalysisController: ObservableObject {
         // настройка к нему отношения не имеет. Прежняя проверка ошибалась в обе
         // стороны — пропускала анализ поверх локального распознавания (Qwen на
         // Metal против Parakeet на ANE) и блокировала его при сетевом.
-        if FileTranscriptionController.shared.runningUsesLocalEngine {
+        if FileTranscriptionController.shared.runningUsesLocalEngine
+            || OpenAITranscriptionAPI.shared.isRunningLocal {
             return .busyTranscribing
         }
         // Контекст модели один на приложение: анализ и «Угадать имена» не

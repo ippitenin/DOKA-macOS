@@ -410,18 +410,7 @@ struct AnalysisPanelView: View {
     }
 
     /// Почему кнопка неактивна — подсказкой у самой кнопки.
-    private var disabledHint: String? {
-        switch availability {
-        case .ok: return nil
-        case .modelMissing: return L("analysis.model.needed")
-        case .busyTranscribing: return L("analysis.busy.transcribing")
-        case .busyOtherRecord: return L("analysis.busy.other")
-        case .busySpeakerNames: return L("analysis.busy.speakerNames")
-        case .emptyTranscript: return L("analysis.error.empty")
-        case .notReady: return L("transcribe.recordMissing")
-        case .frozen: return L("transcribe.error.restartRequired")
-        }
-    }
+    private var disabledHint: String? { availability.message }
 
     private func runAnalysis() {
         let kind: AnalysisController.Request.Kind = isCustom
