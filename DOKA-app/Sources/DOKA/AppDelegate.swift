@@ -60,6 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Без ленты в бандле (самосборка) не стартует.
         UpdateController.shared.start()
 
+        // Доступ для ИИ-агентов: локальный MCP-сервер на 127.0.0.1, только
+        // пока включён тумблер (по умолчанию выключен). Токен читается фоном.
+        AgentServerController.shared.activate()
+
         let permissions = PermissionsManager.shared
         permissions.refresh()
         if permissions.allGranted && SettingsStore.shared.isServiceReady {

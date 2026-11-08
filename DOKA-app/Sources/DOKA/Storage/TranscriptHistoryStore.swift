@@ -124,6 +124,7 @@ final class TranscriptHistoryStore: ObservableObject {
         var params: FileTranscriptionParams?
         var sourcePath: String?
         var parentID: UUID?
+        var createdByAgent = false
     }
 
     @discardableResult
@@ -131,7 +132,8 @@ final class TranscriptHistoryStore: ObservableObject {
         let record = FileTranscriptRecord(
             id: UUID(), fileName: draft.fileName, date: Date(), status: .inProgress,
             provider: draft.provider, title: draft.title, sourcePath: draft.sourcePath,
-            params: draft.params, parentID: draft.parentID)
+            params: draft.params, parentID: draft.parentID,
+            createdByAgent: draft.createdByAgent ? true : nil)
         records.insert(record, at: 0)
         persist(record)
         return record.id

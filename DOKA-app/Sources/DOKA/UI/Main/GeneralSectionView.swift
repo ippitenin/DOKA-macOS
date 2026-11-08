@@ -4,6 +4,7 @@ import AppKit
 /// Секция «Общие»: язык, поведение, автозапуск и стиль панели записи.
 struct GeneralSectionView: View {
     @ObservedObject var settings = SettingsStore.shared
+    @ObservedObject private var agentAccess = AgentAccessSettings.shared
     @State private var showRestartAlert = false
     /// Значение языка до выбора в пикере — для отката по «Отмене».
     @State private var revertLanguage: AppLanguage?
@@ -21,6 +22,8 @@ struct GeneralSectionView: View {
             switch subpage {
             case .about:
                 AboutView { subpage = nil }
+            case .agents:
+                AgentAccessView { subpage = nil }
             case .advanced, .none:
                 AdvancedSettingsView { subpage = nil }
             }
@@ -116,11 +119,17 @@ struct GeneralSectionView: View {
                 Text(L("general.clearAudio.confirm.message"))
             }
 
-            // Переходы на под-страницы: «О DOKA» (версия и обновления) и
-            // «Расширенные» (Dock, окно при запуске, папка данных).
+            // Переходы на под-страницы: «О DOKA» (версия и обновления),
+            // «Доступ для ИИ-агентов» (локальный MCP-сервер) и «Расширенные»
+            // (Dock, окно при запуске, папка данных).
             SettingsCard {
                 SettingsLinkRow(title: L("about.title"),
                                 value: AppVersion.short) { subpage = .about }
+                CardDivider()
+                SettingsLinkRow(title: L("agent.title"),
+                                value: agentAccess.isEnabled ? L("agent.link.on") : L("agent.link.off")) {
+                    subpage = .agents
+                }
                 CardDivider()
                 SettingsLinkRow(title: L("general.advanced")) { subpage = .advanced }
             }
@@ -164,6 +173,7 @@ struct GeneralSectionView: View {
 enum GeneralSubpage {
     case advanced
     case about
+    case agents
 }
 
 /// Выбор стиля панели записи карточками-превью.
