@@ -73,11 +73,24 @@ struct AboutView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusTitle)
                         .contentTransition(.opacity)
-                    Text(statusSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .contentTransition(.opacity)
+                    HStack(spacing: 6) {
+                        Text(statusSubtitle)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .contentTransition(.opacity)
+                        // «Что нового» живёт и здесь: крестик плашки сайдбара
+                        // не должен уносить заметки. Та же строка `caption` —
+                        // высота карточки не меняется.
+                        if updates.notesContent != nil {
+                            Text("·").foregroundStyle(.tertiary)
+                            Button(L("update.whatsNew")) { updates.requestNotes() }
+                                .buttonStyle(.plain)
+                                .fontWeight(.medium)
+                                .foregroundStyle(DS.accent)
+                                .transition(.opacity)
+                        }
+                    }
+                    .font(.caption)
                 }
                 Spacer(minLength: 16)
                 statusAction

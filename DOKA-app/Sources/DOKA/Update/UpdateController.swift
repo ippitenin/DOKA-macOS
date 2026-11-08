@@ -27,6 +27,11 @@ final class UpdateController: NSObject, ObservableObject {
     /// Полоса окна установки (0…1). Двигается плавно (`withAnimation`), чтобы
     /// установка не была мгновенным «щелчком» — как в Telegram.
     @Published private(set) var installProgress: Double = 0
+    /// Запрошен лист «Что нового» (плашка, «О DOKA», меню-бар). Лист один —
+    /// на странице «О DOKA» и в плашке сайдбара он открывается по этому флагу.
+    @Published var notesRequested = false
+    /// Заметки установленной версии — живут, пока версия бандла та же.
+    @Published private(set) var installedNotes: UpdateInfo?
 
     /// Обновлятор работает: в бандле есть лента (`SUFeedURL`). Её нет у
     /// сборок без Developer ID — `build.sh` вырезает ключ, чтобы самосборка
@@ -84,9 +89,19 @@ final class UpdateController: NSObject, ObservableObject {
         if let info = UpdateHandoff.resolve(saved: saved, currentVersion: AppVersion.short) {
             NSLog("[Update] DOKA обновлена до %@ — плашка «DOKA обновлена»", info.version)
             state = .updated(info)
+            // Копия заметок — для «Что нового» после того, как плашка уйдёт.
+            if let saved, let data = try? JSONEncoder().encode(saved) {
+                defaults.set(data, forKey: InstalledNotes.key)
+            }
         } else if let saved {
             NSLog("[Update] запись об установке %@ есть, а версия %@ — установка не дошла",
                   saved.version, AppVersion.short)
+        }
+        let installed = defaults.data(forKey: InstalledNotes.key)
+            .flatMap { try? JSONDecoder().decode(UpdateHandoff.Saved.self, from: $0) }
+        installedNotes = InstalledNotes.resolve(saved: installed, currentVersion: AppVersion.short)
+        if installed != nil, installedNotes == nil {
+            defaults.removeObject(forKey: InstalledNotes.key)
         }
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main,
                                  userDriver: userDriver, delegate: self)
@@ -96,7 +111,33 @@ final class UpdateController: NSObject, ObservableObject {
             lastCheck = updater.lastUpdateCheckDate
         } catch {
             NSLog("[Update] Sparkle не запустился: %@", error.localizedDescription)
+            return
         }
+        // Расписание Sparkle при запуске ждёт до «последняя проверка + интервал»;
+        // проверяем сразу, если давно не проверяли (Sparkle разрешает звать
+        // фоновую проверку только сразу после `start`).
+        if updater.automaticallyChecksForUpdates,
+           UpdateSchedule.shouldCheckAtLaunch(last: updater.lastUpdateCheckDate) {
+            NSLog("[Update] фоновая проверка при запуске")
+            updater.checkForUpdatesInBackground()
+        }
+        // Таймер Sparkle во сне стоит: ночь сна сдвинула бы проверку на её длину.
+        // После пробуждения просроченную проверку запускает пересчёт расписания —
+        // штатный способ Sparkle, прямой вызов проверки позже старта ему мешает.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.rescheduleAfterWake() }
+        }
+    }
+
+    private func rescheduleAfterWake() {
+        guard let updater, updater.automaticallyChecksForUpdates,
+              !updater.sessionInProgress, !state.isInstallInProgress,
+              UpdateSchedule.isOverdue(last: updater.lastUpdateCheckDate,
+                                       interval: updater.updateCheckInterval) else { return }
+        NSLog("[Update] пробуждение: проверка просрочена — пересчёт расписания")
+        updater.resetUpdateCycle()
     }
 
     // MARK: - Настройки (хранит сам Sparkle в UserDefaults)
@@ -127,6 +168,16 @@ final class UpdateController: NSObject, ObservableObject {
 
     var banner: UpdateBannerModel? {
         UpdateBannerModel.make(state: state, dismissedVersion: dismissedVersion)
+    }
+
+    /// Что открывает «Что нового» сейчас; nil — заметок нет.
+    var notesContent: ReleaseNotesContent? {
+        ReleaseNotesContent.make(state: state, installedNotes: installedNotes)
+    }
+
+    func requestNotes() {
+        guard notesContent != nil else { return }
+        notesRequested = true
     }
 
     // MARK: - Действия

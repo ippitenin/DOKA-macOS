@@ -14,6 +14,17 @@ final class MenuBarManager {
     private let quietItem = NSMenuItem()
     /// «Обновить DOKA до X…»: виден, только когда новая версия готова.
     private let updateItem = NSMenuItem()
+    /// «Что нового в X»: рядом с пунктом обновления, если у версии есть заметки.
+    private let notesItem = NSMenuItem()
+    /// Отделяет пару пунктов обновления от «Открыть DOKA».
+    private let updateSeparator = NSMenuItem.separator()
+    /// Точка «есть обновление» в углу иконки: окно DOKA почти всегда закрыто,
+    /// и без неё новую версию не заметить. Отдельный слой поверх кнопки —
+    /// сама иконка остаётся template-образом и следует теме меню-бара.
+    private let badgeView = NSView()
+    /// Последнее описание состояния диктовки — к нему добавляется «доступно обновление».
+    private var statusDescription = ""
+    private var showsUpdateBadge = false
 
     init(controller: DictationController) {
         self.controller = controller
@@ -62,6 +73,13 @@ final class MenuBarManager {
         updateItem.action = #selector(installUpdate)
         updateItem.isHidden = true
         menu.addItem(updateItem)
+        // «Что нового в X» — заметки, не открывая плашку (её могли скрыть крестиком).
+        notesItem.target = self
+        notesItem.action = #selector(showReleaseNotes)
+        notesItem.isHidden = true
+        menu.addItem(notesItem)
+        updateSeparator.isHidden = true
+        menu.addItem(updateSeparator)
 
         let openItem = NSMenuItem(title: L("menu.open"), action: #selector(openMain), keyEquivalent: "")
         openItem.target = self
@@ -88,6 +106,7 @@ final class MenuBarManager {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        installBadge()
 
         controller.$state
             .sink { [weak self] state in self?.update(for: state) }
@@ -129,8 +148,37 @@ final class MenuBarManager {
             description = L("menu.status.error")
             toggleItem.title = L("menu.startDictation")
         }
-        image?.accessibilityDescription = description
+        statusDescription = description
         statusItem.button?.image = image
+        applyAccessibilityDescription()
+    }
+
+    /// Описание иконки для VoiceOver: состояние диктовки + «доступно обновление».
+    private func applyAccessibilityDescription() {
+        let text = showsUpdateBadge
+            ? statusDescription + ", " + L("menu.status.updateAvailable")
+            : statusDescription
+        statusItem.button?.image?.accessibilityDescription = text
+        statusItem.button?.setAccessibilityLabel(text)
+    }
+
+    /// Точка — 6 pt в правом верхнем углу 18-пунктовой лого-марки. Привязка
+    /// к центру кнопки, а не к её краям: у меню-бара с вырезом кнопка выше.
+    private func installBadge() {
+        guard let button = statusItem.button else { return }
+        let size: CGFloat = 6
+        badgeView.wantsLayer = true
+        badgeView.layer?.backgroundColor = NSColor(DS.accent).cgColor
+        badgeView.layer?.cornerRadius = size / 2
+        badgeView.isHidden = true
+        badgeView.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(badgeView)
+        NSLayoutConstraint.activate([
+            badgeView.widthAnchor.constraint(equalToConstant: size),
+            badgeView.heightAnchor.constraint(equalToConstant: size),
+            badgeView.centerXAnchor.constraint(equalTo: button.centerXAnchor, constant: 7.5),
+            badgeView.centerYAnchor.constraint(equalTo: button.centerYAnchor, constant: -6.5)
+        ])
     }
 
     /// Пункт повтора: скрыт без записи в слоте и во время записи/распознавания.
@@ -143,15 +191,23 @@ final class MenuBarManager {
         }
     }
 
-    /// Пункт обновления: только при готовой версии; пока идёт установка или
-    /// ожидание покоя — скрыт (нажатие уже было).
+    /// Пункты обновления: только при готовой версии; пока идёт установка или
+    /// ожидание покоя — скрыты (нажатие уже было). Точка на иконке — и при
+    /// ожидании покоя: обновление ещё не стоит.
     private func updateUpdateItem(state: UpdateState) {
         if case .ready(let info) = state {
             updateItem.title = L("menu.installUpdate", info.version)
             updateItem.isHidden = false
+            notesItem.title = L("menu.whatsNew", info.version)
+            notesItem.isHidden = info.notes == nil
         } else {
             updateItem.isHidden = true
+            notesItem.isHidden = true
         }
+        updateSeparator.isHidden = updateItem.isHidden
+        showsUpdateBadge = state.showsMenuBarBadge
+        badgeView.isHidden = !showsUpdateBadge
+        applyAccessibilityDescription()
     }
 
     private static func symbolImage(_ name: String) -> NSImage? {
@@ -201,5 +257,11 @@ final class MenuBarManager {
 
     @objc private func installUpdate() {
         UpdateController.shared.installNow()
+    }
+
+    /// «Что нового в X»: «О DOKA» и лист заметок поверх (лист — на окне).
+    @objc private func showReleaseNotes() {
+        WindowManager.shared.showAbout()
+        UpdateController.shared.requestNotes()
     }
 }
