@@ -54,11 +54,26 @@ struct StudioRecorderView: View {
                         font: .system(size: 26, weight: .medium, design: .monospaced)
                     )
                     .shadow(color: DS.glow.opacity(0.45), radius: 8)
-                    Text(L("recorder.escHint"))
+                    HStack {
+                        if controller.isHandsFree {
+                            Image(systemName: "lock.fill")
+                                .accessibilityLabel(L("recorder.handsFree"))
+                        }
+                        Text(L("recorder.escHint"))
+                    }
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
+        case .paused(let elapsed):
+            centerLabel {
+                Label(L("recorder.paused"), systemImage: "pause.fill")
+                    .foregroundStyle(DS.accent)
+                Text(clockMMSS(elapsed))
+                    .font(.system(size: 26, weight: .medium, design: .monospaced))
+                Text(L("recorder.escHint")).font(.caption2).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
         case .transcribing:
             ZStack {
                 // «Дыхание» волны с фиксированным уровнем вместо спиннера.

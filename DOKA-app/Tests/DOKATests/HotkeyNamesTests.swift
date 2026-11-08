@@ -39,6 +39,9 @@ final class HotkeyNamesTests: XCTestCase {
         XCTAssertEqual(KeyboardShortcuts.Name.pasteLast.initialShortcut,
                        .init(.v, modifiers: [.control, .option]))
         XCTAssertEqual(KeyboardShortcuts.Name.cancelRecording.initialShortcut, .init(.escape))
+        XCTAssertEqual(KeyboardShortcuts.Name.lockOrPause.initialShortcut,
+                       .init(.space, modifiers: [.control, .shift]))
+        XCTAssertTrue(KeyboardShortcuts.Name.dokaShortcuts.contains(.lockOrPause))
         // Без дефолта намеренно: глобальный Cmd+, отобрал бы «Настройки» у всех
         // приложений, а push-to-talk и тихий режим пользователь задаёт сам.
         XCTAssertNil(KeyboardShortcuts.Name.pushToTalk.initialShortcut)

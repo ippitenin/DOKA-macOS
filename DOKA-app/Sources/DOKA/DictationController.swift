@@ -63,6 +63,7 @@ final class DictationController: ObservableObject {
     enum State: Equatable {
         case idle
         case recording(startedAt: Date)
+        case paused(elapsed: TimeInterval)
         case transcribing
         case error(message: String)
 
@@ -71,8 +72,14 @@ final class DictationController: ObservableObject {
             return false
         }
 
-        /// Идёт запись или распознавание — автомат занят.
-        var isBusy: Bool { isRecording || self == .transcribing }
+        var isPaused: Bool {
+            if case .paused = self { return true }
+            return false
+        }
+
+        /// Сессия записи остаётся открытой на паузе: файл и слот модели заняты.
+        var hasRecording: Bool { isRecording || isPaused }
+        var isBusy: Bool { hasRecording || self == .transcribing }
     }
 
     /// Идёт ли диктовка прямо сейчас — для гейтов, у которых нет ссылки на
@@ -82,7 +89,10 @@ final class DictationController: ObservableObject {
     private(set) static var isActive = false
 
     @Published private(set) var state: State = .idle
+    @Published private(set) var isHandsFree = false
     @Published var audioLevel: Float = 0
+    private var controls = DictationControls()
+    var pushToTalkIsDown: Bool { controls.pushToTalkIsDown }
     /// Слот повтора: запись, которую не удалось распознать (или которую гейт
     /// тишины отсеял, а она длиннее секунды). nil — повторять нечего.
     @Published private(set) var lastFailedDictation: FailedDictation?
@@ -128,11 +138,12 @@ final class DictationController: ObservableObject {
 
     init() {
         recorder.onLevel = { [weak self] level in
-            self?.audioLevel = level
+            guard let self, self.state.isRecording else { return }
+            self.audioLevel = level
         }
         // Смена аудиоустройства во время записи: мягко завершаем с тем, что есть.
         recorder.onConfigurationChange = { [weak self] in
-            guard let self, self.state.isRecording else { return }
+            guard let self, self.state.hasRecording else { return }
             self.finishRecording()
         }
     }
@@ -140,37 +151,63 @@ final class DictationController: ObservableObject {
     // MARK: - Действия хоткеев
 
     func toggle() {
-        switch state {
-        case .idle, .error:
-            startRecording()
-        case .recording:
-            finishRecording()
-        case .transcribing:
-            break // идёт запрос — отмена через Esc
-        }
+        guard state != .transcribing else { return }
+        perform(controls.toggle())
     }
 
-    /// Push-to-talk: зажатие начинает запись (только из покоя — повторные
-    /// авторепиты keyDown во время записи игнорируются)…
     func pushToTalkDown() {
-        switch state {
-        case .idle, .error:
-            startRecording()
-        case .recording, .transcribing:
-            break
-        }
+        let action = controls.pushToTalkDown()
+        guard state != .transcribing else { return }
+        perform(action)
     }
 
-    /// …отпускание — завершает и отправляет на распознавание. Случайное
-    /// короткое нажатие отсеет порог `DictationGate.minDuration`.
     func pushToTalkUp() {
-        guard state.isRecording else { return }
-        finishRecording()
+        perform(controls.pushToTalkUp())
+    }
+
+    /// Одна контекстная команда: фиксация удержания → пауза ↔ продолжение.
+    func lockOrPause() {
+        guard state.hasRecording else { return }
+        perform(controls.lockOrPause())
+    }
+
+    private func perform(_ action: DictationControls.Action) {
+        switch action {
+        case .none: break
+        case .startHeld: startRecording(held: true)
+        case .startHandsFree: startRecording()
+        case .finish: finishRecording()
+        case .lock:
+            isHandsFree = true
+            // Жизненный цикл не меняется, но обновляем контекст клавиш.
+            hotkeys?.syncRecordingControls()
+        case .pause:
+            guard let elapsed = recorder.pause() else {
+                recorder.cancelAndDelete()
+                showError(L("error.saveRecordingFailed"))
+                return
+            }
+            // Сжатый WAV больше не совпадает с непрерывной шкалой камеры.
+            // Этот дубль целиком отбрасывается, новые до следующей диктовки
+            // не начинаются: в WISLIP не попадёт неверная обучающая пара.
+            LipCapture.shared.abortTake(activeLipTake)
+            activeLipTake = nil
+            transition(to: .paused(elapsed: elapsed))
+        case .resume:
+            do {
+                let elapsed = try recorder.resume()
+                if settings.micAutoBoost { micBooster.beginBoost() }
+                transition(to: .recording(startedAt: Date().addingTimeInterval(-elapsed)))
+            } catch {
+                recorder.cancelAndDelete()
+                showError(error.localizedDescription)
+            }
+        }
     }
 
     func cancel() {
         switch state {
-        case .recording:
+        case .recording, .paused:
             recorder.cancelAndDelete()
             SoundPlayer.play(.cancel)
             transition(to: .idle)
@@ -258,7 +295,7 @@ final class DictationController: ObservableObject {
 
     // MARK: - Цикл записи
 
-    private func startRecording() {
+    private func startRecording(held: Bool = false) {
         let permissions = PermissionsManager.shared
         permissions.refresh()
         guard permissions.micAuthorized, permissions.axTrusted else {
@@ -319,6 +356,8 @@ final class DictationController: ObservableObject {
         }
         SoundPlayer.play(.recordStart)
         takeSpeechSlotIfLocal()
+        controls.didStart(held: held)
+        isHandsFree = !held
         transition(to: .recording(startedAt: Date()))
     }
 
@@ -346,7 +385,7 @@ final class DictationController: ObservableObject {
     }
 
     private func finishRecording() {
-        guard state.isRecording else { return }
+        guard state.hasRecording else { return }
         let lipTake = activeLipTake
         activeLipTake = nil
         guard let result = recorder.stop() else {
@@ -739,6 +778,10 @@ final class DictationController: ObservableObject {
             LipCapture.shared.abortTake(activeLipTake)
             activeLipTake = nil
         }
+        if !newState.hasRecording {
+            controls.didEnd()
+            isHandsFree = false
+        }
         state = newState
         Self.isActive = newState.isBusy
         // Любой выход из работы — успех, ошибка, отмена — отдаёт слот.
@@ -749,11 +792,12 @@ final class DictationController: ObservableObject {
         audioLevel = 0
         // Esc активен при записи и при распознавании (отмена запроса).
         hotkeys?.setEscapeEnabled(newState.isBusy)
+        hotkeys?.syncRecordingControls()
 
         switch newState {
         case .idle:
             panelController?.hide()
-        case .recording, .transcribing, .error:
+        case .recording, .paused, .transcribing, .error:
             panelController?.show()
         }
     }

@@ -234,7 +234,12 @@
 "hotkeys.card.dictation" = "Dictation";
 "hotkeys.card.window" = "Window";
 "hotkeys.pushToTalk" = "Push-to-talk:";
-"hotkeys.pushToTalk.hint" = "Hold the shortcut to record; release to transcribe and paste.";
+"hotkeys.pushToTalk.hint" = "Hold the shortcut to record; release to transcribe and paste. While holding, use Lock / pause to keep recording hands-free. Press push-to-talk again to finish.";
+"hotkeys.lockOrPause" = "Lock / pause:";
+"hotkeys.lockOrPause.conflict" = "This shortcut conflicts with Lock / pause or the held push-to-talk shortcut. Choose a different main key or modifiers.";
+"hotkeys.lockOrPause.hint" = "While holding push-to-talk, keep recording hands-free; while hands-free, pause; while paused, resume. The shortcut is not captured when idle. Regular Space remains available for typing. If this command and push-to-talk use the same main key or conflict with system shortcuts, choose another shortcut. Start/stop finishes even when paused; Esc cancels. Recordings with a pause are not saved for lip training.";
+"recorder.paused" = "Paused";
+"recorder.handsFree" = "Hands-free recording";
 "hotkeys.mouseButton" = "Mouse button:";
 "hotkeys.mouseButton.hint" = "A side mouse button starts and stops dictation — handy for MX Master-style mice.";
 "hotkeys.mouseButton.assign" = "Add";
