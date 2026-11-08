@@ -1,34 +1,25 @@
-import AppKit
 import SwiftUI
 
 /// Сайдбар главного окна: прокручиваемый список секций и плашка обновления,
 /// приклеенная к нижней кромке. Фон даёт стеклянная плашка в MainWindowView,
 /// ширина фиксированная.
 ///
-/// Список уезжает вверх ПОД зону кнопок окна (54 pt) в прогрессивный блюр с
-/// тинтом — как боковая колонка «Системных настроек» (решения владельца
-/// 8.11.2026). Поверх верха лежит системное размытие `EdgeBlurBackdrop`
-/// (`NSVisualEffectView`, режим «внутри окна»: размывает и тонирует то, что
-/// под ним), его маска сгущается к кромке; сами пункты у края мягко тают.
-/// Что пробовали и почему нет (подробно — `UI/CLAUDE.md`):
-/// - системный `scrollEdgeEffectStyle` под прозрачным `safeAreaBar` — в нашем
-///   сайдбаре не рисуется (он только у системных сайдбаров и тулбаров);
-/// - шейдер на контенте (`layerEffect`) — растрирует пункты в отдельный слой,
-///   и подписи, которые на стекле рисуются вибрирующим смешиванием с фоном,
-///   ПРОПАДАЮТ (видны оставались только иконки и белый текст выбранного).
-/// Содержимое прокрутки поэтому ничем не растрируется. В покое эффекта нет,
-/// включается плавно с первыми пунктами прокрутки. Нижний край — мягкий фейд
-/// над плашкой, только если ниже есть пункты.
+/// Список уезжает вверх ПОД зону кнопок окна и тает простым фейдом:
+/// прозрачно у самой кромки, полностью видно с `topFade` (44 pt) — выше
+/// первого пункта в покое (54 pt), поэтому без прокрутки ничего не притушено
+/// (решение владельца 8.11.2026). Отброшено, не повторять (`UI/CLAUDE.md`):
+/// системный `scrollEdgeEffectStyle` (в нашем сайдбаре не рисуется), шейдер
+/// на контенте (подписи на стекле пропадают), `NSVisualEffectView` сверху
+/// (тонированная полоса с заметной границей), фейд ниже зоны кнопок (низко).
+/// Нижний край — мягкий фейд над плашкой, только если ниже есть пункты.
 struct SidebarView: View {
     @ObservedObject var state: MainWindowState
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var updates = UpdateController.shared
     @Namespace private var selectionNS
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Есть ли контент за верхним / нижним краем прокрутки.
+    /// Есть ли контент за нижним краем прокрутки.
     @State private var overflow = EdgeOverflow()
-    /// Насколько прокручен список от покоя, pt.
-    @State private var scrolled: CGFloat = 0
 
     /// Высота фейда у нижнего края прокрутки.
     private static let fade: CGFloat = 22
@@ -43,11 +34,8 @@ struct SidebarView: View {
     /// Запас над первым пунктом: свечение выбранной пилюли выходит за её
     /// рамку и не должно упираться в край прокрутки.
     private static let glowRoom: CGFloat = 8
-    /// Зона размытия: на ~строку ниже зоны кнопок, чтобы оно нарастало
-    /// через несколько пунктов, а не обрывалось на одном.
-    private static let blurZone: CGFloat = titlebar + 32
-    /// Где пункты окончательно тают — под самими кнопками окна.
-    private static let dissolveZone: CGFloat = 34
+    /// Верхний фейд: от прозрачного у кромки до полной видимости на этой высоте.
+    private static let topFade: CGFloat = 44
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -65,18 +53,7 @@ struct SidebarView: View {
             } action: { _, new in
                 overflow = new
             }
-            .onScrollGeometryChange(for: CGFloat.self) { geo in
-                geo.contentOffset.y + geo.contentInsets.top
-            } action: { _, new in
-                scrolled = new
-            }
             .mask { edgeMask }
-            .overlay(alignment: .top) {
-                EdgeBlurBackdrop()
-                    .frame(height: Self.blurZone)
-                    .opacity(edgeStrength)
-                    .allowsHitTesting(false)
-            }
 
             if let banner = updates.banner {
                 UpdateBanner(model: banner, updates: updates)
@@ -90,20 +67,12 @@ struct SidebarView: View {
         .animation(reduceMotion ? nil : DS.Anim.section, value: updates.banner)
     }
 
-    /// Сила верхнего края: 0 в покое, до 1 за первые 24 pt прокрутки — без рывка.
-    private var edgeStrength: CGFloat {
-        min(max(scrolled / 24, 0), 1)
-    }
-
-    /// Маска прокрутки: сверху пункты тают под кнопками окна (сила — от
-    /// прокрутки), снизу — спад над плашкой при переполнении.
+    /// Маска прокрутки: сверху постоянный фейд под кнопками окна, снизу —
+    /// спад над плашкой при переполнении.
     private var edgeMask: some View {
         VStack(spacing: 0) {
-            LinearGradient(stops: [
-                .init(color: .black.opacity(1 - edgeStrength), location: 0),
-                .init(color: .black, location: 1)
-            ], startPoint: .top, endPoint: .bottom)
-            .frame(height: Self.dissolveZone)
+            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.topFade)
             Color.black
             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
                 .frame(height: overflow.bottom ? Self.fade : 0)
@@ -279,41 +248,4 @@ struct IconTile: View {
             base
         }
     }
-}
-
-/// Системное размытие верхнего края сайдбара: `NSVisualEffectView` в режиме
-/// «внутри окна» размывает и тонирует пункты под собой, а маска-градиент
-/// делает его плотным у кромки и сходящим на нет книзу. Клики проходят
-/// насквозь (`hitTest` → nil).
-private struct EdgeBlurBackdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = PassThroughEffectView()
-        view.material = .headerView
-        view.blendingMode = .withinWindow
-        view.state = .active
-        view.maskImage = Self.mask
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
-
-    /// Вертикальный градиент 1×64, растягивается на высоту вью: плотный у
-    /// кромки, к низу — на нет.
-    private static let mask: NSImage = {
-        let image = NSImage(size: NSSize(width: 1, height: 64), flipped: false) { rect in
-            let gradient = NSGradient(colorsAndLocations:
-                (NSColor.black, 0.0),
-                (NSColor.black, 0.35),
-                (NSColor.black.withAlphaComponent(0.55), 0.65),
-                (NSColor.clear, 1.0))
-            gradient?.draw(in: rect, angle: -90)
-            return true
-        }
-        image.resizingMode = .stretch
-        return image
-    }()
-}
-
-private final class PassThroughEffectView: NSVisualEffectView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
