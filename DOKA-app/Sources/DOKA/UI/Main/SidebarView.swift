@@ -1,51 +1,133 @@
 import SwiftUI
 
-/// Сайдбар главного окна: шапка с логотипом и список секций.
-/// Фон даёт стеклянная плашка в MainWindowView, ширина фиксированная.
+/// Сайдбар главного окна: прокручиваемый список секций и плашка обновления,
+/// приклеенная к нижней кромке. Фон даёт стеклянная плашка в MainWindowView,
+/// ширина фиксированная.
+///
+/// Список уезжает вверх ПОД зону кнопок окна и тает простым фейдом: вся
+/// полоса кнопок окна (до 30 pt) полностью прозрачна, проявление идёт между
+/// кнопками и первым пунктом, полная видимость — с 54 pt, где первый пункт
+/// стоит в покое, поэтому без прокрутки он не притушен (решения владельца
+/// 8.11.2026: линейный фейд 0→44 оставлял пункт под кнопками видимым). Отброшено, не повторять (`UI/CLAUDE.md`):
+/// системный `scrollEdgeEffectStyle` (в нашем сайдбаре не рисуется), шейдер
+/// на контенте (подписи на стекле пропадают), `NSVisualEffectView` сверху
+/// (тонированная полоса с заметной границей), фейд ниже зоны кнопок (низко).
+/// Нижний край — мягкий фейд над плашкой, только если ниже есть пункты.
 struct SidebarView: View {
     @ObservedObject var state: MainWindowState
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var updates = UpdateController.shared
     @Namespace private var selectionNS
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Есть ли контент за нижним краем прокрутки.
+    @State private var overflow = EdgeOverflow()
+
+    /// Высота фейда у нижнего края прокрутки.
+    private static let fade: CGFloat = 22
 
     private var groups: [(titleKey: String?, sections: [MainSection])] {
         MainSection.sidebarGroups(lipsEnabled: settings.lipsExperiment)
     }
 
+    /// Зона кнопок окна: с unified-тулбаром они сидят по центру
+    /// 52-пунктового тайтлбара, внутри плашки.
+    private static let titlebar: CGFloat = 54
+    /// Запас над первым пунктом: свечение выбранной пилюли выходит за её
+    /// рамку и не должно упираться в край прокрутки.
+    private static let glowRoom: CGFloat = 8
+    /// Верхний фейд: полоса кнопок окна (0…30 pt) полностью прозрачна,
+    /// дальше пологое проявление до полной видимости на 54 pt.
+    private static let topFade: CGFloat = titlebar
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Зона трафик-лайтов: с unified-тулбаром кнопки окна сидят
-            // по центру 52-пунктового тайтлбара, внутри плашки.
-            Spacer().frame(height: 54)
+            ScrollView(.vertical) {
+                sectionList
+                    .padding(.top, Self.glowRoom)
+                    .padding(.bottom, 10)
+            }
+            .contentMargins(.top, Self.titlebar - Self.glowRoom, for: .scrollContent)
+            // `.never`, а не `.hidden`: иначе при прокрутке колесом система
+            // всё равно показывает overlay-скроллер поверх пунктов.
+            .scrollIndicators(.never)
+            .onScrollGeometryChange(for: EdgeOverflow.self) { geo in
+                EdgeOverflow(geometry: geo)
+            } action: { _, new in
+                overflow = new
+            }
+            .mask { edgeMask }
 
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let titleKey = group.titleKey {
-                            Text(L(titleKey))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 12)
-                                .padding(.bottom, 3)
-                        }
-                        ForEach(group.sections) { section in
-                            SidebarItemView(
-                                section: section,
-                                isSelected: state.section == section,
-                                namespace: selectionNS
-                            ) {
-                                withAnimation(reduceMotion ? nil : DS.Anim.section) {
-                                    state.section = section
-                                }
+            if let banner = updates.banner {
+                UpdateBanner(model: banner, updates: updates)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
+                    .transition(reduceMotion ? .opacity
+                                : .opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(reduceMotion ? nil : DS.Anim.section, value: updates.banner)
+    }
+
+    /// Маска прокрутки: сверху постоянный фейд под кнопками окна, снизу —
+    /// спад над плашкой при переполнении.
+    private var edgeMask: some View {
+        VStack(spacing: 0) {
+            LinearGradient(stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .clear, location: 0.56),
+                .init(color: .black.opacity(0.35), location: 0.76),
+                .init(color: .black, location: 1)
+            ], startPoint: .top, endPoint: .bottom)
+            .frame(height: Self.topFade)
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: overflow.bottom ? Self.fade : 0)
+        }
+        .animation(DS.Anim.control, value: overflow)
+    }
+
+    private var sectionList: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                VStack(alignment: .leading, spacing: 2) {
+                    if let titleKey = group.titleKey {
+                        Text(L(titleKey))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 12)
+                            .padding(.bottom, 3)
+                    }
+                    ForEach(group.sections) { section in
+                        SidebarItemView(
+                            section: section,
+                            isSelected: state.section == section,
+                            namespace: selectionNS
+                        ) {
+                            withAnimation(reduceMotion ? nil : DS.Anim.section) {
+                                state.section = section
                             }
                         }
                     }
                 }
             }
-            .padding(.horizontal, 10)
-
-            Spacer()
         }
+        .padding(.horizontal, 10)
+    }
+}
+
+/// Есть ли контент за краями прокрутки (порог — полпункта, чтобы дрожание
+/// при упругой прокрутке не мигало фейдом).
+struct EdgeOverflow: Equatable {
+    var top = false
+    var bottom = false
+
+    init() {}
+
+    init(geometry geo: ScrollGeometry) {
+        let offset = geo.contentOffset.y + geo.contentInsets.top
+        top = offset > 0.5
+        bottom = geo.contentSize.height - offset - geo.containerSize.height > 0.5
     }
 }
 

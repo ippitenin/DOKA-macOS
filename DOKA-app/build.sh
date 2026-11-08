@@ -134,6 +134,33 @@ LLAMA_ARCHS="$(lipo -archs "$LLAMA_BIN")"
 [ "$LLAMA_ARCHS" = "arm64" ] || { echo "llama.framework не arm64: $LLAMA_ARCHS"; exit 1; }
 echo "    llama.framework: $LLAMA_ARCHS"
 
+# Sparkle — автообновление (Sources/DOKA/Update/CLAUDE.md). Тоже динамический
+# фреймворк из распакованного артефакта SPM, тоже universal. Внутри три куска
+# исполняемого кода: сам Sparkle, помощник установки Autoupdate и Updater.app.
+# XPCServices (Downloader/Installer) нужны только приложениям в песочнице —
+# DOKA не в ней, Sparkle без ключа SUEnableInstallerLauncherService ставит
+# обновление своим помощником, а лишний неподписанный нами код в бандле
+# уронил бы нотаризацию.
+SPARKLE_SRC="$(find .build/artifacts -type d -path '*Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' -prune -print -quit)"
+[ -n "$SPARKLE_SRC" ] || { echo "Не найден Sparkle.framework (срез macos-arm64_x86_64)"; exit 1; }
+cp -RX "$SPARKLE_SRC" "$STAGE_APP/Contents/Frameworks/"
+SPARKLE_FW="$STAGE_APP/Contents/Frameworks/Sparkle.framework"
+rm -rf "$SPARKLE_FW/Versions/B/Headers" "$SPARKLE_FW/Versions/B/PrivateHeaders" \
+       "$SPARKLE_FW/Versions/B/Modules" "$SPARKLE_FW/Versions/B/XPCServices" \
+       "$SPARKLE_FW/Headers" "$SPARKLE_FW/PrivateHeaders" "$SPARKLE_FW/Modules" \
+       "$SPARKLE_FW/XPCServices"
+SPARKLE_BINS=("$SPARKLE_FW/Versions/B/Sparkle" "$SPARKLE_FW/Versions/B/Autoupdate"
+              "$SPARKLE_FW/Versions/B/Updater.app/Contents/MacOS/Updater")
+for bin in "${SPARKLE_BINS[@]}"; do
+    if [[ "$(lipo -archs "$bin")" != "arm64" ]]; then
+        lipo "$bin" -thin arm64 -output "$bin.thin"
+        mv "$bin.thin" "$bin"
+    fi
+    archs="$(lipo -archs "$bin")"
+    [ "$archs" = "arm64" ] || { echo "Sparkle не arm64 ($bin): $archs"; exit 1; }
+done
+echo "    Sparkle.framework: arm64 (Sparkle, Autoupdate, Updater.app)"
+
 xattr -cr "$STAGE_APP" 2>/dev/null || true
 
 # rpath на @executable_path/../Frameworks приходит из linkerSettings в
@@ -154,6 +181,25 @@ if [[ "$SIGN_ID" == "Developer ID Application: "* ]]; then
 else
     IS_DEVELOPER_ID=0
 fi
+
+# Автообновление — только у сборки от Developer ID: лента отдаёт официальную
+# сборку, и самосборка («DOKA Dev», ad-hoc, CI) молча заменилась бы ею со
+# сбросом разрешений и доступа к ключу API. Без SUFeedURL обновлятор не
+# стартует, а «О DOKA» ведёт на страницу релизов. До подписи: Info.plist
+# входит в неё.
+if [ "$IS_DEVELOPER_ID" = 0 ]; then
+    plutil -remove SUFeedURL "$STAGE_APP/Contents/Info.plist"
+    echo "    Не Developer ID — лента обновлений убрана из Info.plist."
+fi
+
+# Части Sparkle — изнутри наружу: помощник установки, Updater.app, фреймворк
+# (порядок из документации Sparkle; без --deep).
+sign_sparkle() {
+    local signer="$1"; shift
+    "$signer" "$@" "$SPARKLE_FW/Versions/B/Autoupdate"
+    "$signer" "$@" "$SPARKLE_FW/Versions/B/Updater.app"
+    "$signer" "$@" "$SPARKLE_FW"
+}
 
 # codesign с меткой времени, с повтором. Сервер меток Apple временами молчит
 # («A timestamp was expected but was not found»), особенно после серии
@@ -178,18 +224,22 @@ codesign_timestamped() {
 if [ "$IS_DEVELOPER_ID" = 1 ]; then
     # Нотаризация требует hardened runtime и метку времени Apple. Под hardened
     # runtime микрофону и камере нужны права из Resources/DOKA.entitlements.
-    # Без --deep: исполняемого кода в бандле ровно два куска, оба подписаны
-    # явно, а --deep раздал бы права приложения и фреймворку.
+    # Без --deep: весь исполняемый код бандла (бинарник, llama.framework,
+    # три куска Sparkle) подписан явно, а --deep раздал бы права приложения
+    # и фреймворкам.
     codesign_timestamped --force --options runtime --sign "$SIGN_ID" "$FW"
+    sign_sparkle codesign_timestamped --force --options runtime --sign "$SIGN_ID"
     codesign_timestamped --force --options runtime \
         --entitlements Resources/DOKA.entitlements --sign "$SIGN_ID" "$STAGE_APP"
     echo "    Подписано «${SIGN_ID}» (hardened runtime)."
 elif security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_ID"; then
     codesign --force --sign "$SIGN_ID" "$FW"
+    sign_sparkle codesign --force --sign "$SIGN_ID"
     codesign --force --deep --sign "$SIGN_ID" "$STAGE_APP"
     echo "    Подписано сертификатом «${SIGN_ID}» — TCC-разрешения стабильны между сборками."
 else
     codesign --force --sign - "$FW"
+    sign_sparkle codesign --force --sign -
     codesign --force --deep --sign - "$STAGE_APP"
     echo "    ВНИМАНИЕ: подпись ad-hoc. Разрешения микрофона/Accessibility будут"
     echo "    сбрасываться при каждой пересборке. Создайте сертификат «DOKA Dev»"
@@ -256,6 +306,16 @@ if [ "$MAKE_DMG" = 1 ]; then
         # выключенным Gatekeeper spctl принимает и ненотаризованное.
         xcrun stapler staple -q "$APP"
         xcrun stapler validate -q "$APP"
+
+        # Архив автообновления: то же нотаризованное приложение с квитанцией,
+        # упакованное так, как рекомендует Sparkle (ditto сохраняет подпись и
+        # симлинки фреймворков). Подписывает его ключом EdDSA и публикует
+        # вместе с лентой scripts/release.sh.
+        VERSION="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
+        UPDATE_ZIP="$(cd .. && pwd)/${APP_NAME}-${VERSION}.zip"
+        rm -f "$(cd .. && pwd)/${APP_NAME}"-*.zip
+        ditto -c -k --sequesterRsrc --keepParent "$APP" "$UPDATE_ZIP"
+        echo "    Архив обновления: $(basename "$UPDATE_ZIP")"
     fi
 
     echo "==> Сборка образа ${DMG_PATH}…"

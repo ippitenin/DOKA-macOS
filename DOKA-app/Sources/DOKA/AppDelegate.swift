@@ -56,6 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LipCapture.shared.prepareIfEnabled()
         LipDataStore.shared.start(launch: launch)
 
+        // Автообновление: планировщик проверок Sparkle (раз в сутки, фоном).
+        // Без ленты в бандле (самосборка) не стартует.
+        UpdateController.shared.start()
+
         let permissions = PermissionsManager.shared
         permissions.refresh()
         if permissions.allGranted && SettingsStore.shared.isServiceReady {

@@ -12,6 +12,8 @@ final class MenuBarManager {
     private let toggleItem = NSMenuItem()
     private let retryItem = NSMenuItem()
     private let quietItem = NSMenuItem()
+    /// «Обновить DOKA до X…»: виден, только когда новая версия готова.
+    private let updateItem = NSMenuItem()
 
     init(controller: DictationController) {
         self.controller = controller
@@ -55,6 +57,12 @@ final class MenuBarManager {
         // Сочетания задаются в «Клавишах» (setShortcut сам обновляет подпись
         // при переназначении). Прежний декоративный Cmd+, работал только при
         // открытом меню; настроенные здесь — глобальные.
+        // Готовое обновление — над «Открыть DOKA», чтобы его было видно сразу.
+        updateItem.target = self
+        updateItem.action = #selector(installUpdate)
+        updateItem.isHidden = true
+        menu.addItem(updateItem)
+
         let openItem = NSMenuItem(title: L("menu.open"), action: #selector(openMain), keyEquivalent: "")
         openItem.target = self
         openItem.setShortcut(for: .openMainWindow)
@@ -64,6 +72,15 @@ final class MenuBarManager {
         historyItem.target = self
         historyItem.setShortcut(for: .openHistoryWindow)
         menu.addItem(historyItem)
+
+        // Ручная проверка — на странице «О DOKA»: там видно и итог, и настройки.
+        // У самосборки ленты нет — пункт не нужен.
+        if UpdateController.shared.isAvailable {
+            let checkItem = NSMenuItem(title: L("menu.checkUpdates"), action: #selector(openAbout),
+                                       keyEquivalent: "")
+            checkItem.target = self
+            menu.addItem(checkItem)
+        }
 
         menu.addItem(.separator())
 
@@ -79,6 +96,9 @@ final class MenuBarManager {
         // поэтому берём значения из параметров, а не из контроллера.
         Publishers.CombineLatest(controller.$state, controller.$lastFailedDictation)
             .sink { [weak self] state, failed in self?.updateRetry(state: state, failed: failed) }
+            .store(in: &cancellables)
+        UpdateController.shared.$state
+            .sink { [weak self] state in self?.updateUpdateItem(state: state) }
             .store(in: &cancellables)
         SettingsStore.shared.$quietMode
             .sink { [weak self] on in self?.quietItem.state = on ? .on : .off }
@@ -123,6 +143,17 @@ final class MenuBarManager {
         }
     }
 
+    /// Пункт обновления: только при готовой версии; пока идёт установка или
+    /// ожидание покоя — скрыт (нажатие уже было).
+    private func updateUpdateItem(state: UpdateState) {
+        if case .ready(let info) = state {
+            updateItem.title = L("menu.installUpdate", info.version)
+            updateItem.isHidden = false
+        } else {
+            updateItem.isHidden = true
+        }
+    }
+
     private static func symbolImage(_ name: String) -> NSImage? {
         let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
         image?.isTemplate = true
@@ -162,5 +193,13 @@ final class MenuBarManager {
 
     @objc private func openHistory() {
         WindowManager.shared.showMain(section: .history)
+    }
+
+    @objc private func openAbout() {
+        WindowManager.shared.showAbout()
+    }
+
+    @objc private func installUpdate() {
+        UpdateController.shared.installNow()
     }
 }

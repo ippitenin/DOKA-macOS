@@ -44,7 +44,14 @@ let package = Package(
         //
         // Поднимать версию — только после полной проверки: `./build.sh` и
         // smoke Parakeet и диаризации.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.5", traits: [])
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.5", traits: []),
+        // Автообновление (MIT): проверка ленты, фоновое скачивание, проверка
+        // подписи EdDSA и замена приложения с перезапуском. Интерфейс свой
+        // (`Update/DokaUserDriver.swift`), стандартные окна Sparkle не
+        // показываются. Точный пин: протокол SPUUserDriver и делегаты меняются
+        // между минорными версиями. Поднимать — с ./build.sh (подпись
+        // Autoupdate/Updater.app) и стендом обновления (см. Update/CLAUDE.md).
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
     ],
     targets: [
         .executableTarget(
@@ -53,6 +60,7 @@ let package = Package(
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
                 .product(name: "FluidAudio", package: "FluidAudio"),
+                .product(name: "Sparkle", package: "Sparkle"),
                 "LlamaFramework"
             ],
             path: "Sources/DOKA",
@@ -63,7 +71,7 @@ let package = Package(
             exclude: [
                 "Audio/CLAUDE.md", "Lips/CLAUDE.md", "Local/CLAUDE.md",
                 "Managers/CLAUDE.md", "Network/CLAUDE.md", "Paste/CLAUDE.md",
-                "Storage/CLAUDE.md", "Text/CLAUDE.md", "UI/CLAUDE.md",
+                "Storage/CLAUDE.md", "Text/CLAUDE.md", "UI/CLAUDE.md", "Update/CLAUDE.md",
                 "UI/Main/CLAUDE.md", "UI/Main/Library/CLAUDE.md", "Util/CLAUDE.md"
             ],
             resources: [.process("Resources")],

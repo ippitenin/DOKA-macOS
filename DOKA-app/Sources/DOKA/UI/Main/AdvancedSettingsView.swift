@@ -331,11 +331,9 @@ struct AdvancedSettingsView: View {
         // копирования — в папку, которую перенос удалит. Переносим в покое.
         // Диктовка — по той же причине: её история, статистика и m4a пишутся
         // в старый путь. Анализ ИИ — тоже: он идёт минутами, а заморозка
-        // библиотеки после переноса молча выбросит готовый отчёт.
-        guard !FileTranscriptionController.shared.isTranscribing,
-              !DictationController.isActive,
-              !AnalysisController.shared.isRunning,
-              !store.hasBackgroundWork else {
+        // библиотеки после переноса молча выбросит готовый отчёт. Предикат
+        // общий с установкой обновления (`AppActivity`).
+        guard !AppActivity.isBusy else {
             migrationAlert = .failed(message: L("advanced.migrate.error.busy"))
             return
         }

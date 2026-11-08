@@ -199,6 +199,10 @@ live in `~/Library/Application Support/DOKA`. Storing dictation audio is **off b
 when enabled, recordings are kept locally as m4a and pruned on a schedule you choose. API
 keys live in the macOS Keychain, never in config files.
 
+Updates: once a day DOKA downloads a small update feed (`appcast.xml`) from GitHub Releases and
+compares version numbers. Nothing about you or your Mac is sent along. A new version is
+downloaded from the same release and installed only after its signature checks out.
+
 The Lips experiment films your face only if you turn it on yourself. Face video is biometric
 data: it is stored in `~/Library/Application Support/DOKA/LipData`, never uploaded and never
 deleted automatically. You can erase all of it with one button in the Lips section.
@@ -231,6 +235,11 @@ the request once.
    **Microphone** access to record, **Accessibility** to paste the text, and a recognition
    service: a cloud one with its key, or a local model downloaded right there.
 
+After that DOKA keeps itself up to date: a new version downloads in the background, a banner
+appears at the bottom of the sidebar, and **Update** relaunches DOKA on the new version in a couple
+of seconds. Version, update check and settings are in **General → About DOKA**. DOKA 1.0.3 and
+older need to be updated by hand once.
+
 **Requirements:** a Mac with Apple silicon (M1 or newer) and macOS 15 or later. Local AI analysis
 needs about 2.7 GB of disk space and up to 5 GB of memory while it runs.
 
@@ -242,7 +251,8 @@ cd DOKA-macOS/DOKA-app
 ./build.sh        # builds DOKA and installs it to ~/Applications
 ```
 
-Building needs Xcode 26 or newer. Tests, conventions and how to contribute are in
+Building needs Xcode 26 or newer. A copy built from source does not update itself — only the
+official Developer ID build from Releases does. Tests, conventions and how to contribute are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits and third-party licenses
@@ -254,6 +264,8 @@ Full list with versions and required notices: [`THIRD_PARTY_LICENSES.md`](THIRD_
   in `DOKA.app/Contents/Frameworks`)
 - [WhisperKit / argmax-oss-swift](https://github.com/argmaxinc/argmax-oss-swift) — MIT
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) — Apache-2.0
+- [Sparkle](https://github.com/sparkle-project/Sparkle) — MIT (prebuilt framework, bundled in
+  `DOKA.app/Contents/Frameworks`; updates)
 - Hub and Tokenizers code from [swift-transformers](https://github.com/huggingface/swift-transformers)
   (vendored inside argmax-oss-swift) and Apple’s `swift-argument-parser` — Apache-2.0
 

@@ -70,6 +70,26 @@ jobs:
             || { echo "::error::в бинарнике не sdk $sdk — старый вид контролов"; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$APP"
 
+      - name: Проверка встраивания Sparkle.framework
+        # Автообновление: три куска исполняемого кода (Sparkle, Autoupdate,
+        # Updater.app) — все ровно arm64; XPC-сервисы вырезаны (DOKA не в
+        # песочнице); у ad-hoc-сборки раннера ленты в Info.plist быть не должно.
+        run: |
+          APP="$RUNNER_TEMP/out/DOKA.app"
+          SP="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+          test -d "$SP" || { echo "::error::Sparkle.framework не попал в бандл"; exit 1; }
+          for bin in "$SP/Sparkle" "$SP/Autoupdate" "$SP/Updater.app/Contents/MacOS/Updater"; do
+            archs="$(lipo -archs "$bin")"
+            echo "$(basename "$bin"): $archs"
+            [[ "$archs" == "arm64" ]] || { echo "::error::$bin не arm64: $archs"; exit 1; }
+          done
+          test ! -e "$SP/XPCServices" || { echo "::error::XPCServices остались в Sparkle.framework"; exit 1; }
+          otool -L "$APP/Contents/MacOS/DOKA" | grep "Sparkle.framework" >/dev/null \
+            || { echo "::error::бинарник не слинкован с Sparkle.framework"; exit 1; }
+          if plutil -extract SUFeedURL raw "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+            echo "::error::у сборки без Developer ID осталась лента обновлений"; exit 1
+          fi
+
       - name: Проверка образа
         working-directory: ${{ github.workspace }}
         run: |
