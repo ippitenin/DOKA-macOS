@@ -101,7 +101,10 @@ struct LipMirrorView: View {
             // Рост — со следующего такта, когда окно уже на экране: иначе
             // изменение могло примениться без анимации.
             DispatchQueue.main.async {
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.80)) { revealed = true }
+                // Без перелёта (затухание 1.0): содержимое привязано к кромке,
+                // и пружина с отскоком на миг отрывала плашку от края экрана —
+                // в щели была видна полоска.
+                withAnimation(.spring(response: 0.42, dampingFraction: 1.0)) { revealed = true }
             }
         }
     }
