@@ -9,25 +9,36 @@ enum RecordingControlShortcut {
                          for name: KeyboardShortcuts.Name) -> KeyboardShortcuts.ValidationResult {
         let command = name == .lockOrPause ? shortcut : KeyboardShortcuts.getShortcut(for: .lockOrPause)
         guard let command else { return .allow }
-        let others = KeyboardShortcuts.Name.dokaShortcuts.filter { $0 != .lockOrPause }
-        if others.contains(where: { ($0 == name ? shortcut : KeyboardShortcuts.getShortcut(for: $0)) == command }) {
-            return .disallow(reason: L("hotkeys.lockOrPause.conflict"))
-        }
+        let others = KeyboardShortcuts.Name.dokaShortcuts
+            .filter { $0 != .lockOrPause }
+            .compactMap { $0 == name ? shortcut : KeyboardShortcuts.getShortcut(for: $0) }
         // PTT записывается прямо сейчас — его сочетание вытеснит правую клавишу.
-        let held = name == .pushToTalk
-            ? HeldPushToTalk(shortcut: shortcut)
-            : HeldPushToTalk.current()
-        if let held {
-            let combined = KeyboardShortcuts.Shortcut(
-                carbonKeyCode: command.carbonKeyCode,
-                carbonModifiers: command.carbonModifiers | held.carbonModifiers
-            )
-            if command.carbonKeyCode == held.carbonKeyCode || combined.isTakenBySystem
-                || others.contains(where: { ($0 == name ? shortcut : KeyboardShortcuts.getShortcut(for: $0)) == combined }) {
-                return .disallow(reason: L("hotkeys.lockOrPause.conflict"))
-            }
-        }
-        return .allow
+        let held = name == .pushToTalk ? HeldPushToTalk(shortcut: shortcut) : HeldPushToTalk.current()
+        let blocked = conflicts(command: command, others: others, held: held,
+                                takenBySystem: { $0.isTakenBySystem })
+        return blocked ? .disallow(reason: L("hotkeys.lockOrPause.conflict")) : .allow
+    }
+
+    /// Чистое решение проверки (тесты передают свой `takenBySystem`).
+    /// Отказ — когда команда буквально совпадает с другой командой DOKA или
+    /// у неё та же основная клавиша, что у PTT-сочетания (зажатую клавишу
+    /// второй раз не нажать). Сочетание «команда + модификаторы PTT»
+    /// проверяется только у PTT-СОЧЕТАНИЯ: у правой клавиши временный
+    /// вариант необязателен — если он занят (⌃Пробел под правым ⌥ = системный
+    /// ⌃⌥Пробел), фиксацию ловит монитор `HotkeyManager`. Отказ здесь не
+    /// давал вернуть ⌃Пробел на фиксацию при PTT на правом ⌥.
+    static func conflicts(command: KeyboardShortcuts.Shortcut,
+                          others: [KeyboardShortcuts.Shortcut],
+                          held: HeldPushToTalk?,
+                          takenBySystem: (KeyboardShortcuts.Shortcut) -> Bool) -> Bool {
+        if others.contains(command) { return true }
+        guard let held, let heldKey = held.carbonKeyCode else { return false }
+        if command.carbonKeyCode == heldKey { return true }
+        let combined = KeyboardShortcuts.Shortcut(
+            carbonKeyCode: command.carbonKeyCode,
+            carbonModifiers: command.carbonModifiers | held.carbonModifiers
+        )
+        return takenBySystem(combined) || others.contains(combined)
     }
 
     static func heldVariant(command: KeyboardShortcuts.Shortcut?,

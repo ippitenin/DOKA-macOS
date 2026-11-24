@@ -46,7 +46,7 @@ final class RightModifierGestureTests: XCTestCase {
     func testOtherModifiersDoNotBreakHold() {
         var g = RightModifierGesture()
         _ = g.keyDown(.option, at: 0, kind: .hold)
-        g.otherModifierChanged()   // ⌃⇧ команды фиксации
+        g.interruptTaps()   // ⌃⇧ команды фиксации
         XCTAssertEqual(g.startDelayElapsed(.option, at: delay), [.start(.option)])
     }
 
@@ -68,7 +68,7 @@ final class RightModifierGestureTests: XCTestCase {
         XCTAssertEqual(g.otherKey(at: 0.1), [])   // ⌘+C
         XCTAssertEqual(g.keyUp(.command, at: 0.2), [])
         _ = g.keyDown(.command, at: 1, kind: .tap)
-        g.otherModifierChanged()                  // ⌘⇧…
+        g.interruptTaps()                  // ⌘⇧…
         XCTAssertEqual(g.keyUp(.command, at: 1.2), [])
     }
 
@@ -86,5 +86,16 @@ final class RightModifierGestureTests: XCTestCase {
         var g = RightModifierGesture()
         _ = g.keyDown(.option, at: 0, kind: .hold)
         XCTAssertEqual(g.keyDown(.option, at: 0.1, kind: .hold), [])
+    }
+
+    func testClickDuringTapIsNotACommandButDoesNotStopHold() {
+        var g = RightModifierGesture()
+        _ = g.keyDown(.command, at: 0, kind: .tap)
+        g.interruptTaps()   // ⌘+клик по ссылке
+        XCTAssertEqual(g.keyUp(.command, at: 0.2), [])
+        _ = g.keyDown(.option, at: 1, kind: .hold)
+        _ = g.startDelayElapsed(.option, at: 1 + delay)
+        g.interruptTaps()   // клик по ходу диктовки
+        XCTAssertEqual(g.keyUp(.option, at: 3), [.stop(.option)])
     }
 }

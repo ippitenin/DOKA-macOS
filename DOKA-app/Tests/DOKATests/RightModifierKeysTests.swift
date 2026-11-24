@@ -67,4 +67,14 @@ final class RightModifierKeysTests: XCTestCase {
         XCTAssertEqual(RightModifierKey(keyCode: 54), .command)
         XCTAssertNil(RightModifierKey(keyCode: 58), "левый ⌥ — не правая клавиша")
     }
+
+    func testReleaseCheckUsesSharedQuartzFlag() {
+        // Зажатый правый ⌥: общий бит есть — страховка не должна видеть отпускание.
+        XCTAssertFalse(RightModifierKey.isReleased(.option, in: [.maskAlternate]))
+        XCTAssertTrue(RightModifierKey.isReleased(.option, in: []))
+        XCTAssertTrue(RightModifierKey.isReleased(.option, in: [.maskCommand]))
+        XCTAssertFalse(RightModifierKey.isReleased(.command, in: [.maskCommand, .maskShift]))
+        XCTAssertEqual(RightModifierKey.option.cgFlag, .maskAlternate)
+        XCTAssertEqual(RightModifierKey.command.cgFlag, .maskCommand)
+    }
 }

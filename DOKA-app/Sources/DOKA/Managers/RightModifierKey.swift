@@ -62,6 +62,24 @@ enum RightModifierKey: String, CaseIterable {
     func isDown(in flags: NSEvent.ModifierFlags) -> Bool {
         flags.rawValue & deviceMask != 0
     }
+
+    /// Общий бит клавиши в флагах Quartz.
+    var cgFlag: CGEventFlags {
+        switch self {
+        case .option: return .maskAlternate
+        case .command: return .maskCommand
+        }
+    }
+
+    /// Страховка отпускания по `CGEventSource.flagsState`: клавиша точно
+    /// отпущена, если в флагах нет даже общего бита. `keyState` по коду
+    /// 61/54 для этого НЕ годится — правые модификаторы он не ведёт и
+    /// отвечает «отпущено» при зажатой клавише: запись сбрасывалась через
+    /// 20 мс после старта. Цена — при зажатом вместе левом ⌥ страховка
+    /// молчит; обычное отпускание всё равно приходит событием.
+    static func isReleased(_ key: RightModifierKey, in flags: CGEventFlags) -> Bool {
+        !flags.contains(key.cgFlag)
+    }
 }
 
 /// Какие команды DOKA назначены на правые клавиши. Одна клавиша — одна
