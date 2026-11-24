@@ -230,7 +230,10 @@
 "hotkeys.pasteLast" = "Вставить последнюю транскрипцию:";
 "hotkeys.quietMode" = "Тихий режим (шёпот):";
 "hotkeys.quietMode.hint" = "Включает и выключает диктовку шёпотом. Новый режим действует со следующей записи.";
-"hotkeys.escHint" = "Отмена записи — Esc (работает во время записи и распознавания).";
+"hotkeys.escHint" = "Отмена записи — Esc (работает во время записи и распознавания). Вместо сочетания можно назначить правый ⌥ или правый ⌘: нажмите и отпустите клавишу в поле. Push-to-talk — удерживать, остальное — короткое нажатие.";
+"hotkeys.rightOption" = "Правый ⌥";
+"hotkeys.rightCommand" = "Правый ⌘";
+"hotkeys.rightModifier.conflict" = "%1$@ уже назначен на «%2$@». Сначала сбросьте его там.";
 "hotkeys.card.dictation" = "Диктовка";
 "hotkeys.card.window" = "Окно";
 "hotkeys.pushToTalk" = "Push-to-talk:";

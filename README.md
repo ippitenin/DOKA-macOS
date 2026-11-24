@@ -98,6 +98,10 @@ minutes with a language model that also runs locally.
   push-to-talk press finishes, Esc cancels. Customize the command in Shortcuts;
   it is captured only during dictation, leaving regular Space available for typing.
   Recordings with a pause are not saved for lip training.
+- **Right ⌥ or right ⌘ as a hotkey** — any command in Shortcuts can take the right Option
+  or right Command alone: press and release the key in its field. Push-to-talk works by
+  holding it, every other command by a short press. Combinations like ⌥+letter or ⌘C keep
+  working as usual and don't start a recording.
 - **Recording panel** — six styles. `aurora` and `mini` are a glowing droplet built on Metal
   shaders in the spirit of Liquid Glass: the wave inside answers your voice in both amplitude
   and speed, the glass refracts light at the rim, and while transcribing the droplet springs

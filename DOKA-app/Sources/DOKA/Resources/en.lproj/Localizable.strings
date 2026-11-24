@@ -230,7 +230,10 @@
 "hotkeys.pasteLast" = "Paste last transcription:";
 "hotkeys.quietMode" = "Quiet mode (whisper):";
 "hotkeys.quietMode.hint" = "Turns whisper dictation on and off. The new mode applies from the next recording.";
-"hotkeys.escHint" = "Cancel recording — Esc (works while recording and transcribing).";
+"hotkeys.escHint" = "Cancel recording — Esc (works while recording and transcribing). Instead of a shortcut you can assign the right ⌥ or right ⌘: press and release the key in the field. Push-to-talk — hold it, everything else — a short press.";
+"hotkeys.rightOption" = "Right ⌥";
+"hotkeys.rightCommand" = "Right ⌘";
+"hotkeys.rightModifier.conflict" = "%1$@ is already assigned to “%2$@”. Clear it there first.";
 "hotkeys.card.dictation" = "Dictation";
 "hotkeys.card.window" = "Window";
 "hotkeys.pushToTalk" = "Push-to-talk:";

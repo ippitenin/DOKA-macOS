@@ -10,20 +10,20 @@ struct HotkeysSectionView: View {
             SettingsCard(header: L("hotkeys.card.dictation"),
                          footer: L("hotkeys.escHint")) {
                 SettingsRow(title: L("hotkeys.toggle")) {
-                    KeyboardShortcuts.Recorder(for: .toggleRecording)
-                        .shortcutValidation { RecordingControlShortcut.validate($0, for: .toggleRecording) }
+                    HotkeyRecorder(name: .toggleRecording)
+                        .fixedSize()
                 }
                 CardDivider()
                 SettingsRow(title: L("hotkeys.pushToTalk"),
                             help: L("hotkeys.pushToTalk.hint")) {
-                    KeyboardShortcuts.Recorder(for: .pushToTalk)
-                        .shortcutValidation { RecordingControlShortcut.validate($0, for: .pushToTalk) }
+                    HotkeyRecorder(name: .pushToTalk)
+                        .fixedSize()
                 }
                 CardDivider()
                 SettingsRow(title: L("hotkeys.lockOrPause"),
                             help: L("hotkeys.lockOrPause.hint")) {
-                    KeyboardShortcuts.Recorder(for: .lockOrPause)
-                        .shortcutValidation { RecordingControlShortcut.validate($0, for: .lockOrPause) }
+                    HotkeyRecorder(name: .lockOrPause)
+                        .fixedSize()
                 }
                 CardDivider()
                 SettingsRow(title: L("hotkeys.mouseButton"),
@@ -32,27 +32,27 @@ struct HotkeysSectionView: View {
                 }
                 CardDivider()
                 SettingsRow(title: L("hotkeys.pasteLast")) {
-                    KeyboardShortcuts.Recorder(for: .pasteLast)
-                        .shortcutValidation { RecordingControlShortcut.validate($0, for: .pasteLast) }
+                    HotkeyRecorder(name: .pasteLast)
+                        .fixedSize()
                 }
                 CardDivider()
                 SettingsRow(title: L("hotkeys.quietMode"),
                             help: L("hotkeys.quietMode.hint")) {
-                    KeyboardShortcuts.Recorder(for: .toggleQuietMode)
-                        .shortcutValidation { RecordingControlShortcut.validate($0, for: .toggleQuietMode) }
+                    HotkeyRecorder(name: .toggleQuietMode)
+                        .fixedSize()
                 }
             }
 
             SettingsCard(header: L("hotkeys.card.window"),
                          footer: L("hotkeys.window.footer")) {
                 SettingsRow(title: L("hotkeys.openMain")) {
-                    KeyboardShortcuts.Recorder(for: .openMainWindow)
-                        .shortcutValidation { RecordingControlShortcut.validate($0, for: .openMainWindow) }
+                    HotkeyRecorder(name: .openMainWindow)
+                        .fixedSize()
                 }
                 CardDivider()
                 SettingsRow(title: L("hotkeys.openHistory")) {
-                    KeyboardShortcuts.Recorder(for: .openHistoryWindow)
-                        .shortcutValidation { RecordingControlShortcut.validate($0, for: .openHistoryWindow) }
+                    HotkeyRecorder(name: .openHistoryWindow)
+                        .fixedSize()
                 }
             }
         }

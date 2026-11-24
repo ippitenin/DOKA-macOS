@@ -1,4 +1,5 @@
 import AppKit
+import os
 import Foundation
 import KeyboardShortcuts
 
@@ -45,6 +46,11 @@ final class HotkeyManager {
     private var heldVariantTask: Task<Void, Never>?
     private var shortcutObserver: NSObjectProtocol?
     private var pushReleaseTask: Task<Void, Never>?
+    private var rightGesture = RightModifierGesture()
+    /// Журнал правых клавиш: `log show --predicate 'subsystem == "com.pitenin.doka"
+    /// AND category == "hotkey"'`. NSLog здесь не годится — текст скрыт как <private>.
+    private static let log = Logger(subsystem: "com.pitenin.doka", category: "hotkey")
+    private var rightStartTasks: [RightModifierKey: Task<Void, Never>] = [:]
 
     init(controller: DictationController) {
         self.controller = controller
@@ -89,6 +95,7 @@ final class HotkeyManager {
         }
 
         installMouseMonitors()
+        installRightModifierMonitors()
     }
 
     private var controlReleaseTask: Task<Void, Never>?
@@ -170,7 +177,7 @@ final class HotkeyManager {
         }
         let variant = RecordingControlShortcut.heldVariant(
             command: KeyboardShortcuts.getShortcut(for: .lockOrPause),
-            pushToTalk: KeyboardShortcuts.getShortcut(for: .pushToTalk),
+            held: HeldPushToTalk.current(),
             active: active && controller.pushToTalkIsDown
         )
         guard variant != heldVariant else { return }
@@ -213,6 +220,177 @@ final class HotkeyManager {
         let assigned = SettingsStore.shared.mouseShortcutButton
         guard assigned >= 2, button == assigned else { return }
         controller.toggle()
+    }
+
+    // MARK: - Правые ⌥ / ⌘
+
+    /// Событие клавиатуры, нужное жесту правой клавиши, — извлекается из
+    /// NSEvent сразу в обработчике монитора (сам NSEvent через границу Task
+    /// не передать).
+    private enum RightModifierInput {
+        case flags(keyCode: UInt16, flags: NSEvent.ModifierFlags, time: TimeInterval)
+        case key(keyCode: UInt16, flags: NSEvent.ModifierFlags, time: TimeInterval)
+        /// Клик или прокрутка: ⌘+клик — не нажатие команды.
+        case pointer
+
+        static let mask: NSEvent.EventTypeMask = [
+            .flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel
+        ]
+
+        init?(_ event: NSEvent) {
+            switch event.type {
+            case .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel:
+                // Прокрутка — десятки событий в секунду: без зажатого ⌥/⌘
+                // правая клавиша точно не нажата, задачу не заводим.
+                guard !event.modifierFlags.isDisjoint(with: [.option, .command]) else { return nil }
+                self = .pointer
+            case .flagsChanged:
+                self = .flags(keyCode: event.keyCode, flags: event.modifierFlags, time: event.timestamp)
+            case .keyDown where !event.isARepeat:
+                // Автоповтор зажатой клавиши (⌥Tab у PTT) — не новое нажатие.
+                self = .key(keyCode: event.keyCode, flags: event.modifierFlags, time: event.timestamp)
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// Одиночный модификатор KeyboardShortcuts не назначает, а левый от
+    /// правого Carbon не отличает, — свои мониторы, как у кнопки мыши:
+    /// глобальный (другие приложения) и локальный (окна DOKA). События не
+    /// поглощаются: модификатор продолжает работать как модификатор.
+    private func installRightModifierMonitors() {
+        NSEvent.addGlobalMonitorForEvents(matching: RightModifierInput.mask) { [weak self] event in
+            guard let input = RightModifierInput(event) else { return }
+            Task { @MainActor in self?.handleRightModifier(input) }
+        }
+        NSEvent.addLocalMonitorForEvents(matching: RightModifierInput.mask) { [weak self] event in
+            if let input = RightModifierInput(event) {
+                Task { @MainActor in self?.handleRightModifier(input) }
+            }
+            return event
+        }
+    }
+
+    /// Идёт запись сочетания в «Клавишах»: нажатие назначают, а не выполняют.
+    private static var isRecordingShortcut: Bool {
+        (NSApp.keyWindow?.firstResponder as? NSText)?.delegate is KeyboardShortcuts.RecorderCocoa
+    }
+
+    private func handleRightModifier(_ input: RightModifierInput) {
+        let keys = RightModifierKeys.shared
+        switch input {
+        case let .flags(keyCode, flags, time):
+            guard let key = RightModifierKey(keyCode: keyCode), keys.name(for: key) != nil || rightGesture.isDown(key) else {
+                // Другой модификатор или неназначенная правая клавиша.
+                rightGesture.interruptTaps()
+                return
+            }
+            if key.isDown(in: flags) {
+                guard !Self.isRecordingShortcut, let name = keys.name(for: key) else { return }
+                perform(rightGesture.keyDown(key, at: time, kind: name == .pushToTalk ? .hold : .tap))
+            } else {
+                // Отпускание доводим до конца всегда — даже если клавишу
+                // переназначили посреди удержания: иначе запись осталась бы без стопа.
+                perform(rightGesture.keyUp(key, at: time))
+            }
+        case let .key(keyCode, flags, time):
+            // Основная клавиша фиксации под удержанием — не сочетание: ⌃⇧Пробел
+            // при правом ⌥ фиксирует запись, а не отменяет её.
+            if controller.state.hasRecording,
+               let command = KeyboardShortcuts.getShortcut(for: .lockOrPause),
+               Int(keyCode) == command.carbonKeyCode {
+                lockUnderRightKeyIfNeeded(command: command, flags: flags)
+                return
+            }
+            perform(rightGesture.otherKey(at: time))
+        case .pointer:
+            rightGesture.interruptTaps()
+        }
+    }
+
+    /// Фиксация под удержанием правой клавиши, когда временный вариант
+    /// Carbon не зарегистрирован (`heldVariant == nil`: «команда + правая
+    /// клавиша» занято системой, как ⌃⌥Пробел). Если вариант есть, его ловит
+    /// Carbon — здесь не дублируем. Событие не поглощается: включённое
+    /// системное сочетание macOS выполнит сама.
+    private func lockUnderRightKeyIfNeeded(command: KeyboardShortcuts.Shortcut, flags: NSEvent.ModifierFlags) {
+        guard heldVariant == nil, controller.pushToTalkIsDown,
+              let right = RightModifierKeys.shared.key(for: .pushToTalk), rightGesture.isDown(right) else { return }
+        let pressed = flags.intersection([.shift, .control, .option, .command])
+        guard pressed == command.modifiers.union(right.flag) else { return }
+        Self.log.notice("фиксация под правым \(right.rawValue, privacy: .public) — через монитор")
+        controller.lockOrPause()
+    }
+
+    private func perform(_ actions: [RightModifierGesture.Action]) {
+        for action in actions { perform(action) }
+    }
+
+    private func perform(_ action: RightModifierGesture.Action) {
+        switch action {
+        case let .scheduleStart(key, delay):
+            rightStartTasks[key]?.cancel()
+            rightStartTasks[key] = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, let self else { return }
+                self.perform(self.rightGesture.startDelayElapsed(key, at: ProcessInfo.processInfo.systemUptime))
+            }
+        case let .start(key):
+            Self.log.notice("правый \(key.rawValue, privacy: .public): удержание — старт")
+            controller.pushToTalkDown()
+            syncRecordingControls()
+            watchRightKeyRelease(key)
+        case let .stop(key):
+            Self.log.notice("правый \(key.rawValue, privacy: .public): отпущен — стоп")
+            rightStartTasks[key]?.cancel()
+            controller.pushToTalkUp()
+            syncRecordingControls()
+        case let .cancel(key):
+            Self.log.notice("правый \(key.rawValue, privacy: .public): сочетание в первую секунду — отмена записи")
+            rightStartTasks[key]?.cancel()
+            // Отменяется только запись: распознавание отменяет сам
+            // пользователь — по Esc. Отпускание PTT сразу: жест его уже
+            // забыл, а без него следующее удержание не запустило бы запись.
+            if controller.state.isRecording { controller.cancel() }
+            controller.pushToTalkUp()
+            syncRecordingControls()
+        case let .fire(key):
+            guard let name = RightModifierKeys.shared.name(for: key) else { return }
+            fire(name)
+        }
+    }
+
+    /// Страховка удержания, как у PTT-сочетания: событие отпускания
+    /// модификатора может не дойти (смена фокуса, защищённый ввод), и запись
+    /// шла бы без конца. Пока клавишу держат, сверяемся с физическим
+    /// состоянием; задача живёт в том же слоте, что и таймер старта.
+    private func watchRightKeyRelease(_ key: RightModifierKey) {
+        rightStartTasks[key] = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(20))
+                guard !Task.isCancelled, let self else { return }
+                guard self.rightGesture.isDown(key) else { return }
+                if RightModifierKey.isReleased(key, in: CGEventSource.flagsState(.combinedSessionState)) {
+                    Self.log.notice("правый \(key.rawValue, privacy: .public): отпускание по страховке")
+                    self.perform(self.rightGesture.keyUp(key, at: ProcessInfo.processInfo.systemUptime))
+                    return
+                }
+            }
+        }
+    }
+
+    /// Короткое нажатие правой клавиши — та же команда, что у её сочетания.
+    private func fire(_ name: KeyboardShortcuts.Name) {
+        switch name {
+        case .toggleRecording: controller.toggle()
+        case .lockOrPause: controller.lockOrPause()   // вне записи — no-op
+        case .pasteLast: controller.pasteLastTranscription()
+        case .toggleQuietMode: controller.toggleQuietMode()
+        case .openMainWindow: WindowManager.shared.showMain(section: .home)
+        case .openHistoryWindow: WindowManager.shared.showMain(section: .history)
+        default: break
+        }
     }
 
     /// Включает/выключает глобальный Esc. Вызывается при каждом входе/выходе
