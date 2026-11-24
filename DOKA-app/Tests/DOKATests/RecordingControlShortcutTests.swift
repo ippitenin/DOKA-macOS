@@ -35,4 +35,18 @@ final class RecordingControlShortcutTests: XCTestCase {
             command: .init(.space, modifiers: [.control, .shift]),
             pushToTalk: .init(.space, modifiers: [.option]), active: true))
     }
+
+    func testRightOptionPTTAddsOptionToVariant() {
+        XCTAssertEqual(RecordingControlShortcut.heldVariant(
+            command: .init(.space, modifiers: [.control, .shift]),
+            held: HeldPushToTalk(rightKey: .option), active: true),
+            .init(.space, modifiers: [.control, .option, .shift]))
+    }
+
+    func testRightCommandPTTAddsCommandToVariant() {
+        XCTAssertEqual(RecordingControlShortcut.heldVariant(
+            command: .init(.space, modifiers: [.control, .shift]),
+            held: HeldPushToTalk(rightKey: .command), active: true),
+            .init(.space, modifiers: [.control, .command, .shift]))
+    }
 }
