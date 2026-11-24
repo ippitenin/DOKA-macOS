@@ -96,4 +96,31 @@ final class DictationControlsTests: XCTestCase {
         XCTAssertTrue(state.isPaused)
         XCTAssertFalse(state.isRecording)
     }
+
+    // Замок — только у зафиксированного удержания: в старт/стоп держать нечего.
+    func testToggleStartIsNotLocked() {
+        var controls = DictationControls()
+        XCTAssertEqual(controls.toggle(), .startHandsFree)
+        controls.didStart(held: false)
+        XCTAssertFalse(controls.isLocked)
+        _ = controls.lockOrPause()
+        XCTAssertFalse(controls.isLocked, "пауза старт/стопа — не фиксация")
+    }
+
+    func testHeldIsLockedOnlyAfterCommandAndSurvivesPause() {
+        var controls = DictationControls()
+        _ = controls.pushToTalkDown()
+        controls.didStart(held: true)
+        XCTAssertFalse(controls.isLocked)
+        XCTAssertEqual(controls.lockOrPause(), .lock)
+        XCTAssertTrue(controls.isLocked)
+        XCTAssertEqual(controls.lockOrPause(), .pause)
+        XCTAssertTrue(controls.isLocked)
+        XCTAssertEqual(controls.lockOrPause(), .resume)
+        XCTAssertTrue(controls.isLocked)
+        controls.didEnd()
+        XCTAssertFalse(controls.isLocked)
+        controls.didStart(held: false)
+        XCTAssertFalse(controls.isLocked, "новая диктовка не наследует замок")
+    }
 }

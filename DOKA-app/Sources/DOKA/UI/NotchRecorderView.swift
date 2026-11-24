@@ -96,7 +96,7 @@ struct NotchRecorderView: View {
         switch controller.state {
         case .recording:
             HStack(spacing: 7) {
-                if controller.isHandsFree {
+                if controller.isLocked {
                     Image(systemName: "lock.fill")
                         .foregroundStyle(.white)
                         .accessibilityLabel(L("recorder.handsFree"))

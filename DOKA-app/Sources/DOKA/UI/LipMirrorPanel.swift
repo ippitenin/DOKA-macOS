@@ -67,27 +67,40 @@ struct LipMirrorView: View {
     /// Свёрнутая плашка — тонкая полоска у края экрана.
     private var collapsedHeight: CGFloat { LipMirrorGeometry.shoulder + 2 }
 
+    /// Плашка и кадр — ОДИН кусок: содержимое едет вместе со свободной кромкой
+    /// плашки и обрезано её формой. Раньше видео проявлялось отдельным слоем с
+    /// задержкой поверх уже видимой полоски у кромки, и это читалось как баг
+    /// («сначала прямоугольничек, потом поверх него рамка»).
     var body: some View {
-        ZStack(alignment: layout.flatEdge == .top ? .top : .bottom) {
-            EdgeFlowShape(flatEdge: layout.flatEdge, shoulder: LipMirrorGeometry.shoulder,
-                          corner: LipMirrorGeometry.corner)
-                .fill(.black)
-                .frame(width: size.width, height: revealed ? size.height : collapsedHeight)
-        }
-        .frame(width: size.width, height: size.height, alignment: layout.flatEdge == .top ? .top : .bottom)
-        .overlay(alignment: .topLeading) {
+        let alignment: Alignment = layout.flatEdge == .top ? .top : .bottom
+        let height = revealed ? size.height : collapsedHeight
+        // Сколько содержимого ещё «за кромкой экрана».
+        let hidden = size.height - height
+        ZStack(alignment: .topLeading) {
+            Color.black
             video
                 .frame(width: layout.video.width, height: layout.video.height)
                 .offset(x: layout.video.minX, y: layout.video.minY)
-                .opacity(revealed ? 1 : 0)
-                // Видео догоняет плашку с небольшой задержкой — как контент нотча.
-                .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.80).delay(0.09),
-                           value: revealed)
         }
+        .frame(width: size.width, height: size.height)
+        .offset(y: layout.flatEdge == .top ? -hidden : hidden)
+        .frame(width: size.width, height: size.height, alignment: alignment)
+        .mask(alignment: alignment) {
+            EdgeFlowShape(flatEdge: layout.flatEdge, shoulder: LipMirrorGeometry.shoulder,
+                          corner: LipMirrorGeometry.corner)
+                .frame(width: size.width, height: height)
+        }
+        // Свёрнутая плашка не видна: первый кадр окна рисуется до старта
+        // анимации, и голая полоска у кромки мелькала отдельно от зеркала.
+        .opacity(revealed ? 1 : 0)
         .onAppear {
             if reduceMotion {
                 revealed = true
-            } else {
+                return
+            }
+            // Рост — со следующего такта, когда окно уже на экране: иначе
+            // изменение могло примениться без анимации.
+            DispatchQueue.main.async {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.80)) { revealed = true }
             }
         }

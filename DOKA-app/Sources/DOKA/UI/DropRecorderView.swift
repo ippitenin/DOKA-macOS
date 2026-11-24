@@ -360,7 +360,7 @@ struct DropRecorderView: View {
                         Image(systemName: "pause.fill")
                             .font(.title2).foregroundStyle(.white)
                             .accessibilityLabel(L("recorder.paused"))
-                    } else if isRecording && controller.isHandsFree {
+                    } else if isRecording && controller.isLocked {
                         Image(systemName: "lock.fill")
                             .font(.caption).foregroundStyle(.white)
                             .accessibilityLabel(L("recorder.handsFree"))

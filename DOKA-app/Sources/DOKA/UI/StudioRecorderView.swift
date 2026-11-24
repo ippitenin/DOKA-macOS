@@ -55,7 +55,7 @@ struct StudioRecorderView: View {
                     )
                     .shadow(color: DS.glow.opacity(0.45), radius: 8)
                     HStack {
-                        if controller.isHandsFree {
+                        if controller.isLocked {
                             Image(systemName: "lock.fill")
                                 .accessibilityLabel(L("recorder.handsFree"))
                         }
