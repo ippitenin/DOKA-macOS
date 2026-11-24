@@ -16,9 +16,19 @@ struct DictationControls {
 
     private(set) var mode: Mode?
     private(set) var pushToTalkIsDown = false
+    /// Удерживаемую запись зафиксировали командой — замок на панели. Старт
+    /// клавишей старт/стоп сюда не относится: удерживать там нечего. Пауза
+    /// и продолжение фиксацию не снимают.
+    private(set) var isLocked = false
 
-    mutating func didStart(held: Bool) { mode = held ? .held : .handsFree }
-    mutating func didEnd() { mode = nil }
+    mutating func didStart(held: Bool) {
+        mode = held ? .held : .handsFree
+        isLocked = false
+    }
+    mutating func didEnd() {
+        mode = nil
+        isLocked = false
+    }
 
     func toggle() -> Action { mode == nil ? .startHandsFree : .finish }
 
@@ -43,6 +53,7 @@ struct DictationControls {
         case nil: return .none
         case .held:
             mode = .handsFree
+            isLocked = true
             return .lock
         case .handsFree:
             mode = .paused

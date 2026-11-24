@@ -89,7 +89,8 @@ final class DictationController: ObservableObject {
     private(set) static var isActive = false
 
     @Published private(set) var state: State = .idle
-    @Published private(set) var isHandsFree = false
+    /// Замок на панели: удержание зафиксировано командой (`DictationControls.isLocked`).
+    @Published private(set) var isLocked = false
     @Published var audioLevel: Float = 0
     private var controls = DictationControls()
     var pushToTalkIsDown: Bool { controls.pushToTalkIsDown }
@@ -178,7 +179,7 @@ final class DictationController: ObservableObject {
         case .startHandsFree: startRecording()
         case .finish: finishRecording()
         case .lock:
-            isHandsFree = true
+            isLocked = controls.isLocked
             // Жизненный цикл не меняется, но обновляем контекст клавиш.
             hotkeys?.syncRecordingControls()
         case .pause:
@@ -357,7 +358,7 @@ final class DictationController: ObservableObject {
         SoundPlayer.play(.recordStart)
         takeSpeechSlotIfLocal()
         controls.didStart(held: held)
-        isHandsFree = !held
+        isLocked = controls.isLocked
         transition(to: .recording(startedAt: Date()))
     }
 
@@ -780,7 +781,7 @@ final class DictationController: ObservableObject {
         }
         if !newState.hasRecording {
             controls.didEnd()
-            isHandsFree = false
+            isLocked = false
         }
         state = newState
         Self.isActive = newState.isBusy

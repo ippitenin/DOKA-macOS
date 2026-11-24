@@ -64,7 +64,7 @@ struct RecorderView: View {
             switch controller.state {
             case .recording(let startedAt):
                 // Фиксация различима без изменения цвета записи.
-                if controller.isHandsFree {
+                if controller.isLocked {
                     Image(systemName: "lock.fill")
                         .accessibilityLabel(L("recorder.handsFree"))
                 }
